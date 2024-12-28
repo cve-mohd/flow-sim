@@ -41,11 +41,11 @@ The program consists of the following components:
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Mohammed0r217/1d_flow_simulator.git
+   git clone https://github.com/Mohammed0r217/flood-wave-propagation.git
    ```
 2. Navigate to the project directory:
    ```bash
-   cd 1d_flow_simulator
+   cd flood-wave-propagation
    ```
 3. Install the required packages:
    ```bash
