@@ -630,17 +630,20 @@ class PreissmannModel:
         None.
 
         """
-        if time_steps_to_save == -1:
-            time_steps_to_save = len(self.results)
+        results_step = 1
+        x_step = 1
+        
+        if time_steps_to_save > 1:
+            results_step = (len(self.results) - 1) // (time_steps_to_save - 1)
 
-        if space_points_to_save == -1:
-            space_points_to_save = self.n_nodes
+        if space_points_to_save > 1:
+            space_points_to_save =  2 * (self.n_nodes - 1) // (space_points_to_save - 1)
 
-        A = [x[:: 2 * (self.n_nodes - 1) // (space_points_to_save - 1)]
-             for x in self.results[::(len(self.results) - 1) // (time_steps_to_save - 1)]]
+        A = [x[::x_step]
+             for x in self.results[::results_step]]
 
-        Q = [x[1:: 2 * (self.n_nodes - 1) // (space_points_to_save - 1)]
-             for x in self.results[::(len(self.results) - 1) // (time_steps_to_save - 1)]]
+        Q = [x[1::x_step]
+             for x in self.results[::results_step]]
 
         y, V = [], []
 
@@ -660,14 +663,14 @@ class PreissmannModel:
             y = y.replace(c, '')
             V = V.replace(c, '')
 
-        with open('area.csv', 'w') as output_file:
+        with open('Results//Area.csv', 'w') as output_file:
             output_file.write(A)
 
-        with open('discharge.csv', 'w') as output_file:
+        with open('Results//Discharge.csv', 'w') as output_file:
             output_file.write(Q)
 
-        with open('depth.csv', 'w') as output_file:
+        with open('Results//Depth.csv', 'w') as output_file:
             output_file.write(y)
 
-        with open('velocity.csv', 'w') as output_file:
+        with open('Results//Velocity.csv', 'w') as output_file:
             output_file.write(V)
