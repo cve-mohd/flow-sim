@@ -28,7 +28,7 @@ The program consists of the following components:
 
 4. **`settings.py`**:
    - Centralized configuration file for defining:
-     - River attributes (e.g., bed slope, Manning's coefficient, width, length)
+     - River characteristics (e.g., bed slope, Manning's coefficient, width, length)
      - Simulation parameters (e.g., time step, spatial step, duration, tolerance)
      - Initial and boundary conditions (e.g., rating curves, initial depth, discharge, stage)
 
