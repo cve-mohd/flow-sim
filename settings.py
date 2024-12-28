@@ -12,7 +12,7 @@ TIME_STEP = 3600
 SPATIAL_STEP = 1000
 DURATION = 3600 * 24
 TOLERANCE = 1e-4
-RESULTS_SIZE = (-1, -1)
+RESULTS_SIZE = (-1, -1) # Default is -1. Means print all data points.
 
 ############                Upstream Boundary                   ############
 
