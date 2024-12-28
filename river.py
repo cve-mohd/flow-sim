@@ -1,6 +1,4 @@
-import initial_conditions
-import upstream_bc
-import downstream_bc
+import boundary
 
 
 class River:
@@ -41,7 +39,7 @@ class River:
         """
         self.bed_slope = bed_slope
         self.manning_co = manning_co
-        self.width = width
+        self.width = float(width)
         self.length = length
         self.initial_conditions = []
 
@@ -67,13 +65,13 @@ class River:
         return Sf
 
     @staticmethod
-    def inflow_Q(time_seconds: float) -> float:
+    def inflow_Q(time: float) -> float:
         """
         Computes the discharge at a given time using the upstream flow hydrograph.
         
         Parameters
         ----------
-        time_seconds : float
+        time : float
             The time in seconds.
             
         Returns
@@ -82,7 +80,7 @@ class River:
             The computed discharge in cubic meters per second.
             
         """
-        return upstream_bc.inflow_hydrograph(time_seconds)
+        return boundary.Upstream.inflow_hydrograph(time)
 
     @staticmethod
     def rating_curve_us(water_depth: float) -> float:
@@ -101,7 +99,7 @@ class River:
             The computed discharge in cubic meters per second.
 
         """
-        return upstream_bc.rating_curve(water_depth)
+        return boundary.Upstream.rating_curve(water_depth)
 
     @staticmethod
     def rating_curve_ds(water_depth: float) -> float:
@@ -120,7 +118,7 @@ class River:
             The computed discharge in cubic meters per second.
 
         """
-        return downstream_bc.rating_curve(water_depth)
+        return boundary.Downstream.rating_curve(water_depth)
 
     def initialize_conditions(self, n_nodes: int) -> None:
         """
@@ -139,11 +137,11 @@ class River:
 
         """
         for i in range(n_nodes):
-            y = (initial_conditions.us_y
-                 + (initial_conditions.ds_y - initial_conditions.us_y) * i / (n_nodes - 1))
+            y = (boundary.Upstream.initial_depth
+                 + (boundary.Downstream.initial_depth - boundary.Upstream.initial_depth) * i / float(n_nodes - 1))
 
-            Q = (initial_conditions.us_Q
-                 + (initial_conditions.ds_Q - initial_conditions.us_Q) * i / (n_nodes - 1))
+            Q = (boundary.Upstream.initial_discharge
+                 + (boundary.Downstream.initial_discharge - boundary.Upstream.initial_discharge) * i / float(n_nodes - 1))
 
             A = y * self.width
 

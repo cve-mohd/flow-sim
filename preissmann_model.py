@@ -73,7 +73,7 @@ class PreissmannModel:
         self.n = self.river.manning_co
         self.S_h = 0
         self.S_0 = self.river.bed_slope
-        self.n_nodes = int(self.river.length / self.delta_x + 1)
+        self.n_nodes = self.river.length // self.delta_x + 1
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []
@@ -189,10 +189,10 @@ class PreissmannModel:
             jacobian_matrix[row, row + 1] = self.derivative_c_A_iplus1()
             jacobian_matrix[row, row + 2] = self.derivative_c_Q_iplus1()
 
-            jacobian_matrix[row + 1, row - 1] = self.derivative_m_A_i(int((row - 1) / 2))
-            jacobian_matrix[row + 1, row + 0] = self.derivative_m_Q_i(int((row - 1) / 2))
-            jacobian_matrix[row + 1, row + 1] = self.derivative_m_A_iplus1(int((row - 1) / 2))
-            jacobian_matrix[row + 1, row + 2] = self.derivative_m_Q_iplus1(int((row - 1) / 2))
+            jacobian_matrix[row + 1, row - 1] = self.derivative_m_A_i( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 0] = self.derivative_m_Q_i( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 1] = self.derivative_m_A_iplus1( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 2] = self.derivative_m_Q_iplus1( (row - 1) // 2 )
 
         # Lastly, compute the derivatives of the downstream boundary condition with respect to A and Q
         # at the last node, and place their values in the last 2 places of the last row.
@@ -577,7 +577,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 1. / self.W
+        d = 1 / self.W
 
         return d
 
@@ -609,7 +609,7 @@ class PreissmannModel:
         S_f = self.Sf_previous[0]
         self.S_h = self.S_0 - S_f
 
-    def save_results(self, time_steps_to_save=-1, space_points_to_save=-1) -> None:
+    def save_results(self, size: tuple) -> None:
         """
         Saves the results of the simulation in four .csv files, containing
         the computed cross-sectional flow area, discharge, flow depth, and velocity.
@@ -618,32 +618,28 @@ class PreissmannModel:
 
         Parameters
         ----------
-        time_steps_to_save : int, optional
-            The number of time steps to save. If set to -1, all time steps are saved.
-            The default is -1.
-        space_points_to_save : int, optional
-            The number of spatial steps to save. If set to -1, all spatial steps are saved.
-            The default is -1.
+        size : tuple of int
+            The number of time steps and spatial steps to save.
 
         Returns
         -------
         None.
 
         """
-        results_step = 1
-        x_step = 1
+        t_step = 1
+        x_step = 2
         
-        if time_steps_to_save > 1:
-            results_step = (len(self.results) - 1) // (time_steps_to_save - 1)
+        if size[0] > 1:
+            t_step = (len(self.results) - 1) // (size[0] - 1)
 
-        if space_points_to_save > 1:
-            space_points_to_save =  2 * (self.n_nodes - 1) // (space_points_to_save - 1)
+        if size[1] > 1:
+            x_step =  2 * (self.n_nodes - 1) // (size[1] - 1)
 
         A = [x[::x_step]
-             for x in self.results[::results_step]]
+             for x in self.results[::t_step]]
 
         Q = [x[1::x_step]
-             for x in self.results[::results_step]]
+             for x in self.results[::t_step]]
 
         y, V = [], []
 
