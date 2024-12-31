@@ -88,7 +88,10 @@ class PreissmannModel:
         self.unknowns = []
 
         # Declare an empty list to store the simulation results.
-        self.results = []
+        self.results_A = []
+        self.results_Q = []
+        self.results_V = []
+        self.results_y = []
 
         # Read the initial conditions of the river.
         self.initialize_t0()
@@ -126,7 +129,8 @@ class PreissmannModel:
         self.unknowns = np.array(self.unknowns)
 
         # Store the computed values of A and Q in the results list.
-        self.results.append(self.unknowns.tolist())
+        self.results_A.append(self.A_previous)
+        self.results_Q.append(self.Q_previous)
 
     def compute_system_matrix(self, time) -> np.ndarray:
         """
@@ -255,12 +259,20 @@ class PreissmannModel:
                 if cumulative_error < tolerance:
                     break
 
-            # noinspection PyUnresolvedReferences
             # Save the final values of the solved time step.
-            self.results.append(self.unknowns.tolist())
+            self.results_A.append(self.A_current.tolist())
+            self.results_Q.append(self.Q_current.tolist())
 
             # Update the values of the previous time step.
             self.update_parameters()
+            
+        # Compute results_V and results_y
+        self.results_V = np.array(self.results_Q) / np.array(self.results_A)
+        self.results_y = np.array(self.results_A) / self.W
+        
+        self.results_V = self.results_V.tolist()
+        self.results_y = self.results_y.tolist()
+        
 
     def update_parameters(self) -> None:
         """
@@ -626,47 +638,50 @@ class PreissmannModel:
         None.
 
         """
-        t_step = 1
-        x_step = 2
+        t_step = x_step = 1
         
         if size[0] > 1:
-            t_step = (len(self.results) - 1) // (size[0] - 1)
+            t_step = (len(self.results_A) - 1) // (size[0] - 1)
 
         if size[1] > 1:
-            x_step =  2 * (self.n_nodes - 1) // (size[1] - 1)
+            x_step =  (self.n_nodes - 1) // (size[1] - 1)
 
-        A = [x[::x_step]
-             for x in self.results[::t_step]]
+        A = [a[::x_step]
+                for a in self.results_A[::t_step]]
 
-        Q = [x[1::x_step]
-             for x in self.results[::t_step]]
+        Q = [q[::x_step]
+                for q in self.results_Q[::t_step]]
 
-        y, V = [], []
+        V = [v[::x_step]
+                for v in self.results_V[::t_step]]
+        
+        y = [y[::x_step]
+                for y in self.results_y[::t_step]]
 
-        for i in range(len(A)):
-            y.append([a / self.W for a in A[i]])
-            V.append([q / a for a, q in zip(A[i], Q[i])])
+        data = {
+            'Area': A,
+            'Discharge': Q,
+            'Depth': y,
+            'Velocity': V
+        }
 
-        A, Q, y, V = str(A), str(Q), str(y), str(V)
+        for key, value in data.items():
+            value_str = str(value).replace('], [', '\n')
+            for c in "[]' ":
+                value_str = value_str.replace(c, '')
+            with open(f'Results//{key}.csv', 'w') as output_file:
+                output_file.write(value_str)
+                
+    
+    def get_results(self) -> tuple:
+        """
+        Returns the results of the simulation.
 
-        A = A.replace('], [', '\n')
-        Q = Q.replace('], [', '\n')
-        y = y.replace('], [', '\n')
-        V = V.replace('], [', '\n')
-        for c in "[]' ":
-            A = A.replace(c, '')
-            Q = Q.replace(c, '')
-            y = y.replace(c, '')
-            V = V.replace(c, '')
+        Returns
+        -------
+        tuple
+            A tuple containing the computed cross-sectional flow area, discharge,
+            velocity, and flow depth.
 
-        with open('Results//Area.csv', 'w') as output_file:
-            output_file.write(A)
-
-        with open('Results//Discharge.csv', 'w') as output_file:
-            output_file.write(Q)
-
-        with open('Results//Depth.csv', 'w') as output_file:
-            output_file.write(y)
-
-        with open('Results//Velocity.csv', 'w') as output_file:
-            output_file.write(V)
+        """
+        return self.results_A, self.results_Q, self.results_V, self.results_y
