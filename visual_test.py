@@ -9,14 +9,14 @@ with open('Results//Depth.csv', 'r') as file:
 
 with open('Results//Velocity.csv', 'r') as file:
     reader = csv.reader(file)
-    data_Q = [[float(i) for i in row] for row in reader]
+    data_V = [[float(i) for i in row] for row in reader]
 
 
 # Declare a 'App' object.
 app = appkit.App(1000, 700, 'River Simulation')
 
 # Declare a 'Visual' object, specifying the data to be visualized.
-visual = visual.Visual(data_y, data_Q, TIME_STEP)
+visual = visual.Visual(data_y, data_V, TIME_STEP, y_smoothening=1, t_smoothening=3)
 
 # Add the 'Visual' object to the 'App' object.
 app.activities['home'].addItem(visual)
