@@ -8,7 +8,7 @@ class Upstream:
     initial_stage = US_INIT_STAGE 
     
     @staticmethod
-    def rating_curve(self, water_depth: float) -> float:
+    def rating_curve(water_depth: float) -> float:
         """
         Computes the discharge for a given water depth using
         the rating curve equation of the upstream boundary.
@@ -20,16 +20,16 @@ class Upstream:
 
         Returns
         -------
-        Q : float
+        discharge : float
             The computed discharge in cubic meters per second.
 
         """
         stage = US_INIT_STAGE + (water_depth - US_INIT_DEPTH)
         
-        Q = (US_RATING_CURVE_COEFF[0] + US_RATING_CURVE_COEFF[1] * stage
+        discharge = (US_RATING_CURVE_COEFF[0] + US_RATING_CURVE_COEFF[1] * stage
             + US_RATING_CURVE_COEFF[2] * stage ** 2)
         
-        return Q
+        return discharge
     
     @staticmethod
     def inflow_hydrograph(time: float | int) -> float:
@@ -76,14 +76,14 @@ class Downstream:
 
         Returns
         -------
-        Q : float
+        discharge : float
             The computed discharge in cubic meters per second.
 
         """
         stage = DS_INIT_STAGE + (water_depth - DS_INIT_DEPTH)
         
-        Q = (DS_RATING_CURVE_COEFF[0] + DS_RATING_CURVE_COEFF[1] * stage
+        discharge = (DS_RATING_CURVE_COEFF[0] + DS_RATING_CURVE_COEFF[1] * stage
             + DS_RATING_CURVE_COEFF[2] * stage ** 2)
         
-        return Q
+        return discharge
         

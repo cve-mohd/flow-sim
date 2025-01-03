@@ -16,7 +16,7 @@ with open('Results//Velocity.csv', 'r') as file:
 app = appkit.App(1000, 700, 'River Simulation')
 
 # Declare a 'Visual' object, specifying the data to be visualized.
-visual = visual.Visual(data_y, data_V, TIME_STEP, y_smoothening=1, t_smoothening=3)
+visual = visual.Visual(data_y, data_V, TIME_STEP, t_upscaling=2)
 
 # Add the 'Visual' object to the 'App' object.
 app.activities['home'].addItem(visual)
