@@ -1,8 +1,7 @@
-import appkit, visual
-from settings import TIME_STEP
+import appkit, graph, hydrograph_curve, background, sim_time
+from settings import TIME_STEP, SPATIAL_STEP
 import csv
 
-# Get the results from the .csv files.
 with open('Results//Depth.csv', 'r') as file:
     reader = csv.reader(file)
     data_y = [[float(i) for i in row] for row in reader]
@@ -12,14 +11,20 @@ with open('Results//Velocity.csv', 'r') as file:
     data_V = [[float(i) for i in row] for row in reader]
 
 
-# Declare a 'App' object.
-app = appkit.App(1000, 700, 'River Simulation')
+app = appkit.App(1200, 700, 'River Simulation')
 
-# Declare a 'Visual' object, specifying the data to be visualized.
-visual = visual.Visual(data_y, data_V, TIME_STEP, t_upscaling=2)
+bg = background.Background(rect=(0, 50, 810, 660), interval=(1000, 2.5),
+                           grid_lines=(16, 8), padding=[50, 10, 10, 50])
 
-# Add the 'Visual' object to the 'App' object.
-app.activities['home'].addItem(visual)
+graph_ = graph.Graph(data_y, data_V, TIME_STEP, SPATIAL_STEP, t_upscaling=2, background=bg)
 
-# Run the application.
+hydrograph_curve_ = hydrograph_curve.HydrographCurve(rect=(900, 50, 300, 200))
+
+timer = sim_time.Timer(graph_=graph_)
+
+app.activities['home'].addItem(bg)
+app.activities['home'].addItem(graph_)
+app.activities['home'].addItem(timer)
+#app.activities['home'].addItem(hydrograph_curve_)
+
 app.run()
