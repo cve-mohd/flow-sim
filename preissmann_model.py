@@ -34,8 +34,14 @@ class PreissmannModel:
         Discharges at the current iteration of the current time step.
     unknowns : list of float
         Vector of unknowns for the current iteration (alternating A and Q).
-    results : list of list of float
-        Stores the simulation results over time.
+    results_A : list of list of float
+        Stores the computed A values over time.
+    results_Q : list of list of float
+        Stores the computed Q values over time.
+    results_V : list of list of float
+        Stores the computed V values over time.
+    results_y : list of list of float
+        Stores the computed y values over time.
     S_h : float
         Slope due to backwater effects.
         
@@ -98,6 +104,7 @@ class PreissmannModel:
 
         # Compute the slope due to backwater effects.
         self.backwater_effects_calc()
+
 
     def initialize_t0(self) -> None:
         """
@@ -180,28 +187,28 @@ class PreissmannModel:
 
         # Compute the derivatives of the upstream boundary condition with respect to A and Q
         # at the first node, and assign the computed values to the first 2 elements of the first row.
-        jacobian_matrix[0, 0] = self.derivative_upstream_A()
-        jacobian_matrix[0, 1] = self.derivative_upstream_Q()
+        jacobian_matrix[0, 0] = self.upstream_deriv_A()
+        jacobian_matrix[0, 1] = self.upstream_deriv_Q()
 
         # The loop computes the derivatives of the continuity equation with respect to A and Q at each of the
         # ith and (i+1)th node, and stores their values in the next row The same is done for the momentum
         # equation. The derivatives are placed in their appropriate positions along the matrix diagonal.
         # Alternate between the continuity and momentum equation until the second to last row.
         for row in range(1, 2 * self.n_nodes - 1, 2):
-            jacobian_matrix[row, row - 1] = self.derivative_c_A_i()
-            jacobian_matrix[row, row + 0] = self.derivative_c_Q_i()
-            jacobian_matrix[row, row + 1] = self.derivative_c_A_iplus1()
-            jacobian_matrix[row, row + 2] = self.derivative_c_Q_iplus1()
+            jacobian_matrix[row, row - 1] = self.continuity_deriv_Ai()
+            jacobian_matrix[row, row + 0] = self.continuity_deriv_Qi()
+            jacobian_matrix[row, row + 1] = self.continuity_deriv_Ai_plus1()
+            jacobian_matrix[row, row + 2] = self.continuity_deriv_Qi_plus1()
 
-            jacobian_matrix[row + 1, row - 1] = self.derivative_m_A_i( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 0] = self.derivative_m_Q_i( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 1] = self.derivative_m_A_iplus1( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 2] = self.derivative_m_Q_iplus1( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row - 1] = self.momentum_deriv_Ai( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 0] = self.momentum_deriv_Qi( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 1] = self.momentum_deriv_Ai_plus1( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 2] = self.momentum_deriv_Qi_plus1( (row - 1) // 2 )
 
         # Lastly, compute the derivatives of the downstream boundary condition with respect to A and Q
         # at the last node, and place their values in the last 2 places of the last row.
-        jacobian_matrix[-1, -2] = self.derivative_downstream_A()
-        jacobian_matrix[-1, -1] = self.derivative_downstream_Q()
+        jacobian_matrix[-1, -2] = self.downstream_deriv_A()
+        jacobian_matrix[-1, -1] = self.downstream_deriv_Q()
 
         return jacobian_matrix
 
@@ -213,7 +220,7 @@ class PreissmannModel:
         Parameters
         ----------
         duration : int
-            The simulation duration.
+            The simulation duration in seconds.
         tolerance : float, optional
             The allowed tolerance for the iterative process. The simulation iterates until the cumulative error
             falls below this value. The default is 1e-4.
@@ -225,7 +232,7 @@ class PreissmannModel:
         """
 
         # Loop through the time steps, incrementing the time by delta t every time.
-        for time in range(self.delta_t, duration + 1, self.delta_t):
+        for time in range(self.delta_t, duration + self.delta_t, self.delta_t):
             print('\n---------- Time = ' + str(time) + 's ----------\n')
 
             iteration = 0
@@ -405,7 +412,7 @@ class PreissmannModel:
         return D
 
     @staticmethod
-    def derivative_upstream_A() -> int:
+    def upstream_deriv_A() -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the upstream node.
@@ -421,7 +428,7 @@ class PreissmannModel:
         return d
 
     @staticmethod
-    def derivative_upstream_Q() -> int:
+    def upstream_deriv_Q() -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the upstream node.
@@ -436,7 +443,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_c_A_iplus1(self) -> float:
+    def continuity_deriv_Ai_plus1(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the advanced spatial point.
@@ -451,7 +458,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_c_A_i(self) -> float:
+    def continuity_deriv_Ai(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the current spatial point.
@@ -466,7 +473,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_c_Q_iplus1(self) -> float:
+    def continuity_deriv_Qi_plus1(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the advanced spatial point.
@@ -481,7 +488,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_c_Q_i(self) -> float:
+    def continuity_deriv_Qi(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the current spatial point.
@@ -496,7 +503,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_m_A_iplus1(self, i) -> float:
+    def momentum_deriv_Ai_plus1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the advanced spatial point.
@@ -517,7 +524,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_m_A_i(self, i) -> float:
+    def momentum_deriv_Ai(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the current spatial point.
@@ -538,7 +545,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_m_Q_iplus1(self, i) -> float:
+    def momentum_deriv_Qi_plus1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the advanced spatial point.
@@ -558,7 +565,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_m_Q_i(self, i) -> float:
+    def momentum_deriv_Qi(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the current spatial point.
@@ -578,7 +585,7 @@ class PreissmannModel:
 
         return d
 
-    def derivative_downstream_A(self) -> float:
+    def downstream_deriv_A(self) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -594,7 +601,7 @@ class PreissmannModel:
         return d
 
     @staticmethod
-    def derivative_downstream_Q() -> int:
+    def downstream_deriv_Q() -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the downstream node.

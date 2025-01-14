@@ -8,11 +8,11 @@ LENGTH = 15000
 ############                Simulation Parameters               ############
 
 PREISSMANN_BETA = 0.6
-TIME_STEP = 3600
+TIME_STEP = 50
 SPATIAL_STEP = 1000
-DURATION = 3600 * 24
+DURATION = 3600 * 20
 TOLERANCE = 1e-4
-RESULTS_SIZE = (-1, -1) # Default is -1. Means print all data points.
+RESULTS_SIZE = (20, 16) # Default is -1. Means print all data points.
 
 ############                Upstream Boundary                   ############
 
