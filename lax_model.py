@@ -1,6 +1,7 @@
 import numpy as np
 from river import River
 from scipy.constants import g
+from utility import Utility
 
 
 class LaxModel:
@@ -128,6 +129,9 @@ class LaxModel:
         ----------
         duration : int
             The simulation duration in seconds.
+        approximation : str
+            The type of approximation to use for the downstream boundary condition.
+            Can be 'zeroslope' or 'mirror'.
 
         Returns
         -------
@@ -137,7 +141,7 @@ class LaxModel:
 
         # Loop through the time steps, incrementing the time by delta t every time.
         for time in range(self.delta_t, duration + self.delta_t, self.delta_t):
-            print('\n---------- Time = ' + str(time) + 's ----------\n')
+            print('\n---------- Time = ' + str(time) + 's ----------')
             
             self.Q_current[0] = self.river.inflow_Q(time)
                        
@@ -291,6 +295,9 @@ class LaxModel:
 
         """
         
+        Utility.create_directory_if_not_exists('Results')
+        Utility.create_directory_if_not_exists('Results//Lax')
+                
         t_step = x_step = 1
         
         if size[0] > 1:
@@ -322,7 +329,7 @@ class LaxModel:
             value_str = str(value).replace('], [', '\n')
             for c in "[]' ":
                 value_str = value_str.replace(c, '')
-            with open(f'Results//{key}.csv', 'w') as output_file:
+            with open(f'Results//Lax//{key}.csv', 'w') as output_file:
                 output_file.write(value_str)
 
 
@@ -335,7 +342,7 @@ class LaxModel:
             None.
 
             """
-            S_f = self.river.friction_slope(self.A_previous[-1], self.Q_previous[-1])
+            S_f = self.river.friction_slope(self.A_previous[0], self.Q_previous[0])
             self.S_h = self.S_0 - S_f
             
             

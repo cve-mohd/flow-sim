@@ -1,6 +1,7 @@
 from river import River
 import numpy as np
 from scipy.constants import g
+from utility import Utility
 
 
 class PreissmannModel:
@@ -645,6 +646,10 @@ class PreissmannModel:
         None.
 
         """
+        
+        Utility.create_directory_if_not_exists('Results')
+        Utility.create_directory_if_not_exists('Results//Preissmann')
+        
         t_step = x_step = 1
         
         if size[0] > 1:
@@ -676,7 +681,7 @@ class PreissmannModel:
             value_str = str(value).replace('], [', '\n')
             for c in "[]' ":
                 value_str = value_str.replace(c, '')
-            with open(f'Results//{key}.csv', 'w') as output_file:
+            with open(f'Results//Preissmann//{key}.csv', 'w') as output_file:
                 output_file.write(value_str)
                 
     
