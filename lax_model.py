@@ -120,7 +120,7 @@ class LaxModel:
         self.results_Q.append(self.Q_previous)
 
 
-    def solve(self, duration: int, approximation: str = 'zeroslope'):
+    def solve(self, duration: int, approximation: str = 'same'):
         """
         Solves the system of equations using the Lax explicit scheme and stores
         the obtained values of the flow variables.
@@ -131,7 +131,7 @@ class LaxModel:
             The simulation duration in seconds.
         approximation : str
             The type of approximation to use for the downstream boundary condition.
-            Can be 'zeroslope' or 'mirror'.
+            Can be 'same' or 'mirror'.
 
         Returns
         -------
@@ -145,16 +145,21 @@ class LaxModel:
             
             self.Q_current[0] = self.river.inflow_Q(time)
                        
-            self.A_current[0] = self.A_previous[0]
+            # Find upstream A from the rating curve via trial and error
+            
+            self.A_current[0] = self.A_previous[0] # Initial guess
             
             trial_y = self.A_previous[0] / self.W
             trial_Q = self.river.rating_curve_us(trial_y)
             
             while abs(trial_Q - self.Q_current[0]) > 1e-4:
-                trial_y -= 0.1 * (trial_Q - self.Q_current[0]) / self.A_current[0]
-                self.A_current[0] = trial_y * self.W
-                trial_Q = self.river.rating_curve_us(trial_y)
+                error = (trial_Q - self.Q_current[0]) / self.Q_current[0]
                 
+                trial_y -= 0.1 * error * trial_y
+                self.A_current[0] = trial_y * self.W
+                
+                trial_Q = self.river.rating_curve_us(trial_y)
+                                
             V = self.Q_current[0] / self.A_current[0]
             y = self.A_current[0] / self.W
             if self.checkCourantCondition(V, y) == False:
@@ -179,7 +184,7 @@ class LaxModel:
 
             self.A_current[-1] = self.A_previous[-1]
 
-            if approximation == 'zeroslope':
+            if approximation == 'same':
                 self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                self.A_previous[-1],
                                                                self.Q_previous[-2],

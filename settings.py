@@ -8,7 +8,7 @@ LENGTH = 15000
 ############                Simulation Parameters               ############
 
 SCHEME = 'preissmann' # 'preissmann' or 'lax'
-LAX_APPROX='mirror' # 'zeroslope' or 'mirror'
+LAX_APPROX='mirror' # 'same' or 'mirror'
 PREISSMANN_BETA = 0.6
 TIME_STEP = 3600
 SPATIAL_STEP = 1000
