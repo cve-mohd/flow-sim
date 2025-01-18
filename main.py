@@ -1,6 +1,4 @@
 from river import River
-from preissmann_model import PreissmannModel
-from lax_model import LaxModel
 from settings import *
 
 
@@ -8,6 +6,8 @@ from settings import *
 blue_nile = River(BED_SLOPE, MANNING_COEFF, WIDTH, LENGTH)
 
 if SCHEME == 'preissmann':
+    from preissmann_model import PreissmannModel
+    
     # Declare a 'PreissmannModel' object, specifying the scheme parameters.
     p_model = PreissmannModel(blue_nile, PREISSMANN_BETA, TIME_STEP, SPATIAL_STEP)
 
@@ -18,6 +18,8 @@ if SCHEME == 'preissmann':
     p_model.save_results(RESULTS_SIZE)
 
 elif SCHEME == 'lax':
+    from lax_model import LaxModel
+    
     # Declare a 'LaxModel' object, specifying the scheme parameters.
     l_model = LaxModel(blue_nile, TIME_STEP, SPATIAL_STEP)
 

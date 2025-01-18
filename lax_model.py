@@ -83,12 +83,14 @@ class LaxModel:
         # Declare an empty list to store the simulation results.
         self.results_A = []
         self.results_Q = []
+        self.results_V = []
+        self.results_y = []
 
         # Read the initial conditions of the river.
         self.initialize_t0()
         
         # Compute the slope due to backwater effects.
-        self.backwater_effects_calc()
+        self.S_h = self.backwater_effects_calc()
 
 
     def initialize_t0(self):
@@ -143,133 +145,88 @@ class LaxModel:
         for time in range(self.delta_t, duration + self.delta_t, self.delta_t):
             print('\n---------- Time = ' + str(time) + 's ----------')
             
-            self.Q_current[0] = self.river.inflow_Q(time)
-                       
-            # Find upstream A from the rating curve via trial and error
-            
-            self.A_current[0] = self.A_previous[0] # Initial guess
-            
-            trial_y = self.A_previous[0] / self.W
-            trial_Q = self.river.rating_curve_us(trial_y)
-            
-            while abs(trial_Q - self.Q_current[0]) > 1e-4:
-                error = (trial_Q - self.Q_current[0]) / self.Q_current[0]
-                
-                trial_y -= 0.1 * error * trial_y
-                self.A_current[0] = trial_y * self.W
-                
-                trial_Q = self.river.rating_curve_us(trial_y)
-                                
-            V = self.Q_current[0] / self.A_current[0]
-            y = self.A_current[0] / self.W
-            if self.checkCourantCondition(V, y) == False:
-                raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
+            self.computeUpstreamBoundary(time)
                 
             for i in range(1, self.n_nodes - 1):
-                self.A_current[i] = self.area_advanced_t(self.A_previous[i - 1],
+                self.computeNode(i)
+                          
+            self.computeDownstreamBoundary(approximation)
+                        
+            self.checkCourantAll()
+                
+            self.saveAndUpdate()
+            
+
+    def computeUpstreamBoundary(self, time):
+        self.Q_current[0] = self.river.inflow_Q(time)
+        self.A_current[0] = self.upstream_A_given_Q(self.Q_current[0])
+        
+        
+    def upstream_A_given_Q(self, Q, tolerance = 1e-4):
+        """Computes the upstream flow area for a given discharge from the rating curve
+        using trial and error.
+
+        Args:
+            Q (float): The upstream discharge
+
+        Returns:
+            float: The computed flow area
+        """        
+        
+        A = self.A_previous[0] # Initial guess
+            
+        trial_y = A / self.W
+        trial_Q = self.river.rating_curve_us(trial_y)
+            
+        while abs(trial_Q - Q) > tolerance:
+            error = (trial_Q - Q) / Q
+                
+            trial_y -= 0.1 * error * trial_y
+            A = trial_y * self.W
+                
+            trial_Q = self.river.rating_curve_us(trial_y)
+            
+        return A
+        
+
+    def computeNode(self, i):
+        self.A_current[i] = self.area_advanced_t(self.A_previous[i - 1],
                                                self.A_previous[i + 1],
                                                self.Q_previous[i - 1],
                                                self.Q_previous[i + 1])
 
-                self.Q_current[i] = self.discharge_advanced_t(self.A_previous[i - 1],
+        self.Q_current[i] = self.discharge_advanced_t(self.A_previous[i - 1],
                                                self.A_previous[i + 1],
                                                self.Q_previous[i - 1],
                                                self.Q_previous[i + 1])
-                
-                V = self.Q_current[i] / self.A_current[i]
-                y = self.A_current[i] / self.W
-                if self.checkCourantCondition(V, y) == False:
-                    raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
-                
 
-            self.A_current[-1] = self.A_previous[-1]
+    
+    def computeDownstreamBoundary(self, approximation):
+        self.A_current[-1] = self.A_previous[-1]
 
-            if approximation == 'same':
-                self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
+        if approximation == 'same':
+            self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                self.A_previous[-1],
                                                                self.Q_previous[-2],
                                                                self.Q_previous[-1])
                 
-            elif approximation == 'mirror':
-                self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
+        elif approximation == 'mirror':
+            self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                self.A_previous[-2],
                                                                self.Q_previous[-2],
                                                                self.Q_previous[-2])
                 
-            else:
-                raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
-            
-            V = self.Q_current[0] / self.A_current[0]
-            y = self.A_current[0] / self.W
-            if self.checkCourantCondition(V, y) == False:
-                raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
-
-            self.A_previous = [a for a in self.A_current]
-            self.Q_previous = [q for q in self.Q_current]
-
-            self.results_A.append(self.A_previous)
-            self.results_Q.append(self.Q_previous)
-            
-        self.results_V = np.array(self.results_Q) / np.array(self.results_A)
-        self.results_y = np.array(self.results_A) / self.W
+        else:
+            raise ValueError("Invalid approximation method. Choose either 'mirror' or 'same.'")
         
-        self.results_V = self.results_V.tolist()
-        self.results_y = self.results_y.tolist()
 
-    
-    def area_advanced_t(self, A_i_minus_1: float, A_i_plus_1: float, Q_i_minus_1: float, Q_i_plus_1: float) -> float:
-        """
-        Computes the cross-sectional flow area at the advanced time step
-        using the Lax explicit scheme.
-
-        Parameters
-        ----------
-        A_i_minus_1 : float
-            The cross-sectional flow area of the (i-1) node.
-        A_i_plus_1 : float
-            The cross-sectional flow area of the (i+1) node.
-        Q_i_minus_1 : float
-            The discharge of the (i-1) node.
-        Q_i_plus_1 : float
-            The discharge of the (i+1) node.
-
-        Returns
-        -------
-        float
-            The computed cross-sectional flow area.
-
-        """
-        
+    def area_advanced_t(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
         A = 0.5 * (A_i_plus_1 + A_i_minus_1) - (0.5 / self.celerity) * (Q_i_plus_1 - Q_i_minus_1)
 
-        #print(A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1, A)
-        
         return A
 
 
     def discharge_advanced_t(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
-        """
-        Computes the discharge at the advanced time step
-        using the Lax explicit scheme.
-
-        Parameters
-        ----------
-        A_i_minus_1 : float
-            The cross-sectional flow area of the (i-1) node.
-        A_i_plus_1 : float
-            The cross-sectional flow area of the (i+1) node.
-        Q_i_minus_1 : float
-            The discharge of the (i-1) node.
-        Q_i_plus_1 : float
-            The discharge of the (i+1) node.
-
-        Returns
-        -------
-        float
-            The computed discharge.
-
-        """
-
         Q = (
              - g / (4 * self.W * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
              + 0.5 * g * (self.S_0 - self.S_h) * self.delta_t * (A_i_plus_1 + A_i_minus_1)
@@ -281,7 +238,47 @@ class LaxModel:
         
         return Q
    
+   
+    def backwater_effects_calc(self) -> float:
+        """
+        Computes the slope due to backwater effects.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        S_f = self.river.friction_slope(self.A_previous[0], self.Q_previous[0])
+        return self.S_0 - S_f
+             
+                
+    def checkCourantAll(self):
+        for A, Q in zip(self.A_current, self.Q_current):
+            V = Q / A
+            y = A / self.W
+            if self.checkCourantCondition(V, y) == False:
+                raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
+
     
+    def checkCourantCondition(self, velocity, depth):
+        return (velocity + (g * depth) ** 0.5) / self.celerity <= 1
+    
+    
+    def saveAndUpdate(self):
+        self.results_A.append(self.A_current)
+        self.results_Q.append(self.Q_current)
+        
+        V = np.array(self.Q_current) / np.array(self.A_current)
+        y = np.array(self.A_current) / self.W
+        
+        self.results_V.append(V.tolist())
+        self.results_y.append(y.tolist())        
+        
+        self.A_previous = [a for a in self.A_current]
+        self.Q_previous = [q for q in self.Q_current]
+        
+        
     def save_results(self, size: tuple) -> None:
         """
         Saves the results of the simulation in four .csv files, containing
@@ -336,49 +333,4 @@ class LaxModel:
                 value_str = value_str.replace(c, '')
             with open(f'Results//Lax//{key}.csv', 'w') as output_file:
                 output_file.write(value_str)
-
-
-    def backwater_effects_calc(self) -> None:
-            """
-            Computes the slope due to backwater effects.
-
-            Returns
-            -------
-            None.
-
-            """
-            S_f = self.river.friction_slope(self.A_previous[0], self.Q_previous[0])
-            self.S_h = self.S_0 - S_f
-            
-            
-    def checkCourantCondition(self, velocity, depth):
-        """
-        Checks if the Courant condition is satisfied for the current simulation.
-
-        Returns
-        -------
-        bool
-            True if the Courant condition is satisfied, False otherwise.
-
-        """
-        
-        return (velocity + (g * depth) ** 0.5) / self.celerity <= 1
     
-    
-"""
-def quadratic_extrapolation(indices, values, target_index):
-    # Ax = B
-    A = [np.array(indices) ** i for i in range(len(indices) - 1, 0, -1)]
-
-    A.append(np.ones(len(indices)))
-    A = np.vstack(A).T
-    B = np.array(values)
-
-    coeffs = np.linalg.solve(A, B)
-
-    target_value = 0
-    for i in range(len(indices)):
-        target_value += coeffs[i] * target_index ** (len(indices) - i - 1)
-
-    return target_value
-"""
