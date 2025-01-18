@@ -2,6 +2,7 @@ import numpy as np
 from river import River
 from scipy.constants import g
 from utility import Utility
+from copy import copy
 
 
 class LaxModel:
@@ -85,6 +86,8 @@ class LaxModel:
         self.results_Q = []
         self.results_V = []
         self.results_y = []
+        self.step_counter_t = 0
+        self.step_counter_x = 0
 
         # Read the initial conditions of the river.
         self.initialize_t0()
@@ -114,12 +117,11 @@ class LaxModel:
             self.A_previous.append(A)
             self.Q_previous.append(Q)
 
-            self.A_current.append(0)
-            self.Q_current.append(0)
+            self.A_current.append(A)
+            self.Q_current.append(Q)
 
         # Store the computed values of A and Q in the results list.
-        self.results_A.append(self.A_previous)
-        self.results_Q.append(self.Q_previous)
+        self.appendResult()
 
 
     def solve(self, duration: int, approximation: str = 'same'):
@@ -154,7 +156,8 @@ class LaxModel:
                         
             self.checkCourantAll()
                 
-            self.saveAndUpdate()
+            self.appendResult()
+            self.update()
             
 
     def computeUpstreamBoundary(self, time):
@@ -265,18 +268,20 @@ class LaxModel:
         return (velocity + (g * depth) ** 0.5) / self.celerity <= 1
     
     
-    def saveAndUpdate(self):
-        self.results_A.append(self.A_current)
-        self.results_Q.append(self.Q_current)
+    def appendResult(self):            
+        self.results_A.append(copy(self.A_current))
+        self.results_Q.append(copy(self.Q_current))
         
         V = np.array(self.Q_current) / np.array(self.A_current)
         y = np.array(self.A_current) / self.W
         
         self.results_V.append(V.tolist())
-        self.results_y.append(y.tolist())        
-        
-        self.A_previous = [a for a in self.A_current]
-        self.Q_previous = [q for q in self.Q_current]
+        self.results_y.append(y.tolist())     
+    
+    
+    def update(self): 
+        self.A_previous = copy(self.A_current)
+        self.Q_previous = copy(self.Q_current)
         
         
     def save_results(self, size: tuple) -> None:
@@ -310,7 +315,7 @@ class LaxModel:
 
         A = [a[::x_step]
                 for a in self.results_A[::t_step]]
-
+        
         Q = [q[::x_step]
                 for q in self.results_Q[::t_step]]
 

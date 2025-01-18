@@ -1,10 +1,10 @@
 import numpy as np
 
 
-discharge = [0   , 1562.5, 3850, 6000, 10000, 14000, 21000]
-elevation = [500 , 502.5 , 505 , 507 , 510  , 512  , 515]
+discharge = [14034, 14438, 14830, 15220, 15598, 15971, 16342, 16703, 17062, 17409, 17763, 18110, 18450, 18785]
+elevation = [480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493]
 
-elevation = [i - 500 for i in elevation]
+elevation = [i - 466.7 for i in elevation]
 
 coefficients = np.polynomial.polynomial.Polynomial.fit(x=elevation, y=discharge, deg=2, domain=[])
 

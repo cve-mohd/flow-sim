@@ -26,8 +26,8 @@ class Upstream:
         """
         stage = US_INIT_STAGE + (water_depth - US_INIT_DEPTH)
         
-        discharge = (US_RATING_CURVE_COEFF[0] + US_RATING_CURVE_COEFF[1] * stage
-            + US_RATING_CURVE_COEFF[2] * stage ** 2)
+        discharge = (US_RATING_CURVE["coefficients"][0] + US_RATING_CURVE["coefficients"][1] * (stage - US_RATING_CURVE["base"])
+            + US_RATING_CURVE["coefficients"][2] * (stage - US_RATING_CURVE["base"]) ** 2)
         
         return discharge
     
@@ -82,8 +82,8 @@ class Downstream:
         """
         stage = DS_INIT_STAGE + (water_depth - DS_INIT_DEPTH)
         
-        discharge = (DS_RATING_CURVE_COEFF[0] + DS_RATING_CURVE_COEFF[1] * stage
-            + DS_RATING_CURVE_COEFF[2] * stage ** 2)
+        discharge = (DS_RATING_CURVE["coefficients"][0] + DS_RATING_CURVE["coefficients"][1] * (stage - DS_RATING_CURVE["base"])
+            + DS_RATING_CURVE["coefficients"][2] * (stage - DS_RATING_CURVE["base"]) ** 2)
         
         return discharge
         

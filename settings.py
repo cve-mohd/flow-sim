@@ -25,7 +25,7 @@ US_INIT_STAGE = 502.5
 PEAK_DISCHARGE = 10000
 PEAK_HOUR = 6
 
-US_RATING_CURVE_COEFF = [17406954.8578663, -69945.45433034, 70.2639006947997]
+US_RATING_CURVE = {"base": 500, "coefficients": [327.23, 318.44, 70.26]}
 
 ############                Downstream Boundary                 ############
 
@@ -33,4 +33,4 @@ DS_INIT_DEPTH = 7.5
 DS_INIT_DISCHARGE = 1562.5
 DS_INIT_STAGE = 490
 
-DS_RATING_CURVE_COEFF = [-786548.06, 2936.794642859, -2.643543956]
+DS_RATING_CURVE = {"base": 466.7, "coefficients": [8266.62, 469.31, -2.64]}
