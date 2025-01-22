@@ -20,8 +20,6 @@ class LaxModel:
         Spatial step for the simulation in meters.
     celerity : float
         Ratio of spatial to time step, representing the wave celerity.
-    n_nodes : int
-        Number of spatial nodes along the river.
     A_previous : list of float
         Cross-sectional areas at the previous time step.
     Q_previous : list of float
@@ -38,8 +36,6 @@ class LaxModel:
         Stores the computed V values over time.
     results_y : list of list of float
         Stores the computed y values over time.
-    S_h : float
-        Slope due to backwater effects.
         
     """
     
@@ -60,18 +56,14 @@ class LaxModel:
             Spatial step for the simulation in meters.
             
         """
-
-        # Initialize the scheme discretization parameters.
+        
+        # Link the river object.
+        self.river = river
+        
+        # Initialize the scheme parameters.
         self.delta_t, self.delta_x = delta_t, delta_x
         self.celerity = self.delta_x / float(self.delta_t)
-
-        # Inizialize the river attributes.
-        self.river = river
         self.n_nodes = int(self.river.length / self.delta_x + 1)
-        self.W = self.river.width
-        self.n = self.river.manning_co
-        self.S_0 = self.river.bed_slope
-        self.S_h = None
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []
@@ -81,20 +73,15 @@ class LaxModel:
         self.A_current = []
         self.Q_current = []
 
-        # Declare an empty list to store the simulation results.
+        # Declare empty lists to store the simulation results.
         self.results_A = []
         self.results_Q = []
         self.results_V = []
         self.results_y = []
-        self.step_counter_t = 0
-        self.step_counter_x = 0
 
         # Read the initial conditions of the river.
         self.initialize_t0()
         
-        # Compute the slope due to backwater effects.
-        self.S_h = self.backwater_effects_calc()
-
 
     def initialize_t0(self):
         """
@@ -142,7 +129,7 @@ class LaxModel:
         None.
 
         """
-
+        
         # Loop through the time steps, incrementing the time by delta t every time.
         for time in range(self.delta_t, duration + self.delta_t, self.delta_t):
             print('\n---------- Time = ' + str(time) + 's ----------')
@@ -178,14 +165,14 @@ class LaxModel:
         
         A = self.A_previous[0] # Initial guess
             
-        trial_y = A / self.W
+        trial_y = A / self.river.width
         trial_Q = self.river.rating_curve_us(trial_y)
             
         while abs(trial_Q - Q) > tolerance:
             error = (trial_Q - Q) / Q
                 
             trial_y -= 0.1 * error * trial_y
-            A = trial_y * self.W
+            A = trial_y * self.river.width
                 
             trial_Q = self.river.rating_curve_us(trial_y)
             
@@ -230,19 +217,22 @@ class LaxModel:
 
 
     def discharge_advanced_t(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
+        n = self.river.manning_co
+        S_h = self.backwater_effect_calc()
+        
         Q = (
-             - g / (4 * self.W * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * (self.S_0 - self.S_h) * self.delta_t * (A_i_plus_1 + A_i_minus_1)
+             - g / (4 * self.river.width * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
+             + 0.5 * g * (self.river.bed_slope - S_h) * self.delta_t * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
              - 1 / (2 * self.celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
-             - 0.5 * g * self.W ** (4./3) * self.n ** 2 * self.delta_t * (
+             - 0.5 * g * self.river.width ** (4./3) * n ** 2 * self.delta_t * (
                          Q_i_plus_1 ** 2 / A_i_plus_1 ** (7./3) + Q_i_minus_1 ** 2 / A_i_minus_1 ** (7./3))
              )
         
         return Q
    
    
-    def backwater_effects_calc(self) -> float:
+    def backwater_effect_calc(self) -> float:
         """
         Computes the slope due to backwater effects.
 
@@ -253,13 +243,13 @@ class LaxModel:
         """
         
         S_f = self.river.friction_slope(self.A_previous[0], self.Q_previous[0])
-        return self.S_0 - S_f
+        return self.river.bed_slope - S_f
              
                 
     def checkCourantAll(self):
         for A, Q in zip(self.A_current, self.Q_current):
             V = Q / A
-            y = A / self.W
+            y = A / self.river.width
             if self.checkCourantCondition(V, y) == False:
                 raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
 
@@ -273,7 +263,7 @@ class LaxModel:
         self.results_Q.append(copy(self.Q_current))
         
         V = np.array(self.Q_current) / np.array(self.A_current)
-        y = np.array(self.A_current) / self.W
+        y = np.array(self.A_current) / self.river.width
         
         self.results_V.append(V.tolist())
         self.results_y.append(y.tolist())     
