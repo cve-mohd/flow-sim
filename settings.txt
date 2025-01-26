@@ -1,0 +1,15 @@
+# River Attributes
+BED_SLOPE = 12.5 / 15000         # Example: slope as a fraction or float
+MANNING_COEFF = 0.027            # Manning coefficient (float)
+WIDTH = 250                      # River width in meters (int or float)
+LENGTH = 15000                   # River length in meters (int or float)
+
+# Simulation Parameters
+SCHEME = 'preissmann'             # 'preissmann' or 'lax' (string)
+LAX_APPROX = 'mirror'             # 'same' or 'mirror' (string)
+PREISSMANN_BETA = 0.6             # Beta parameter for Preissmann scheme (float, between 0 and 1)
+TIME_STEP = 3600                  # Time step in seconds (int or float)
+SPATIAL_STEP = 1000               # Spatial step in meters (int or float)
+DURATION = 20                     # Duration in hours (int or float, will be converted to seconds)
+TOLERANCE = 1e-4                  # Error tolerance for simulation (float)
+RESULTS_SIZE = (20, -1)           # Results size as a tuple (int, int)
