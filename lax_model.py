@@ -81,6 +81,7 @@ class LaxModel:
 
         # Read the initial conditions of the river.
         self.initialize_t0()
+        self.S_h = self.backwater_effect_calc()
         
 
     def initialize_t0(self):
@@ -218,11 +219,10 @@ class LaxModel:
 
     def discharge_advanced_t(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
         n = self.river.manning_co
-        S_h = self.backwater_effect_calc()
         
         Q = (
              - g / (4 * self.river.width * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * (self.river.bed_slope - S_h) * self.delta_t * (A_i_plus_1 + A_i_minus_1)
+             + 0.5 * g * (self.river.bed_slope - self.S_h) * self.delta_t * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
              - 1 / (2 * self.celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
              - 0.5 * g * self.river.width ** (4./3) * n ** 2 * self.delta_t * (
