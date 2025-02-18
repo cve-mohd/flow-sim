@@ -8,10 +8,10 @@ APPROX_R = True
 
 ############                Simulation Parameters               ############
 
-SCHEME = 'lax' # 'preissmann' or 'lax'
+SCHEME = 'preissmann' # 'preissmann' or 'lax'
 LAX_APPROX = 'same' # 'same' or 'mirror'
 PREISSMANN_BETA = 0.7
-TIME_STEP = 50
+TIME_STEP = 3600
 SPATIAL_STEP = 1000
 DURATION = 3600 * 24
 TOLERANCE = 1e-4

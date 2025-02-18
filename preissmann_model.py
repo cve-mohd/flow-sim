@@ -13,7 +13,7 @@ class PreissmannModel:
     ----------
     river : River
         An instance of the `River` class, representing the river being modeled.
-    beta : float
+    theta : float
         The weighting factor of the Preissmann scheme (between 0.5 and 1).
     delta_t : float
         Time step for the simulation in seconds.
@@ -50,7 +50,7 @@ class PreissmannModel:
 
     def __init__(self,
                  river: River,
-                 beta: int | float,
+                 theta: int | float,
                  delta_t: int | float,
                  delta_x: int | float):
         """
@@ -60,7 +60,7 @@ class PreissmannModel:
         ----------
         river : River
             The River object on which the simulation is performed.
-        beta : float
+        theta : float
             The weighting factor of the Preissmann scheme.
         delta_t : float
             Time step for the simulation in seconds.
@@ -70,7 +70,7 @@ class PreissmannModel:
         """
 
         # Initialize the scheme discretization parameters.
-        self.beta = beta
+        self.theta = theta
         self.delta_t, self.delta_x = delta_t, delta_x
         self.celerity = self.delta_x / float(self.delta_t)
 
@@ -346,10 +346,10 @@ class PreissmannModel:
         """
         C = (
                 self.celerity * (self.A_current[i] + self.A_current[i + 1])
-                + 2 * self.beta * (self.Q_current[i + 1] - self.Q_current[i])
+                + 2 * self.theta * (self.Q_current[i + 1] - self.Q_current[i])
                 - (
                         self.celerity * (self.A_previous[i + 1] + self.A_previous[i])
-                        - 2 * (1 - self.beta) * (self.Q_previous[i + 1] - self.Q_previous[i])
+                        - 2 * (1 - self.theta) * (self.Q_previous[i + 1] - self.Q_previous[i])
                 )
         )
 
@@ -374,22 +374,22 @@ class PreissmannModel:
         Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
         
         M = (
-                (g * self.beta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
-                - self.delta_x * g * self.beta * (self.S_0 - self.S_h) * (self.A_current[i + 1] + self.A_current[i])
-                + self.beta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
+                (g * self.theta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
+                - self.delta_x * g * self.theta * (self.S_0 - self.S_h) * (self.A_current[i + 1] + self.A_current[i])
+                + self.theta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.celerity * (self.Q_current[i + 1] + self.Q_current[i])
-                + 2 * self.beta * (
+                + 2 * self.theta * (
                         self.Q_current[i + 1] ** 2 / self.A_current[i + 1] - self.Q_current[i] ** 2 / self.A_current[i]
                 )
                 - (
                         self.celerity * (self.Q_previous[i + 1] + self.Q_previous[i])
-                        - 2 * (1 - self.beta) * (
+                        - 2 * (1 - self.theta) * (
                                 self.Q_previous[i + 1] ** 2 / self.A_previous[i + 1]
                                 + (0.5 * g / self.W) * self.A_previous[i + 1] ** 2
                                 - self.Q_previous[i] ** 2 / self.A_previous[i]
                                 - (0.5 * g / self.W) * self.A_previous[i] ** 2
                         )
-                        + self.delta_x * (1 - self.beta) * g * (
+                        + self.delta_x * (1 - self.theta) * g * (
                                 self.A_previous[i + 1] * (self.S_0 - self.Sf_previous[i + 1] - self.S_h)
                                 + self.A_previous[i] * (self.S_0 - self.Sf_previous[i] - self.S_h)
                         )
@@ -485,7 +485,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 2 * self.beta
+        d = 2 * self.theta
 
         return d
 
@@ -500,7 +500,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = -2 * self.beta
+        d = -2 * self.theta
 
         return d
 
@@ -519,10 +519,10 @@ class PreissmannModel:
         dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
         
         d = (
-                2 * g * self.beta / self.W * self.A_current[i + 1]
-                - self.delta_x * g * self.beta * (self.S_0 - self.S_h)
-                - 2 * self.beta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
-                + self.beta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
+                2 * g * self.theta / self.W * self.A_current[i + 1]
+                - self.delta_x * g * self.theta * (self.S_0 - self.S_h)
+                - 2 * self.theta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
+                + self.theta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
         )
 
         return d
@@ -542,10 +542,10 @@ class PreissmannModel:
         dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
         
         d = (
-                - 2 * g * self.beta / self.W * self.A_current[i]
-                - self.delta_x * g * self.beta * (self.S_0 - self.S_h)
-                + 2 * self.beta * (self.Q_current[i] / self.A_current[i]) ** 2
-                + self.beta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
+                - 2 * g * self.theta / self.W * self.A_current[i]
+                - self.delta_x * g * self.theta * (self.S_0 - self.S_h)
+                + 2 * self.theta * (self.Q_current[i] / self.A_current[i]) ** 2
+                + self.theta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
         )
 
         return d
@@ -565,8 +565,8 @@ class PreissmannModel:
         
         d = (
                 self.celerity
-                + 4 * self.beta * self.Q_current[i + 1] / self.A_current[i + 1]
-                + self.beta * g * self.delta_x * self.A_current[i + 1] * dSf_dQ
+                + 4 * self.theta * self.Q_current[i + 1] / self.A_current[i + 1]
+                + self.theta * g * self.delta_x * self.A_current[i + 1] * dSf_dQ
         )
 
         return d
@@ -586,8 +586,8 @@ class PreissmannModel:
         
         d = (
                 self.celerity
-                - 4 * self.beta * self.Q_current[i] / self.A_current[i]
-                + self.beta * g * self.delta_x * self.A_current[i] * dSf_dQ
+                - 4 * self.theta * self.Q_current[i] / self.A_current[i]
+                + self.theta * g * self.delta_x * self.A_current[i] * dSf_dQ
         )
 
         return d
