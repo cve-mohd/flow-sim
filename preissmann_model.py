@@ -370,16 +370,16 @@ class PreissmannModel:
             The computed residual.
 
         """
+        Sf_i = self.river.friction_slope(self.A_current[i], self.Q_current[i])
+        Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        
         M = (
                 (g * self.beta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
                 - self.delta_x * g * self.beta * (self.S_0 - self.S_h) * (self.A_current[i + 1] + self.A_current[i])
+                + self.beta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.celerity * (self.Q_current[i + 1] + self.Q_current[i])
                 + 2 * self.beta * (
                         self.Q_current[i + 1] ** 2 / self.A_current[i + 1] - self.Q_current[i] ** 2 / self.A_current[i]
-                )
-                + self.delta_x * g * self.beta * self.W ** (4. / 3) * self.n ** 2 * (
-                        self.Q_current[i + 1] ** 2 / self.A_current[i + 1] ** (7. / 3)
-                        + self.Q_current[i] ** 2 / self.A_current[i] ** (7. / 3)
                 )
                 - (
                         self.celerity * (self.Q_previous[i + 1] + self.Q_previous[i])
@@ -515,12 +515,14 @@ class PreissmannModel:
             The computed derivative.
 
         """
+        Sf = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
+        
         d = (
                 2 * g * self.beta / self.W * self.A_current[i + 1]
                 - self.delta_x * g * self.beta * (self.S_0 - self.S_h)
                 - 2 * self.beta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
-                - (7. / 3 * self.delta_x * g * self.beta * self.n ** 2 * self.W ** (4. / 3)
-                   * self.Q_current[i + 1] ** 2 / self.A_current[i + 1] ** (10. / 3))
+                + self.beta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
         )
 
         return d
@@ -536,12 +538,14 @@ class PreissmannModel:
             The computed derivative.
 
         """
+        Sf = self.river.friction_slope(self.A_current[i], self.Q_current[i])
+        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
+        
         d = (
                 - 2 * g * self.beta / self.W * self.A_current[i]
                 - self.delta_x * g * self.beta * (self.S_0 - self.S_h)
                 + 2 * self.beta * (self.Q_current[i] / self.A_current[i]) ** 2
-                - (7. / 3 * self.delta_x * g * self.beta * self.n ** 2 * self.W ** (4. / 3)
-                   * self.Q_current[i] ** 2 / self.A_current[i] ** (10. / 3))
+                + self.beta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
         )
 
         return d
@@ -557,11 +561,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
+        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i + 1], self.Q_current[i + 1])
+        
         d = (
                 self.celerity
                 + 4 * self.beta * self.Q_current[i + 1] / self.A_current[i + 1]
-                + (2 * self.delta_x * g * self.beta * self.n ** 2 * self.W ** (4. / 3)
-                   * self.Q_current[i + 1] / self.A_current[i + 1] ** (7. / 3))
+                + self.beta * g * self.delta_x * self.A_current[i + 1] * dSf_dQ
         )
 
         return d
@@ -577,11 +582,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
+        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i], self.Q_current[i])
+        
         d = (
                 self.celerity
                 - 4 * self.beta * self.Q_current[i] / self.A_current[i]
-                + (2 * self.delta_x * g * self.beta * self.n ** 2 * self.W ** (4. / 3)
-                   * self.Q_current[i] / self.A_current[i] ** (7. / 3))
+                + self.beta * g * self.delta_x * self.A_current[i] * dSf_dQ
         )
 
         return d

@@ -1,4 +1,5 @@
 import boundary
+from settings import APPROX_R
 
 
 class River:
@@ -43,7 +44,7 @@ class River:
         self.length = length
         self.initial_conditions = []
 
-    def friction_slope(self, A: float, Q: float) -> float:
+    def friction_slope(self, A: float, Q: float, approx_R = APPROX_R) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -60,9 +61,34 @@ class River:
             The computed friction slope.
             
         """
-        Sf = self.manning_co ** 2 * self.width ** (4. / 3) * Q ** 2 / A ** (10. / 3)
-
+        if approx_R:
+            P = self.width
+        else:
+            P = self.width + 2 * A / self.width
+            
+        Sf = (self.manning_co * P ** (2. / 3) * Q / A ** (5. / 3)) ** 2
+        
         return Sf
+    
+    def friction_slope_deriv_A(self, A: float, Q: float, approx_R = APPROX_R) -> float:
+        # wip
+        if approx_R:
+            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
+        else:
+            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * (self.width + 2 * A / self.width) ** (4./3) * A ** (-13./3)
+            + Q ** 2 * self.manning_co ** 2 * 4. / 3 * (self.width + 2 * A / self.width) ** (1./3) * A ** (-10./3) * 2 / self.width
+
+        return d_Sf
+    
+    def friction_slope_deriv_Q(self, A: float, Q: float, approx_R = APPROX_R) -> float:
+        if approx_R:
+            P = self.width
+        else:
+            P = self.width + 2 * A / self.width
+            
+        d_Sf = 2 * Q * self.manning_co ** 2 * P ** (4./3) * A ** (-10./3)
+        
+        return d_Sf
 
     @staticmethod
     def inflow_Q(time: float) -> float:
