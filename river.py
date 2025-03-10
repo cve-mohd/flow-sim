@@ -150,7 +150,34 @@ class River:
 
         """
         return boundary.Downstream.rating_curve(water_depth)
-
+    
+    
+    def manning_Q(self, A, slope = None):
+        S = self.bed_slope
+        if slope is not None:
+            S = slope
+            
+        P = self.width + 2. * A / self.width
+        Q = A ** (5./3) * S ** 0.5 / (self.manning_co * P ** (2./3))
+        return Q
+    
+    
+    def manning_A(self, Q, A_guess, tolerance, slope = None):
+        S = self.bed_slope
+        if slope is not None:
+            S = slope
+            
+        trial_A = A_guess
+        trial_Q = self.manning_Q(trial_A, S)
+            
+        while abs(trial_Q - Q) >= tolerance:
+            error = (trial_Q - Q) / Q
+            trial_A -= 0.1 * error * trial_A
+            trial_Q = self.manning_Q(trial_A, S)
+            
+        return trial_A
+        
+        
     def initialize_conditions(self, n_nodes: int) -> None:
         """
         Computes the initial conditions.

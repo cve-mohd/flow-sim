@@ -24,7 +24,7 @@ elif SCHEME == 'lax':
     l_model = LaxModel(blue_nile, TIME_STEP, SPATIAL_STEP)
 
     # Solve the scheme using a specified tolerance.
-    l_model.solve(DURATION, approximation=LAX_APPROX)
+    l_model.solve(DURATION)
 
     # Save the results.
     l_model.save_results(RESULTS_SIZE)

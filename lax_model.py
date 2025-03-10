@@ -62,7 +62,7 @@ class LaxModel:
         
         # Initialize the scheme parameters.
         self.delta_t, self.delta_x = delta_t, delta_x
-        self.celerity = self.delta_x / float(self.delta_t)
+        self.n_celerity = self.delta_x / float(self.delta_t)
         self.n_nodes = int(self.river.length / self.delta_x + 1)
 
         # Declare empty lists for the flow variables at the previous time step, j.
@@ -76,8 +76,8 @@ class LaxModel:
         # Declare empty lists to store the simulation results.
         self.results_A = []
         self.results_Q = []
-        self.results_V = []
-        self.results_y = []
+        self.results_v = []
+        self.results_h = []
 
         # Read the initial conditions of the river.
         self.initialize_t0()
@@ -111,7 +111,7 @@ class LaxModel:
         self.appendResult()
 
 
-    def solve(self, duration: int, approximation: str = 'same'):
+    def solve(self, duration: int):
         """
         Solves the system of equations using the Lax explicit scheme and stores
         the obtained values of the flow variables.
@@ -120,9 +120,6 @@ class LaxModel:
         ----------
         duration : int
             The simulation duration in seconds.
-        approximation : str
-            The type of approximation to use for the downstream boundary condition.
-            Can be 'same' or 'mirror'.
 
         Returns
         -------
@@ -139,7 +136,7 @@ class LaxModel:
             for i in range(1, self.n_nodes - 1):
                 self.computeNode(i)
                           
-            self.computeDownstreamBoundary(approximation)
+            self.computeDownstreamBoundary()
                         
             self.checkCourantAll()
                 
@@ -149,7 +146,26 @@ class LaxModel:
 
     def computeUpstreamBoundary(self, time):
         self.Q_current[0] = self.river.inflow_Q(time)
-        self.A_current[0] = self.upstream_A_given_Q(self.Q_current[0])
+        
+        from settings import LAX_US_2ND_COND
+        
+        if LAX_US_2ND_COND == 'rating_curve':
+            self.A_current[0] = self.upstream_A_given_Q(self.Q_current[0])
+        
+        elif LAX_US_2ND_COND == 'same':
+            self.A_current[0] = self.area_advanced_t(self.A_previous[0],
+                                                               self.A_previous[1],
+                                                               self.Q_previous[0],
+                                                               self.Q_previous[1])
+                
+        elif LAX_US_2ND_COND == 'mirror':
+            self.A_current[0] = self.area_advanced_t(self.A_previous[1],
+                                                               self.A_previous[1],
+                                                               self.Q_previous[1],
+                                                               self.Q_previous[1])
+                
+        else:
+            raise ValueError("Invalid approximation method. Choose either 'mirror' or 'same.'")
         
         
     def upstream_A_given_Q(self, Q, tolerance = 1e-4):
@@ -191,16 +207,16 @@ class LaxModel:
                                                self.Q_previous[i + 1])
 
     
-    def computeDownstreamBoundary(self, approximation):
-        self.A_current[-1] = self.A_previous[-1]
-
-        if approximation == 'same':
+    def computeDownstreamBoundary(self):
+        from settings import DS_CONDITION, LAX_DS_2ND_COND
+        
+        if LAX_DS_2ND_COND == 'same':
             self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                self.A_previous[-1],
                                                                self.Q_previous[-2],
                                                                self.Q_previous[-1])
                 
-        elif approximation == 'mirror':
+        elif LAX_DS_2ND_COND == 'mirror':
             self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                self.A_previous[-2],
                                                                self.Q_previous[-2],
@@ -209,9 +225,18 @@ class LaxModel:
         else:
             raise ValueError("Invalid approximation method. Choose either 'mirror' or 'same.'")
         
+        if DS_CONDITION == 'fixed_depth':
+            self.A_current[-1] = self.A_previous[-1]
+            
+        elif DS_CONDITION == 'normal_depth':
+            self.A_current[-1] = self.river.manning_A(self.Q_current[-1], self.A_previous[-1], 1e-6)
+        
+        else:
+            raise ValueError("Invalid Downstream boundary condition.")
+        
 
     def area_advanced_t(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
-        A = 0.5 * (A_i_plus_1 + A_i_minus_1) - (0.5 / self.celerity) * (Q_i_plus_1 - Q_i_minus_1)
+        A = 0.5 * (A_i_plus_1 + A_i_minus_1) - (0.5 / self.n_celerity) * (Q_i_plus_1 - Q_i_minus_1)
 
         return A
 
@@ -221,10 +246,10 @@ class LaxModel:
         Sf_i_minus_1 = self.river.friction_slope(A_i_minus_1, Q_i_minus_1)
         
         Q = (
-             - g / (4 * self.river.width * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
+             - g / (4 * self.river.width * self.n_celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
              + 0.5 * g * self.delta_t * self.river.bed_slope * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
-             - 1 / (2 * self.celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
+             - 1 / (2 * self.n_celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
              - 0.5 * g * self.delta_t * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
              )
         
@@ -236,11 +261,14 @@ class LaxModel:
             V = Q / A
             y = A / self.river.width
             if self.checkCourantCondition(V, y) == False:
-                raise ValueError('Courant condition is not satisfied. Velocity: ' + str(V) + ', Depth: ' + str(y))
+                analytical_celerity = max(V + (g * y) ** 0.5, V - (g * y) ** 0.5)
+                raise ValueError('Courant condition is not satisfied. Analytical celerity = '
+                                 + str(analytical_celerity) + ', Numerical celerity: ' + str(self.n_celerity))
 
     
     def checkCourantCondition(self, velocity, depth):
-        return (velocity + (g * depth) ** 0.5) / self.celerity <= 1
+        analytical_celerity = max(velocity + (g * depth) ** 0.5, velocity - (g * depth) ** 0.5)
+        return self.n_celerity >= analytical_celerity
     
     
     def appendResult(self):            
@@ -250,8 +278,8 @@ class LaxModel:
         V = np.array(self.Q_current) / np.array(self.A_current)
         y = np.array(self.A_current) / self.river.width
         
-        self.results_V.append(V.tolist())
-        self.results_y.append(y.tolist())     
+        self.results_v.append(V.tolist())
+        self.results_h.append(y.tolist())     
     
     
     def update(self): 
@@ -294,17 +322,18 @@ class LaxModel:
         Q = [q[::x_step]
                 for q in self.results_Q[::t_step]]
 
-        V = [v[::x_step]
-                for v in self.results_V[::t_step]]
+        v = [v[::x_step]
+                for v in self.results_v[::t_step]]
         
-        y = [y[::x_step]
-                for y in self.results_y[::t_step]]
-
+        h = [h[::x_step]
+                for h in self.results_h[::t_step]]
+        
+        
         data = {
             'Area': A,
             'Discharge': Q,
-            'Depth': y,
-            'Velocity': V
+            'Depth': h,
+            'Velocity': v
         }
 
         for key, value in data.items():

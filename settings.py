@@ -9,14 +9,15 @@ APPROX_R = False
 
 ############                Simulation Parameters               ############
 
-SCHEME = 'preissmann' # 'preissmann' or 'lax'
-LAX_APPROX = 'same' # 'same' or 'mirror'
+SCHEME = 'lax' # 'preissmann' or 'lax'
+LAX_US_2ND_COND = 'same' # 'same', 'mirror', or 'rating_curve'
+LAX_DS_2ND_COND = 'same' # 'same' or 'mirror'
 PREISSMANN_BETA = 0.5
-TIME_STEP = 3600
+TIME_STEP = 30
 SPATIAL_STEP = 1000
 DURATION = 3600 * 20
 TOLERANCE = 1e-4
-RESULTS_SIZE = (-1, -1) # Default is -1. Means print all data points.
+RESULTS_SIZE = (21, 30) # Default is -1, meaning print all data points. (t, x)
 
 ############                Upstream Boundary                   ############
 
