@@ -1,5 +1,5 @@
 import boundary
-from settings import APPROX_R
+from settings import APPROX_R, BED_SLOPE_CORRECTION
 
 
 class River:
@@ -43,6 +43,12 @@ class River:
         self.width = float(width)
         self.length = length
         self.initial_conditions = []
+        
+        if BED_SLOPE_CORRECTION:
+            A = boundary.Upstream.initial_depth * self.width
+            Q = boundary.Upstream.initial_discharge
+            self.bed_slope = self.friction_slope(A, Q)
+        
 
     def friction_slope(self, A: float, Q: float, approx_R = APPROX_R) -> float:
         """
@@ -161,6 +167,7 @@ class River:
         None.
 
         """
+                
         for i in range(n_nodes):
             y = (boundary.Upstream.initial_depth
                  + (boundary.Downstream.initial_depth - boundary.Upstream.initial_depth) * i / float(n_nodes - 1))

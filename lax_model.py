@@ -81,7 +81,6 @@ class LaxModel:
 
         # Read the initial conditions of the river.
         self.initialize_t0()
-        self.S_h = self.backwater_effect_calc()
         
 
     def initialize_t0(self):
@@ -223,7 +222,7 @@ class LaxModel:
         
         Q = (
              - g / (4 * self.river.width * self.celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * self.delta_t * (self.river.bed_slope - self.S_h) * (A_i_plus_1 + A_i_minus_1)
+             + 0.5 * g * self.delta_t * self.river.bed_slope * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
              - 1 / (2 * self.celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
              - 0.5 * g * self.delta_t * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
@@ -231,20 +230,6 @@ class LaxModel:
         
         return Q
    
-   
-    def backwater_effect_calc(self) -> float:
-        """
-        Computes the slope due to backwater effects.
-
-        Returns
-        -------
-        None.
-
-        """
-        
-        S_f = self.river.friction_slope(self.A_previous[0], self.Q_previous[0])
-        return self.river.bed_slope - S_f
-             
                 
     def checkCourantAll(self):
         for A, Q in zip(self.A_current, self.Q_current):

@@ -43,9 +43,7 @@ class PreissmannModel:
         Stores the computed V values over time.
     results_y : list of list of float
         Stores the computed y values over time.
-    S_h : float
-        Slope due to backwater effects.
-        
+            
     """
 
     def __init__(self,
@@ -78,7 +76,6 @@ class PreissmannModel:
         self.river = river
         self.W = self.river.width
         self.n = self.river.manning_co
-        self.S_h = 0
         self.S_0 = self.river.bed_slope
         self.n_nodes = self.river.length // self.delta_x + 1
 
@@ -102,9 +99,6 @@ class PreissmannModel:
 
         # Read the initial conditions of the river.
         self.initialize_t0()
-
-        # Compute the slope due to backwater effects.
-        self.backwater_effects_calc()
 
 
     def initialize_t0(self) -> None:
@@ -375,7 +369,7 @@ class PreissmannModel:
         
         M = (
                 (g * self.theta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
-                - self.delta_x * g * self.theta * (self.S_0 - self.S_h) * (self.A_current[i + 1] + self.A_current[i])
+                - self.delta_x * g * self.theta * self.S_0 * (self.A_current[i + 1] + self.A_current[i])
                 + self.theta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.celerity * (self.Q_current[i + 1] + self.Q_current[i])
                 + 2 * self.theta * (
@@ -390,8 +384,8 @@ class PreissmannModel:
                                 - (0.5 * g / self.W) * self.A_previous[i] ** 2
                         )
                         + self.delta_x * (1 - self.theta) * g * (
-                                self.A_previous[i + 1] * (self.S_0 - self.Sf_previous[i + 1] - self.S_h)
-                                + self.A_previous[i] * (self.S_0 - self.Sf_previous[i] - self.S_h)
+                                self.A_previous[i + 1] * (self.S_0 - self.Sf_previous[i + 1])
+                                + self.A_previous[i] * (self.S_0 - self.Sf_previous[i])
                         )
                 )
         )
@@ -521,7 +515,7 @@ class PreissmannModel:
         
         d = (
                 2 * g * self.theta / self.W * self.A_current[i + 1]
-                - self.delta_x * g * self.theta * (self.S_0 - self.S_h)
+                - self.delta_x * g * self.theta * self.S_0
                 - 2 * self.theta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
         )
@@ -544,7 +538,7 @@ class PreissmannModel:
         
         d = (
                 - 2 * g * self.theta / self.W * self.A_current[i]
-                - self.delta_x * g * self.theta * (self.S_0 - self.S_h)
+                - self.delta_x * g * self.theta * self.S_0
                 + 2 * self.theta * (self.Q_current[i] / self.A_current[i]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
         )
@@ -626,17 +620,6 @@ class PreissmannModel:
 
         return d
 
-    def backwater_effects_calc(self) -> None:
-        """
-        Computes the slope due to backwater effects.
-
-        Returns
-        -------
-        None.
-
-        """
-        S_f = self.Sf_previous[0]
-        self.S_h = self.S_0 - S_f
 
     def save_results(self, size: tuple) -> None:
         """
