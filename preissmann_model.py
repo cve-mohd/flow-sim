@@ -98,7 +98,7 @@ class PreissmannModel:
         self.results_A = []
         self.results_Q = []
         self.results_V = []
-        self.results_y = []
+        self.results_h = []
 
         # Read the initial conditions of the river.
         self.initialize_t0()
@@ -140,9 +140,9 @@ class PreissmannModel:
         self.results_A.append(self.A_previous)
         self.results_Q.append(self.Q_previous)
 
-    def compute_system_matrix(self, time) -> np.ndarray:
+    def compute_residual_vector(self, time) -> np.ndarray:
         """
-        Constructs the system of equations, F.
+        Computes the residual vector R.
 
         Parameters
         ----------
@@ -156,16 +156,16 @@ class PreissmannModel:
             
         """
 
-        # Declare a list to store the equations and add the upstream boundary
-        # condition equation as its 1st element.
+        # Declare a list to store the residuals and add the
+        # upstream boundary condition residuals as its 1st element.
         equation_list = [self.upstream_eq(time)]
 
-        # Add the continuity and momentum equations for all reaches.
+        # Add the continuity and momentum residuals for all reaches.
         for i in range(self.n_nodes - 1):
             equation_list.append(self.continuity_eq(i))
             equation_list.append(self.momentum_eq(i))
 
-        # Lastly, add the downstream boundary condition equation.
+        # Lastly, add the downstream boundary condition residuals.
         equation_list.append(self.downstream_eq())
 
         # Return the list as a NumPy array.
@@ -245,25 +245,25 @@ class PreissmannModel:
                 # Update the trial values for the unknown variables.
                 self.update_guesses()
 
-                # Compute the vector of residuals.
-                F = self.compute_system_matrix(time)
+                # Compute the residual vector.
+                R = self.compute_residual_vector(time)
 
                 # Compute the Jacobian matrix.
                 J = self.compute_jacobian()
 
                 # Solve the equation J * delta = -F to compute the delta vector.
-                delta = np.linalg.solve(J, -F)
+                delta = np.linalg.solve(J, -R)
 
                 # Improve the trial values using the computed delta.
                 self.unknowns += delta
 
-                # Compute the cumulative error as the sum of the absolute values of delta.
+                # Compute the cumulative error as the Manhattan norm of delta.
                 cumulative_error = np.sum(np.abs(delta))
 
                 print("Error = " + str(cumulative_error))
 
                 # End the loop and move to the next time step if the cumulative error is smaller
-                # than the allowed tolerance. Otherwise, repeat the solution using the updated values.
+                # than the specified tolerance. Otherwise, repeat the solution using the updated values.
                 if cumulative_error < tolerance:
                     break
 
@@ -276,10 +276,10 @@ class PreissmannModel:
             
         # Compute results_V and results_y
         self.results_V = np.array(self.results_Q) / np.array(self.results_A)
-        self.results_y = np.array(self.results_A) / self.W
+        self.results_h = np.array(self.results_A) / self.W
         
         self.results_V = self.results_V.tolist()
-        self.results_y = self.results_y.tolist()
+        self.results_h = self.results_h.tolist()
         
 
     def update_parameters(self) -> None:
@@ -408,7 +408,8 @@ class PreissmannModel:
             The computed residual.
 
         """
-        D = self.A_current[-1] / self.W - 7.5
+        from boundary import Downstream
+        D = Downstream.condition_residual(self.A_current[-1], self.Q_current[-1])
 
         return D
 
@@ -603,7 +604,8 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 1 / self.W
+        from boundary import Downstream
+        d = Downstream.derivative_wrt_A(self.A_current[-1])
 
         return d
 
@@ -619,7 +621,8 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 0
+        from boundary import Downstream
+        d = Downstream.derivative_wrt_Q()
 
         return d
 
@@ -673,13 +676,13 @@ class PreissmannModel:
         V = [v[::x_step]
                 for v in self.results_V[::t_step]]
         
-        y = [y[::x_step]
-                for y in self.results_y[::t_step]]
+        h = [h[::x_step]
+                for h in self.results_h[::t_step]]
 
         data = {
             'Area': A,
             'Discharge': Q,
-            'Depth': y,
+            'Depth': h,
             'Velocity': V
         }
 
@@ -702,4 +705,4 @@ class PreissmannModel:
             velocity, and flow depth.
 
         """
-        return self.results_A, self.results_Q, self.results_V, self.results_y
+        return self.results_A, self.results_Q, self.results_V, self.results_h

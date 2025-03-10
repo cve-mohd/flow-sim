@@ -71,7 +71,6 @@ class River:
         return Sf
     
     def friction_slope_deriv_A(self, A: float, Q: float, approx_R = APPROX_R) -> float:
-        # wip
         if approx_R:
             d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
         else:
