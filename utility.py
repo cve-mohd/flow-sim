@@ -1,4 +1,5 @@
 import os
+from numpy import sum, abs, square
 
 
 class Utility:
@@ -18,3 +19,12 @@ class Utility:
         
         if not os.path.exists(directory):
             os.makedirs(directory)
+            
+            
+        
+    def manhattan_norm(vector):
+        return sum(abs(vector))
+    
+    
+    def euclidean_norm(vector):
+        return sum(square(vector)) ** 0.5

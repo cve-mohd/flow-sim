@@ -3,16 +3,16 @@ from settings import *
 
 
 # Declare a 'River' object, specifying the geometric attributes of the river.
-blue_nile = River(BED_SLOPE, MANNING_COEFF, WIDTH, LENGTH)
+blue_nile = River(LENGTH, WIDTH, BED_SLOPE, MANNING_COEFF)
 
 if SCHEME == 'preissmann':
     from preissmann_model import PreissmannModel
     
     # Declare a 'PreissmannModel' object, specifying the scheme parameters.
-    p_model = PreissmannModel(blue_nile, PREISSMANN_BETA, TIME_STEP, SPATIAL_STEP)
+    p_model = PreissmannModel(blue_nile, PREISSMANN_THETA, TIME_STEP, SPATIAL_STEP)
 
     # Solve the scheme using a specified tolerance.
-    p_model.solve(DURATION, TOLERANCE)
+    p_model.solve(DURATION, TOLERANCE, verbose=1)
 
     # Save the results.
     p_model.save_results(RESULTS_SIZE)

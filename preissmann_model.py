@@ -75,9 +75,8 @@ class PreissmannModel:
         # Inizialize the river attributes.
         self.river = river
         self.W = self.river.width
-        self.n = self.river.manning_co
         self.S_0 = self.river.bed_slope
-        self.n_nodes = self.river.length // self.delta_x + 1
+        self.n_nodes = sum(self.river.length) // self.delta_x + 1
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []
@@ -113,19 +112,28 @@ class PreissmannModel:
         """
 
         # Compute the initial conditions at all nodes in the 'River' object.
-        self.river.initialize_conditions(self.n_nodes)
+        self.river.initialize_conditions(self.delta_x)
 
         # Read the values of A and Q from the 'River' object and assign
         # them to the lists of unknowns, as well as the lists of A and Q at
         # the previous (first) time step.
+        l = 0
+        H = []
         for A, Q in self.river.initial_conditions:
             self.unknowns += [A, Q]
 
             self.A_previous.append(A)
             self.Q_previous.append(Q)
+            
+            r = self.river.reach_given_distance(l)
+            w = self.W[r]
+            h = float(A / w)
+            H.append(h)
 
             # Calculate the friction slope at all nodes at the previous (first) time step
-            self.Sf_previous.append(self.river.friction_slope(A, Q))
+            self.Sf_previous.append(self.river.friction_slope(l, A, Q))
+            
+            l += self.delta_x
 
         # Convert the list of unknowns to a NumPy array.
         self.unknowns = np.array(self.unknowns)
@@ -133,6 +141,7 @@ class PreissmannModel:
         # Store the computed values of A and Q in the results list.
         self.results_A.append(self.A_previous)
         self.results_Q.append(self.Q_previous)
+        self.results_h.append(H)
 
     def compute_residual_vector(self, time) -> np.ndarray:
         """
@@ -207,7 +216,7 @@ class PreissmannModel:
 
         return jacobian_matrix
 
-    def solve(self, duration: int, tolerance=1e-4) -> None:
+    def solve(self, duration: int, tolerance=1e-4, verbose=3) -> None:
         """
         Solves the system of equations using the Newton-Raphson method, and stores
         the obtained values of the flow variables.
@@ -228,13 +237,15 @@ class PreissmannModel:
 
         # Loop through the time steps, incrementing the time by delta t every time.
         for time in range(self.delta_t, duration + self.delta_t, self.delta_t):
-            print('\n---------- Time = ' + str(time) + 's ----------\n')
+            if verbose >= 1:
+                print('\n---------- Time = ' + str(time) + 's ----------\n')
 
             iteration = 0
 
             while 1:
                 iteration += 1
-                print("--- Iteration #" + str(iteration) + ':')
+                if verbose >= 2:
+                    print("--- Iteration #" + str(iteration) + ':')
 
                 # Update the trial values for the unknown variables.
                 self.update_guesses()
@@ -252,30 +263,27 @@ class PreissmannModel:
                 self.unknowns += delta
 
                 # Compute the cumulative error as the Manhattan norm of delta.
-                cumulative_error = np.sum(np.abs(delta))
+                error = Utility.manhattan_norm(delta)
 
-                print("Error = " + str(cumulative_error))
+                if verbose >= 3:
+                    print("Error = " + str(error))
 
                 # End the loop and move to the next time step if the cumulative error is smaller
                 # than the specified tolerance. Otherwise, repeat the solution using the updated values.
-                if cumulative_error < tolerance:
+                if error < tolerance:
                     break
 
+            
+            from boundary import Downstream
+            Downstream.update_fixed_depth(self.Q_current[-1], self.delta_t)
+            
             # Save the final values of the solved time step.
-            self.results_A.append(self.A_current.tolist())
-            self.results_Q.append(self.Q_current.tolist())
+            self.append_results()
 
             # Update the values of the previous time step.
             self.update_parameters()
-            
-        # Compute results_V and results_y
-        self.results_V = np.array(self.results_Q) / np.array(self.results_A)
-        self.results_h = np.array(self.results_A) / self.W
-        
-        self.results_V = self.results_V.tolist()
-        self.results_h = self.results_h.tolist()
-        
 
+    
     def update_parameters(self) -> None:
         """
         Updates the values of the flow variables of the previous time step
@@ -288,7 +296,7 @@ class PreissmannModel:
         """
         self.A_previous = [i for i in self.unknowns[::2]]
         self.Q_previous = [i for i in self.unknowns[1::2]]
-        self.Sf_previous = [self.river.friction_slope(self.A_previous[i], self.Q_previous[i]) for i in
+        self.Sf_previous = [self.river.friction_slope(i * self.delta_x, self.A_previous[i], self.Q_previous[i]) for i in
                             range(self.n_nodes)]
 
     def update_guesses(self) -> None:
@@ -364,12 +372,14 @@ class PreissmannModel:
             The computed residual.
 
         """
-        Sf_i = self.river.friction_slope(self.A_current[i], self.Q_current[i])
-        Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        Sf_i = self.river.friction_slope(i * self.delta_x, self.A_current[i], self.Q_current[i])
+        Sf_iplus1 = self.river.friction_slope(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
+        
+        r = self.river.reach_given_distance(i * self.delta_x)
         
         M = (
-                (g * self.theta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
-                - self.delta_x * g * self.theta * self.S_0 * (self.A_current[i + 1] + self.A_current[i])
+                (g * self.theta / self.W[r]) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
+                - self.delta_x * g * self.theta * self.S_0[r] * (self.A_current[i + 1] + self.A_current[i])
                 + self.theta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.celerity * (self.Q_current[i + 1] + self.Q_current[i])
                 + 2 * self.theta * (
@@ -379,13 +389,13 @@ class PreissmannModel:
                         self.celerity * (self.Q_previous[i + 1] + self.Q_previous[i])
                         - 2 * (1 - self.theta) * (
                                 self.Q_previous[i + 1] ** 2 / self.A_previous[i + 1]
-                                + (0.5 * g / self.W) * self.A_previous[i + 1] ** 2
+                                + (0.5 * g / self.W[r]) * self.A_previous[i + 1] ** 2
                                 - self.Q_previous[i] ** 2 / self.A_previous[i]
-                                - (0.5 * g / self.W) * self.A_previous[i] ** 2
+                                - (0.5 * g / self.W[r]) * self.A_previous[i] ** 2
                         )
                         + self.delta_x * (1 - self.theta) * g * (
-                                self.A_previous[i + 1] * (self.S_0 - self.Sf_previous[i + 1])
-                                + self.A_previous[i] * (self.S_0 - self.Sf_previous[i])
+                                self.A_previous[i + 1] * (self.S_0[r] - self.Sf_previous[i + 1])
+                                + self.A_previous[i] * (self.S_0[r] - self.Sf_previous[i])
                         )
                 )
         )
@@ -510,12 +520,14 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
-        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
+        Sf = self.river.friction_slope(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dA = self.river.friction_slope_deriv_A(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
+        
+        r = self.river.reach_given_distance(i * self.delta_x)
         
         d = (
-                2 * g * self.theta / self.W * self.A_current[i + 1]
-                - self.delta_x * g * self.theta * self.S_0
+                2 * g * self.theta / self.W[r] * self.A_current[i + 1]
+                - self.delta_x * g * self.theta * self.S_0[r]
                 - 2 * self.theta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
         )
@@ -533,12 +545,14 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(self.A_current[i], self.Q_current[i])
-        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
+        Sf = self.river.friction_slope(i * self.delta_x, self.A_current[i], self.Q_current[i])
+        dSf_dA = self.river.friction_slope_deriv_A(i * self.delta_x, self.A_current[i], self.Q_current[i])
+        
+        r = self.river.reach_given_distance(i * self.delta_x)
         
         d = (
-                - 2 * g * self.theta / self.W * self.A_current[i]
-                - self.delta_x * g * self.theta * self.S_0
+                - 2 * g * self.theta / self.W[r] * self.A_current[i]
+                - self.delta_x * g * self.theta * self.S_0[r]
                 + 2 * self.theta * (self.Q_current[i] / self.A_current[i]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
         )
@@ -556,8 +570,8 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i + 1], self.Q_current[i + 1])
-        
+        dSf_dQ = self.river.friction_slope_deriv_Q(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
+                
         d = (
                 self.celerity
                 + 4 * self.theta * self.Q_current[i + 1] / self.A_current[i + 1]
@@ -577,7 +591,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i], self.Q_current[i])
+        dSf_dQ = self.river.friction_slope_deriv_Q(i * self.delta_x, self.A_current[i], self.Q_current[i])
         
         d = (
                 self.celerity
@@ -621,6 +635,20 @@ class PreissmannModel:
         return d
 
 
+    def append_results(self):
+        self.results_A.append(self.A_current.tolist())
+        self.results_Q.append(self.Q_current.tolist())
+            
+        H = []
+        for i in range(len(self.A_current)):
+            r = self.river.reach_given_distance(i * self.delta_x)
+            w = self.W[r]
+            h = float(self.A_current[i] / w)
+            H.append(h)
+                
+        self.results_h.append(H)
+        
+        
     def save_results(self, size: tuple) -> None:
         """
         Saves the results of the simulation in four .csv files, containing
@@ -655,6 +683,11 @@ class PreissmannModel:
 
         Q = [q[::x_step]
                 for q in self.results_Q[::t_step]]
+        
+        
+        # Compute results_V
+        self.results_V = np.array(self.results_Q) / np.array(self.results_A)
+        self.results_V = self.results_V.tolist()
 
         V = [v[::x_step]
                 for v in self.results_V[::t_step]]
@@ -688,4 +721,4 @@ class PreissmannModel:
             velocity, and flow depth.
 
         """
-        return self.results_A, self.results_Q, self.results_V, self.results_h
+        return self.results_A, self.results_Q, self.results_V#, self.results_h
