@@ -76,7 +76,7 @@ class PreissmannModel:
         self.river = river
         self.W = self.river.width
         self.S_0 = self.river.bed_slope
-        self.n_nodes = sum(self.river.length) // self.delta_x + 1
+        self.n_nodes = self.river.length // self.delta_x + 1
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []
@@ -117,7 +117,7 @@ class PreissmannModel:
         # Read the values of A and Q from the 'River' object and assign
         # them to the lists of unknowns, as well as the lists of A and Q at
         # the previous (first) time step.
-        l = 0
+
         H = []
         for A, Q in self.river.initial_conditions:
             self.unknowns += [A, Q]
@@ -125,15 +125,8 @@ class PreissmannModel:
             self.A_previous.append(A)
             self.Q_previous.append(Q)
             
-            r = self.river.reach_given_distance(l)
-            w = self.W[r]
-            h = float(A / w)
-            H.append(h)
-
             # Calculate the friction slope at all nodes at the previous (first) time step
-            self.Sf_previous.append(self.river.friction_slope(l, A, Q))
-            
-            l += self.delta_x
+            self.Sf_previous.append(self.river.friction_slope(A, Q))
 
         # Convert the list of unknowns to a NumPy array.
         self.unknowns = np.array(self.unknowns)
@@ -141,7 +134,6 @@ class PreissmannModel:
         # Store the computed values of A and Q in the results list.
         self.results_A.append(self.A_previous)
         self.results_Q.append(self.Q_previous)
-        self.results_h.append(H)
 
     def compute_residual_vector(self, time) -> np.ndarray:
         """
@@ -169,12 +161,12 @@ class PreissmannModel:
             equation_list.append(self.momentum_eq(i))
 
         # Lastly, add the downstream boundary condition residuals.
-        equation_list.append(self.downstream_eq())
+        equation_list.append(self.downstream_eq(time))
 
         # Return the list as a NumPy array.
         return np.array(equation_list)
 
-    def compute_jacobian(self) -> np.ndarray:
+    def compute_jacobian(self, t) -> np.ndarray:
         """
         Constructs the Jacobian matrix of the system of equations.
 
@@ -191,7 +183,7 @@ class PreissmannModel:
 
         # Compute the derivatives of the upstream boundary condition with respect to A and Q
         # at the first node, and assign the computed values to the first 2 elements of the first row.
-        jacobian_matrix[0, 0] = self.upstream_deriv_A()
+        jacobian_matrix[0, 0] = self.upstream_deriv_A(t)
         jacobian_matrix[0, 1] = self.upstream_deriv_Q()
 
         # The loop computes the derivatives of the continuity equation with respect to A and Q at each of the
@@ -211,7 +203,7 @@ class PreissmannModel:
 
         # Lastly, compute the derivatives of the downstream boundary condition with respect to A and Q
         # at the last node, and place their values in the last 2 places of the last row.
-        jacobian_matrix[-1, -2] = self.downstream_deriv_A()
+        jacobian_matrix[-1, -2] = self.downstream_deriv_A(t)
         jacobian_matrix[-1, -1] = self.downstream_deriv_Q()
 
         return jacobian_matrix
@@ -254,9 +246,10 @@ class PreissmannModel:
                 R = self.compute_residual_vector(time)
 
                 # Compute the Jacobian matrix.
-                J = self.compute_jacobian()
+                J = self.compute_jacobian(time)
 
                 # Solve the equation J * delta = -F to compute the delta vector.
+                #print(R)
                 delta = np.linalg.solve(J, -R)
 
                 # Improve the trial values using the computed delta.
@@ -296,8 +289,7 @@ class PreissmannModel:
         """
         self.A_previous = [i for i in self.unknowns[::2]]
         self.Q_previous = [i for i in self.unknowns[1::2]]
-        self.Sf_previous = [self.river.friction_slope(i * self.delta_x, self.A_previous[i], self.Q_previous[i]) for i in
-                            range(self.n_nodes)]
+        self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
 
     def update_guesses(self) -> None:
         """
@@ -327,7 +319,10 @@ class PreissmannModel:
             The computed residual.
 
         """
-        U = self.Q_current[0] - River.inflow_Q(t)
+        y = float(self.A_current[0]) / self.W
+        q = self.Q_current[0]
+        
+        U = self.river.upstream_bc(t, y, q)
 
         return U
 
@@ -372,14 +367,12 @@ class PreissmannModel:
             The computed residual.
 
         """
-        Sf_i = self.river.friction_slope(i * self.delta_x, self.A_current[i], self.Q_current[i])
-        Sf_iplus1 = self.river.friction_slope(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
-        
-        r = self.river.reach_given_distance(i * self.delta_x)
+        Sf_i = self.river.friction_slope(self.A_current[i], self.Q_current[i])
+        Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
         
         M = (
-                (g * self.theta / self.W[r]) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
-                - self.delta_x * g * self.theta * self.S_0[r] * (self.A_current[i + 1] + self.A_current[i])
+                (g * self.theta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
+                - self.delta_x * g * self.theta * self.S_0 * (self.A_current[i + 1] + self.A_current[i])
                 + self.theta * g * self.delta_x * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.celerity * (self.Q_current[i + 1] + self.Q_current[i])
                 + 2 * self.theta * (
@@ -389,20 +382,20 @@ class PreissmannModel:
                         self.celerity * (self.Q_previous[i + 1] + self.Q_previous[i])
                         - 2 * (1 - self.theta) * (
                                 self.Q_previous[i + 1] ** 2 / self.A_previous[i + 1]
-                                + (0.5 * g / self.W[r]) * self.A_previous[i + 1] ** 2
+                                + (0.5 * g / self.W) * self.A_previous[i + 1] ** 2
                                 - self.Q_previous[i] ** 2 / self.A_previous[i]
-                                - (0.5 * g / self.W[r]) * self.A_previous[i] ** 2
+                                - (0.5 * g / self.W) * self.A_previous[i] ** 2
                         )
                         + self.delta_x * (1 - self.theta) * g * (
-                                self.A_previous[i + 1] * (self.S_0[r] - self.Sf_previous[i + 1])
-                                + self.A_previous[i] * (self.S_0[r] - self.Sf_previous[i])
+                                self.A_previous[i + 1] * (self.S_0 - self.Sf_previous[i + 1])
+                                + self.A_previous[i] * (self.S_0 - self.Sf_previous[i])
                         )
                 )
         )
 
         return M
 
-    def downstream_eq(self) -> float:
+    def downstream_eq(self, t) -> float:
         """
         Computes the residual of the downstream boundary condition equation.
 
@@ -412,13 +405,15 @@ class PreissmannModel:
             The computed residual.
 
         """
-        from boundary import Downstream
-        D = Downstream.condition_residual(self.A_current[-1], self.Q_current[-1])
+        y = float(self.A_current[-1]) / self.W
+        q = self.Q_current[-1]
+        
+        D = self.river.downstream_bc(t, y, q)
 
         return D
 
-    @staticmethod
-    def upstream_deriv_A() -> int:
+    
+    def upstream_deriv_A(self, t) -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the upstream node.
@@ -429,12 +424,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 0
+        d = self.river.upstream_bc_deriv_A(t, self.A_current[0])
 
         return d
 
-    @staticmethod
-    def upstream_deriv_Q() -> int:
+    
+    def upstream_deriv_Q(self) -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the upstream node.
@@ -445,7 +440,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        d = 1
+        d = self.river.upstream_bc_deriv_Q()
 
         return d
 
@@ -520,14 +515,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
-        dSf_dA = self.river.friction_slope_deriv_A(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
-        
-        r = self.river.reach_given_distance(i * self.delta_x)
+        Sf = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
         
         d = (
-                2 * g * self.theta / self.W[r] * self.A_current[i + 1]
-                - self.delta_x * g * self.theta * self.S_0[r]
+                2 * g * self.theta / self.W * self.A_current[i + 1]
+                - self.delta_x * g * self.theta * self.S_0
                 - 2 * self.theta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i + 1] * dSf_dA)
         )
@@ -545,14 +538,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(i * self.delta_x, self.A_current[i], self.Q_current[i])
-        dSf_dA = self.river.friction_slope_deriv_A(i * self.delta_x, self.A_current[i], self.Q_current[i])
-        
-        r = self.river.reach_given_distance(i * self.delta_x)
+        Sf = self.river.friction_slope(self.A_current[i], self.Q_current[i])
+        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
         
         d = (
-                - 2 * g * self.theta / self.W[r] * self.A_current[i]
-                - self.delta_x * g * self.theta * self.S_0[r]
+                - 2 * g * self.theta / self.W * self.A_current[i]
+                - self.delta_x * g * self.theta * self.S_0
                 + 2 * self.theta * (self.Q_current[i] / self.A_current[i]) ** 2
                 + self.theta * g * self.delta_x * (Sf + self.A_current[i] * dSf_dA)
         )
@@ -570,7 +561,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(i * self.delta_x, self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i + 1], self.Q_current[i + 1])
                 
         d = (
                 self.celerity
@@ -591,7 +582,7 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(i * self.delta_x, self.A_current[i], self.Q_current[i])
+        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i], self.Q_current[i])
         
         d = (
                 self.celerity
@@ -601,7 +592,7 @@ class PreissmannModel:
 
         return d
 
-    def downstream_deriv_A(self) -> float:
+    def downstream_deriv_A(self, t) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -612,13 +603,12 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        from boundary import Downstream
-        d = Downstream.derivative_wrt_A(self.A_current[-1])
+        d = self.river.downstream_bc_deriv_A(t, self.A_current[-1])
 
         return d
 
-    @staticmethod
-    def downstream_deriv_Q() -> int:
+    
+    def downstream_deriv_Q(self):
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the downstream node.
@@ -629,25 +619,14 @@ class PreissmannModel:
             The computed derivative.
 
         """
-        from boundary import Downstream
-        d = Downstream.derivative_wrt_Q()
+        d = self.river.downstream_bc_deriv_Q()
 
         return d
 
 
     def append_results(self):
         self.results_A.append(self.A_current.tolist())
-        self.results_Q.append(self.Q_current.tolist())
-            
-        H = []
-        for i in range(len(self.A_current)):
-            r = self.river.reach_given_distance(i * self.delta_x)
-            w = self.W[r]
-            h = float(self.A_current[i] / w)
-            H.append(h)
-                
-        self.results_h.append(H)
-        
+        self.results_Q.append(self.Q_current.tolist())        
         
     def save_results(self, size: tuple) -> None:
         """
@@ -685,13 +664,15 @@ class PreissmannModel:
                 for q in self.results_Q[::t_step]]
         
         
-        # Compute results_V
+        # Compute velocities
         self.results_V = np.array(self.results_Q) / np.array(self.results_A)
         self.results_V = self.results_V.tolist()
-
         V = [v[::x_step]
                 for v in self.results_V[::t_step]]
         
+        # Compute depths
+        self.results_h = np.array(self.results_A) / self.W
+        self.results_h = self.results_h.tolist()
         h = [h[::x_step]
                 for h in self.results_h[::t_step]]
 
@@ -710,7 +691,7 @@ class PreissmannModel:
                 output_file.write(value_str)
                 
     
-    def get_results(self) -> tuple:
+    def get_results(self, parameter: str) -> tuple:
         """
         Returns the results of the simulation.
 
@@ -721,4 +702,14 @@ class PreissmannModel:
             velocity, and flow depth.
 
         """
-        return self.results_A, self.results_Q, self.results_V#, self.results_h
+        if parameter == 'a':
+            return self.results_A
+        elif parameter == 'q':
+            return self.results_Q
+        elif parameter == 'v':
+            return self.results_V
+        elif parameter == 'h':
+            return self.results_h
+        else:
+            raise ValueError("Invalid parameter. Choose between 'a', 'q', 'v', or 'h'.")
+        

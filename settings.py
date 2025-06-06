@@ -1,11 +1,10 @@
 ############                River Geometry                    ############
 
-REACHES = 1
-LENGTH = [15000]
-WIDTH = [250]
-MANNING_COEFF = [0.027]
+LENGTH = 15000
+WIDTH = 250
+MANNING_COEFF = 0.027
 
-BED_SLOPE = [0.000931] #[12.5/15000]
+BED_SLOPE = 0.000931
 BED_SLOPE_CORRECTION = True
 
 APPROX_R = True
@@ -46,6 +45,9 @@ US_RATING_CURVE = {"base": 500, "coefficients": [327.23, 318.44, 70.26]}
 DS_INIT_DEPTH = 7.5
 DS_INIT_DISCHARGE = 1562.5
 DS_INIT_STAGE = 490
+DS_MAX_STAGE = 493
+
+DS_POND_AREA = 478983175
 
 DS_CONDITION = 'fixed_depth' # 'fixed_depth', 'rating_curve' or 'normal_depth'.
 DS_RATING_CURVE = {"base": 466.7, "coefficients": [8266.62, 469.31, -2.64]}

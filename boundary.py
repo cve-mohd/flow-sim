@@ -1,200 +1,150 @@
-from settings import US_INIT_DEPTH, US_INIT_DISCHARGE, US_INIT_STAGE, US_RATING_CURVE
-from settings import PEAK_HOUR, PEAK_DISCHARGE
-from settings import custom_hydrograph, CUSTOM_INFLOW
-
-from settings import DS_INIT_DEPTH, DS_INIT_DISCHARGE, DS_INIT_STAGE, DS_RATING_CURVE
-from settings import DS_CONDITION
-
+from settings import *
 import numpy as np
+from utility import Utility
 
-    
-class Upstream:
-    initial_depth = US_INIT_DEPTH
-    initial_discharge = US_INIT_DISCHARGE   
-    initial_stage = US_INIT_STAGE 
-    
-    @staticmethod
-    def rating_curve(flow_depth: float) -> float:
-        discharge = rating_curve(flow_depth, US_RATING_CURVE, US_INIT_STAGE - US_INIT_DEPTH)
-        return discharge
-    
-    @staticmethod
-    def inflow_hydrograph(time: float | int) -> float:
-        """
-        Computes the discharge through the upstream boundary at a
-        given time using a discharge hydrograph.
 
-        Parameters
-        ----------
-        time : float | int
-            The time in seconds.
-
-        Returns
-        -------
-        float
-            The computed discharge in cubic meters per second.
-
-        """
+class Boundary:
+    def __init__(self, initial_depth, initial_discharge, condition, initial_stage = None, rating_curve_eq = None):
+        self.initial_depth = initial_depth
+        self.initial_discharge = initial_discharge
         
-        if CUSTOM_INFLOW:
-            return custom_hydrograph(time)
+        self.initial_stage = initial_stage
+        self.bed_level = None
         
-        angle = 0.5 * np.pi * time / (PEAK_HOUR * 3600)
-
-        discharge = US_INIT_DISCHARGE + (PEAK_DISCHARGE - US_INIT_DISCHARGE) * np.sin(angle)
+        if initial_stage is not None:
+            self.bed_level = initial_stage - initial_depth
         
-        if time >= 3600 * PEAK_HOUR * 2:
-            discharge = US_INIT_DISCHARGE
-
-        return max(discharge, US_INIT_DISCHARGE)
-
-
-class Downstream:
-    initial_depth = DS_INIT_DEPTH
-    initial_discharge = DS_INIT_DISCHARGE  
-    initial_stage = DS_INIT_STAGE
-    bed_level = initial_stage - initial_depth
-    
-    max_service_stage = 493
-    max_q = None
-    base_q = None
-    q_out = None
-    
-    fail = False
-    fixed_depth = DS_INIT_DEPTH
-    reservoir_area = 318880455 - 250 * 15000
+        self.condition = condition
         
-    @staticmethod
-    def rating_curve(stage: float) -> float:
-        discharge = rating_curve(stage, DS_RATING_CURVE)
-        return discharge
+        self.rating_curve_eq = rating_curve_eq
+        self.hydrograph = None
+        self.hydrograph_Q_func = self.interpolate_hydrograph
     
-    @staticmethod
-    def inverse_rating_curve(discharge: float) -> float:
-        stage = inverse_rating_curve(discharge, DS_RATING_CURVE, 490)
-        return stage
     
-    @staticmethod
-    def condition_residual(A, Q):
-        from settings import WIDTH as B
-        h = A/B[-1]
-        if DS_CONDITION == 'fixed_depth':
-            return h - Downstream.fixed_depth
+    def rating_curve(self, depth):
+        stage = self.bed_level + depth
+        q = Utility.rating_curve(stage, self.rating_curve_eq)
+        return q
+    
+    
+    def inverse_rating_curve(self, discharge):
+        stage_guess = self.initial_stage
+        y = Utility.inverse_rating_curve(discharge, self.rating_curve_eq, stage_guess)
+        return y
+    
+    
+    def interpolate_hydrograph(self, t):
+        if self.hydrograph is None:
+            raise ValueError("Hydrograph is not defined.")
+        times, flows = zip(*self.hydrograph)
+        return float(np.interp(t, times, flows))
+
+
+    def hydrograph_Q(self, time):
+        return self.hydrograph_Q_func(time)
+    
+    
+    def build_hydrograph(self, times, discharges):
+        if len(times) != len(discharges):
+            raise ValueError("times and discharges must have the same length.")
         
-        if DS_CONDITION == 'normal_depth':
-            from settings import BED_SLOPE as S_0, MANNING_COEFF as n
-            P = B[-1] + 2 * h
-            manning_Q = (A ** (5./3) * S_0[-1] ** 0.5) / (n[-1] * P ** (2./3))
-            return Q - manning_Q
+        self.hydrograph = list(zip(times, discharges))
+        
+        
+    def set_hydrograph(self, func):
+        self.hydrograph_Q_func = func
+
+
+    def fit_rating_curve(self, Q_values, Y_values):
+        if len(Q_values) < 3:
+            raise ValueError("Need at least 3 points.")
+        
+        if len(Q_values) != len(Y_values):
+            raise ValueError("Q and Y lists should have the same lengths.")
+        
+        Y0 = np.min(Y_values) * 0.9
+
+        Y_shifted = Y_values - Y0
+
+        a, b, c = np.polyfit(Y_shifted, Q_values, deg=2)
+
+        self.rating_curve_eq = {
+            "base": Y0,
+            "coefficients": [float(c), float(b), float(a)]
+        }
+        
+    
+    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None):
+        if self.condition == 'hydrograph':
+            if time is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
+            
+            Q_t = self.hydrograph_Q(time)
+            return discharge - Q_t
+            
+        if self.condition == 'fixed_depth':
+            if depth is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
+            else:
+                return depth - self.fixed_depth
+        
+        if self.condition == 'normal_depth':
+            if width is None or depth is None or discharge is None or bed_slope is None or manning_co is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
+            
+            P = width + 2 * depth
+            A = width * depth
+            
+            Q = (A ** (5./3) * bed_slope ** 0.5) / (manning_co * P ** (2./3))
+            return discharge - Q
         
         if DS_CONDITION == 'rating_curve':
-            return Q - Downstream.rating_curve(Downstream.bed_level + A/B[-1])
-    
-    
-    def update_fixed_depth(q_in, delta_t):
-        """
-        Updates the water depth at the boundary in case of fixed-depth boundary condition.
-
-        Parameters
-        ----------
-        q_in : float
-            Rate of flow at the boundary.
+            if depth is None or discharge is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
             
-        delta_t : float
-            Temporal step.
-
-        Returns
-        -------
-        None.
-
-        """
+            return discharge - self.rating_curve(depth)
         
-        if Downstream.max_q is None:
-            Downstream.max_q = Downstream.rating_curve(Downstream.max_service_stage)
-            Downstream.base_q = Downstream.rating_curve(Downstream.initial_stage)
-            Downstream.q_out = Downstream.rating_curve(Downstream.initial_stage)
         
-        current_stage = Downstream.fixed_depth + Downstream.bed_level
+    def condition_derivative_wrt_A(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
+        if self.condition == 'hydrograph':
+            return 0
+            
+        if self.condition == 'fixed_depth':
+            if width is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
+            
+            return 1./width
         
-        if q_in > Downstream.q_out or current_stage > Downstream.initial_stage:
-            added_vol = (q_in - Downstream.q_out) * delta_t
-            Downstream.fixed_depth += added_vol / Downstream.reservoir_area
+        if self.condition == 'normal_depth':
+            if width is None or area is None or bed_slope is None or manning_co is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
             
-            if Downstream.fixed_depth < Downstream.initial_depth:
-                Downstream.fixed_depth = Downstream.initial_depth
-                
-            current_stage = Downstream.fixed_depth + Downstream.bed_level
+            P = width + 2 * area/width
+            R = area/P
             
-            Downstream.q_out = Downstream.rating_curve(current_stage)
-            
-            Downstream.fail = (current_stage > Downstream.max_service_stage)
-            
-        else:
-            Downstream.fixed_depth = Downstream.initial_depth
-    
-    @staticmethod
-    def derivative_wrt_A(A):
-        from settings import WIDTH as B, BED_SLOPE as S_0, MANNING_COEFF as n
-        if DS_CONDITION == 'fixed_depth':
-            return 1./B[-1]
-        
-        if DS_CONDITION == 'normal_depth':
-            P = B[-1] + 2 * A/B[-1]
-            R = A/P
-            return - S_0[-1] ** 0.5 / n[-1] * (
-                -4. / (3*B[-1]) * R ** (5./3) + 5./3 * R ** (2./3)
+            return - bed_slope ** 0.5 / manning_co * (
+                -4. / (3*width) * R ** (5./3) + 5./3 * R ** (2./3)
                 )
         
-        if DS_CONDITION == 'rating_curve':
-            stage = Downstream.bed_level + A/B[-1]
-            return -(DS_RATING_CURVE["coefficients"][1] / B[-1]
-            + DS_RATING_CURVE["coefficients"][2] * 2 * (stage - DS_RATING_CURVE["base"]) / B[-1])
+        if self.condition == 'rating_curve':
+            if width is None or area is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
+            
+            stage = self.bed_level + area/width
+            
+            return -(self.rating_curve_eq["coefficients"][1] / width
+            + self.rating_curve_eq["coefficients"][2] * 2 * (stage - self.rating_curve_eq["base"]) / width)
         
-    @staticmethod
-    def derivative_wrt_Q():
-        if DS_CONDITION == 'fixed_depth':
+    
+    def condition_derivative_wrt_Q(self):
+        if self.condition == 'hydrograph':
+            return 1
+            
+        if self.condition == 'fixed_depth':
             return 0
         
-        if DS_CONDITION == 'normal_depth':
+        if self.condition == 'normal_depth':
             return 1
         
-        if DS_CONDITION == 'rating_curve':
+        if self.condition == 'rating_curve':
             return 1
-        
-        
-def rating_curve(stage: float, eq_parameters) -> float:
-        """
-        Computes the discharge for a given flow depth using
-        the rating curve equation of the upstream boundary.
-
-        Parameters
-        ----------
-        flow_depth : float
-            The flow depth at the upstream boundary in meters.
-
-        Returns
-        -------
-        discharge : float
-            The computed discharge in cubic meters per second.
-
-        """
-        discharge = (
-            eq_parameters["coefficients"][0]
-            + eq_parameters["coefficients"][1] * (stage - eq_parameters["base"])
-            + eq_parameters["coefficients"][2] * (stage - eq_parameters["base"]) ** 2
-            )
-                
-        return discharge
-    
-    
-def inverse_rating_curve(discharge: float, eq_parameters, stage_guess: float, tolerance: float = 1e-3) -> float:
-    trial_stage = stage_guess
-    
-    q = rating_curve(trial_stage, eq_parameters)
-    
-    while abs(q - discharge) > tolerance:
-        error = (q - discharge) / discharge
-        trial_stage -= 0.1 * error * trial_stage
-        q = rating_curve(trial_stage, eq_parameters) 
-    
-    return trial_stage

@@ -1,5 +1,5 @@
 import boundary
-from settings import REACHES, APPROX_R, BED_SLOPE_CORRECTION
+from settings import APPROX_R, BED_SLOPE_CORRECTION
 
 
 class River:
@@ -22,7 +22,8 @@ class River:
         
     """
 
-    def __init__(self, length: list[float], width: list[float], bed_slope: list[float], manning_co: list[float]):
+    def __init__(self, length: float, width: float, bed_slope: float, manning_co: float,
+                 upstream_boundary: boundary.Boundary, downstream_boundary: boundary.Boundary):
         """
         Initialized an instance.
 
@@ -39,19 +40,22 @@ class River:
 
         """
         self.length = length
-        self.width = [float(i) for i in width]
+        self.width = float(width)
         self.bed_slope = bed_slope
         self.manning_co = manning_co
+        
+        self.upstream_boundary = upstream_boundary
+        self.downstream_boundary = downstream_boundary
         
         self.initial_conditions = []
         
         if BED_SLOPE_CORRECTION:
-            A = boundary.Upstream.initial_depth * self.width[0]
-            Q = boundary.Upstream.initial_discharge
-            self.bed_slope[0] = self.friction_slope(0, A, Q)
+            A = upstream_boundary.initial_depth * self.width
+            Q = downstream_boundary.initial_discharge
+            self.bed_slope = self.friction_slope(A, Q)
         
 
-    def friction_slope(self, distance: float, A: float, Q: float, approx_R = APPROX_R) -> float:
+    def friction_slope(self, A: float, Q: float, approx_R = APPROX_R) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -61,49 +65,45 @@ class River:
             The cross-sectional flow area.
         Q : float
             The discharge.
+        W : float
+            The channel width.
             
         Returns
         -------
         float
             The computed friction slope.
             
-        """
-        reach_index = self.reach_given_distance(distance)
-        
+        """       
         if approx_R:
-            P = self.width[reach_index]
+            P = self.width
         else:
-            P = self.width[reach_index] + 2 * A / self.width[reach_index]
+            P = self.width + 2 * A / self.width
             
-        Sf = (self.manning_co[reach_index] * P ** (2. / 3) * Q / A ** (5. / 3)) ** 2
+        Sf = (self.manning_co * P ** (2. / 3) * Q / A ** (5. / 3)) ** 2
         
         return Sf
     
-    def friction_slope_deriv_A(self, distance: float, A: float, Q: float, approx_R = APPROX_R) -> float:
-        reach_index = self.reach_given_distance(distance)
-        
+    def friction_slope_deriv_A(self, A: float, Q: float, approx_R = APPROX_R) -> float:
         if approx_R:
-            d_Sf = -10./3 * Q ** 2 * self.manning_co[reach_index] ** 2 * self.width[reach_index] ** (4./3) * A ** (-13./3)
+            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
         else:
-            d_Sf = -10./3 * Q ** 2 * self.manning_co[reach_index] ** 2 * (self.width[reach_index] + 2 * A / self.width[reach_index]) ** (4./3) * A ** (-13./3)
-            + Q ** 2 * self.manning_co[reach_index] ** 2 * 4. / 3 * (self.width[reach_index] + 2 * A / self.width[reach_index]) ** (1./3) * A ** (-10./3) * 2 / self.width[reach_index]
+            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * (self.width + 2 * A / self.width) ** (4./3) * A ** (-13./3)
+            + Q ** 2 * self.manning_co ** 2 * 4. / 3 * (self.width + 2 * A / self.width) ** (1./3) * A ** (-10./3) * 2 / self.width
 
         return d_Sf
     
-    def friction_slope_deriv_Q(self, distance: float, A: float, Q: float, approx_R = APPROX_R) -> float:
-        reach_index = self.reach_given_distance(distance)
-        
+    def friction_slope_deriv_Q(self, A: float, Q: float, approx_R = APPROX_R) -> float:
         if approx_R:
-            P = self.width[reach_index]
+            P = self.width
         else:
-            P = self.width[reach_index] + 2 * A / self.width[reach_index]
+            P = self.width + 2 * A / self.width
             
-        d_Sf = 2 * Q * self.manning_co[reach_index] ** 2 * P ** (4./3) * A ** (-10./3)
+        d_Sf = 2 * Q * self.manning_co ** 2 * P ** (4./3) * A ** (-10./3)
         
         return d_Sf
 
-    @staticmethod
-    def inflow_Q(time: float) -> float:
+
+    def inflow_Q(self, time: float) -> float:
         """
         Computes the discharge at a given time using the upstream flow hydrograph.
         
@@ -118,65 +118,24 @@ class River:
             The computed discharge in cubic meters per second.
             
         """
-        return boundary.Upstream.inflow_hydrograph(time)
+        return self.upstream_boundary.hydrograph_Q(time)
 
-    @staticmethod
-    def rating_curve_us(water_depth: float) -> float:
-        """
-        Computes the discharge for a given water depth using
-        the rating curve equation of the upstream boundary.
 
-        Parameters
-        ----------
-        water_depth : float
-            The water depth at the upstream boundary in meters.
-
-        Returns
-        -------
-        Q : float
-            The computed discharge in cubic meters per second.
-
-        """
-        return boundary.Upstream.rating_curve(water_depth)
-
-    @staticmethod
-    def rating_curve_ds(water_depth: float) -> float:
-        """
-        Computes the discharge for a given water depth using
-        the rating curve equation of the downstream boundary.
-
-        Parameters
-        ----------
-        water_depth : float
-            The water depth at the downstream boundary in meters.
-
-        Returns
-        -------
-        Q : float
-            The computed discharge in cubic meters per second.
-
-        """
-        return boundary.Downstream.rating_curve(water_depth)
-    
-    
-    def manning_Q(self, distance: float, A, slope = None):
-        reach_index = self.reach_given_distance(distance)
-        
-        S = self.bed_slope[reach_index]
+    def manning_Q(self, A, slope = None):
+        S = self.bed_slope
         if slope is not None:
             S = slope
             
-        P = self.width[reach_index] + 2. * A / self.width[reach_index]
-        Q = A ** (5./3) * S ** 0.5 / (self.manning_co[reach_index] * P ** (2./3))
+        P = self.width + 2. * A / self.width
+        Q = A ** (5./3) * S ** 0.5 / (self.manning_co * P ** (2./3))
         return Q
     
     
-    def manning_A(self, distance, Q, A_guess, tolerance, slope = None):
-        reach_index = self.reach_given_distance(distance)
-        
-        S = self.bed_slope[reach_index]
+    def manning_A(self, Q, A_guess, tolerance, slope = None):
         if slope is not None:
             S = slope
+        else:
+            S = self.bed_slope
             
         trial_A = A_guess
         trial_Q = self.manning_Q(trial_A, S)
@@ -206,7 +165,7 @@ class River:
 
         """
         
-        n_nodes = sum(self.length) // delta_x + 1
+        n_nodes = self.length // delta_x + 1
         
         for i in range(n_nodes):
             y = (boundary.Upstream.initial_depth
@@ -215,22 +174,26 @@ class River:
             Q = (boundary.Upstream.initial_discharge
                  + (boundary.Downstream.initial_discharge - boundary.Upstream.initial_discharge) * i / float(n_nodes - 1))
 
-            reach_index = self.reach_given_distance(i * delta_x)
-
-            A = y * self.width[reach_index]
+            A = y * self.width
             
             self.initial_conditions.append((A, Q))
 
 
-    def reach_given_distance(self, distance):
-        if distance == -1:
-            return REACHES - 1
+    def upstream_bc(self, time = None, depth = None, discharge = None):
+        return self.upstream_boundary.condition_residual(time, depth, self.width, discharge, self.bed_slope, self.manning_co)
         
-        d = distance
-        for i in range(len(self.length)):
-            if d <= self.length[i]:
-                return i
-            else:
-                d -= self.length[i]
-                
-        return -1
+    def downstream_bc(self, time = None, depth = None, discharge = None):
+        return self.downstream_boundary.condition_residual(time, depth, self.width, discharge, self.bed_slope, self.manning_co)
+        
+    def upstream_bc_deriv_A(self, time = None, area = None):
+        return self.upstream_boundary.condition_derivative_wrt_A(time, area, self.width, self.bed_slope, self.manning_co)
+        
+    def upstream_bc_deriv_Q(self):
+        return self.upstream_boundary.condition_derivative_wrt_Q()
+        
+    def downstream_bc_deriv_A(self, time = None, area = None):
+        return self.downstream_boundary.condition_derivative_wrt_A(time, area, self.width, self.bed_slope, self.manning_co)
+        
+    def downstream_bc_deriv_Q(self):
+        return self.downstream_boundary.condition_derivative_wrt_Q()
+        
