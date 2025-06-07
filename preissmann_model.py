@@ -265,10 +265,6 @@ class PreissmannModel:
                 # than the specified tolerance. Otherwise, repeat the solution using the updated values.
                 if error < tolerance:
                     break
-
-            
-            from boundary import Downstream
-            Downstream.update_fixed_depth(self.Q_current[-1], self.delta_t)
             
             # Save the final values of the solved time step.
             self.append_results()

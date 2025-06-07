@@ -1,10 +1,10 @@
 from settings import *
 import numpy as np
-from utility import Utility
+from utility import Utility, RatingCurve
 
 
 class Boundary:
-    def __init__(self, initial_depth, initial_discharge, condition, initial_stage = None, rating_curve_eq = None):
+    def __init__(self, initial_depth, initial_discharge, condition, initial_stage = None, fixed_depth = None, rating_curve: RatingCurve = None, hydrograph_function = None):
         self.initial_depth = initial_depth
         self.initial_discharge = initial_discharge
         
@@ -14,28 +14,64 @@ class Boundary:
         if initial_stage is not None:
             self.bed_level = initial_stage - initial_depth
         
-        self.condition = condition
+        if condition in ['hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve']:
+            self.condition = condition
+        else:
+            raise ValueError("Invalid boundary condition.")
         
-        self.rating_curve_eq = rating_curve_eq
+        self.rating_curve = rating_curve
         self.hydrograph = None
-        self.hydrograph_Q_func = self.interpolate_hydrograph
+        self.fixed_depth = fixed_depth
+        
+        self.reservoir_area = None
+        self.reservoir_exit_rating_curve = None
+        
+        if hydrograph_function is not None:
+            self.hydrograph_Q_func = hydrograph_function
+        else:
+            self.hydrograph_Q_func = self.interpolate_hydrograph
     
     
-    def rating_curve(self, depth):
-        stage = self.bed_level + depth
-        q = Utility.rating_curve(stage, self.rating_curve_eq)
-        return q
+    def set_storage_behavior(self, reservoir_area: float, reservoir_exit_rating_curve: RatingCurve):
+        self.reservoir_area = reservoir_area
+        self.reservoir_exit_rating_curve = reservoir_exit_rating_curve
+        
+        
+    def update_fixed_depth(self, inflow, duration, stage):
+        if self.reservoir_exit_rating_curve is None:
+            raise ValueError("Storage is undefined.")
+        
+        if inflow is None or duration is None or stage is None:
+            raise ValueError("Insufficient arguments.")
+        
+        outflow = self.reservoir_exit_rating_curve.discharge(stage)
+        
+        if stage <= self.initial_stage and outflow >= inflow:
+            return
+        
+        added_volume = (inflow - outflow) * duration
+        added_depth = added_volume / self.reservoir_area
+        self.fixed_depth += added_depth
     
     
-    def inverse_rating_curve(self, discharge):
-        stage_guess = self.initial_stage
-        y = Utility.inverse_rating_curve(discharge, self.rating_curve_eq, stage_guess)
-        return y
+    def rating_curve_Q(self, stage):
+        if self.rating_curve is None:
+            raise ValueError("Rating curve is undefined.")
+        
+        return self.rating_curve.discharge(stage)
+    
+    
+    def rating_curve_stage(self, discharge):
+        if self.rating_curve is None:
+            raise ValueError("Rating curve is undefined.")
+        
+        return self.rating_curve.stage(discharge)
     
     
     def interpolate_hydrograph(self, t):
         if self.hydrograph is None:
             raise ValueError("Hydrograph is not defined.")
+        
         times, flows = zip(*self.hydrograph)
         return float(np.interp(t, times, flows))
 
@@ -55,26 +91,11 @@ class Boundary:
         self.hydrograph_Q_func = func
 
 
-    def fit_rating_curve(self, Q_values, Y_values):
-        if len(Q_values) < 3:
-            raise ValueError("Need at least 3 points.")
-        
-        if len(Q_values) != len(Y_values):
-            raise ValueError("Q and Y lists should have the same lengths.")
-        
-        Y0 = np.min(Y_values) * 0.9
-
-        Y_shifted = Y_values - Y0
-
-        a, b, c = np.polyfit(Y_shifted, Q_values, deg=2)
-
-        self.rating_curve_eq = {
-            "base": Y0,
-            "coefficients": [float(c), float(b), float(a)]
-        }
+    def set_rating_curve(self, rating_curve: RatingCurve):
+        self.rating_curve = rating_curve
         
     
-    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None):
+    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None, delta_t = None):
         if self.condition == 'hydrograph':
             if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
@@ -85,7 +106,12 @@ class Boundary:
         if self.condition == 'fixed_depth':
             if depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
+            elif self.fixed_depth is None:
+                raise ValueError("Fixed depth is not defined.")
             else:
+                if self.reservoir_area is not None:
+                    self.update_fixed_depth(discharge, delta_t, self.bed_level + depth)
+                    
                 return depth - self.fixed_depth
         
         if self.condition == 'normal_depth':
@@ -102,7 +128,7 @@ class Boundary:
             if depth is None or discharge is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return discharge - self.rating_curve(depth)
+            return discharge - self.rating_curve_Q(self.bed_level + depth)
         
         
     def condition_derivative_wrt_A(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
@@ -132,8 +158,7 @@ class Boundary:
             
             stage = self.bed_level + area/width
             
-            return -(self.rating_curve_eq["coefficients"][1] / width
-            + self.rating_curve_eq["coefficients"][2] * 2 * (stage - self.rating_curve_eq["base"]) / width)
+            return 0 - self.rating_curve.discharge_derivative(stage, width)
         
     
     def condition_derivative_wrt_Q(self):

@@ -29,7 +29,17 @@ class Utility:
         return sum(square(vector)) ** 0.5
     
     
-    def rating_curve(stage: float, eq_parameters) -> float:
+class RatingCurve:
+    def __init__(self, a, b, c, base):
+        self.a, self.b, self.c, self.base = a, b, c, base
+        self.defined = True
+        
+    
+    def __init__(self):
+        self.defined = False
+    
+    
+    def discharge(self, stage):
         """
         Computes the discharge for a given flow depth using
         the rating curve equation of the upstream boundary.
@@ -45,23 +55,49 @@ class Utility:
             The computed discharge in cubic meters per second.
 
         """
-        discharge = (
-            eq_parameters["coefficients"][0]
-            + eq_parameters["coefficients"][1] * (stage - eq_parameters["base"])
-            + eq_parameters["coefficients"][2] * (stage - eq_parameters["base"]) ** 2
-            )
+        if not self.defined:
+            raise ValueError("Rating curve is undefined.")
+        
+        x = stage - self.base
+        discharge = self.a * x ** 2 + self.b * x + self.c
                 
         return discharge
     
     
-    def inverse_rating_curve(discharge: float, eq_parameters, stage_guess: float, tolerance: float = 1e-3) -> float:
-        trial_stage = stage_guess
+    def stage(self, discharge: float, tolerance: float = 1e-3) -> float:
+        if not self.defined:
+            raise ValueError("Rating curve is undefined.")
         
-        q = Utility.rating_curve(trial_stage, eq_parameters)
+        trial_stage = self.base * 1.05
+        
+        q = self.discharge(stage=trial_stage)
         
         while abs(q - discharge) > tolerance:
             error = (q - discharge) / discharge
             trial_stage -= 0.1 * error * trial_stage
-            q = Utility.rating_curve(trial_stage, eq_parameters) 
+            q = self.discharge(stage=trial_stage)
         
         return trial_stage
+    
+    
+    def fit(self, discharges, stages):
+        from numpy import min, polyfit
+        
+        if len(discharges) < 3:
+            raise ValueError("Need at least 3 points.")
+        
+        if len(discharges) != len(stages):
+            raise ValueError("Q and Y lists should have the same lengths.")
+        
+        self.base = min(stages) * 0.9
+
+        Y_shifted = stages - self.base
+
+        self.a, self.b, self.c = polyfit(Y_shifted, discharges, deg=2)
+
+        self.defined = True
+        
+        
+    def discharge_derivative(self, stage, width):
+        return self.a * 2 * (stage - self.base) * (1. / width) + self.b * (1. / width)
+    

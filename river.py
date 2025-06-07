@@ -1,4 +1,4 @@
-import boundary
+from boundary import Boundary
 from settings import APPROX_R, BED_SLOPE_CORRECTION
 
 
@@ -23,7 +23,7 @@ class River:
     """
 
     def __init__(self, length: float, width: float, bed_slope: float, manning_co: float,
-                 upstream_boundary: boundary.Boundary, downstream_boundary: boundary.Boundary):
+                 upstream_boundary: Boundary, downstream_boundary: Boundary):
         """
         Initialized an instance.
 
@@ -131,13 +131,13 @@ class River:
         return Q
     
     
-    def manning_A(self, Q, A_guess, tolerance, slope = None):
+    def manning_A(self, Q, tolerance, slope = None):
         if slope is not None:
             S = slope
         else:
             S = self.bed_slope
             
-        trial_A = A_guess
+        trial_A = self.width * self.upstream_boundary.initial_depth
         trial_Q = self.manning_Q(trial_A, S)
             
         while abs(trial_Q - Q) >= tolerance:
@@ -168,11 +168,11 @@ class River:
         n_nodes = self.length // delta_x + 1
         
         for i in range(n_nodes):
-            y = (boundary.Upstream.initial_depth
-                 + (boundary.Downstream.initial_depth - boundary.Upstream.initial_depth) * i / float(n_nodes - 1))
+            y = (self.upstream_boundary.initial_depth
+                 + (self.downstream_boundary.initial_depth - self.upstream_boundary.initial_depth) * i / float(n_nodes - 1))
 
-            Q = (boundary.Upstream.initial_discharge
-                 + (boundary.Downstream.initial_discharge - boundary.Upstream.initial_discharge) * i / float(n_nodes - 1))
+            Q = (self.upstream_boundary.initial_discharge
+                 + (self.downstream_boundary.initial_discharge - self.upstream_boundary.initial_discharge) * i / float(n_nodes - 1))
 
             A = y * self.width
             

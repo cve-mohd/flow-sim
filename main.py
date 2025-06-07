@@ -8,10 +8,8 @@ def f(t):
     else:
         return 10000
     
-us = Boundary(7.5, 1562.5, 'hydrograph', 502.5)
-us.set_hydrograph(f)
-
-ds = Boundary(7.5, 1562.5, 'fixed_depth', 490)
+us = Boundary(7.5, 1562.5, 'hydrograph', 502.5, hydrograph_function=f)
+ds = Boundary(7.5, 1562.5, 'fixed_depth', 490, fixed_depth=7.5)
 
 # Declare a 'River' object, specifying the geometric attributes of the river.
 blue_nile = River(LENGTH, WIDTH, BED_SLOPE, MANNING_COEFF, us, ds)
@@ -26,26 +24,7 @@ if SCHEME == 'preissmann':
     p_model.solve(DURATION, TOLERANCE, verbose=3)
 
     # Save the results.
-    p_model.save_results(RESULTS_SIZE)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    p_model.save_results(RESULTS_SIZE)    
 
 elif SCHEME == 'lax':
     from lax_model import LaxModel
