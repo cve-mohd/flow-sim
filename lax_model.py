@@ -63,7 +63,7 @@ class LaxModel:
         # Initialize the scheme parameters.
         self.delta_t, self.delta_x = delta_t, delta_x
         self.n_celerity = self.delta_x / float(self.delta_t)
-        self.n_nodes = sum(self.river.length) // self.delta_x + 1
+        self.n_nodes = sum(self.river.real_length) // self.delta_x + 1
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []

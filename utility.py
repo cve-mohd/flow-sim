@@ -29,15 +29,20 @@ class Utility:
         return sum(square(vector)) ** 0.5
     
     
-class RatingCurve:
-    def __init__(self, a, b, c, base):
-        self.a, self.b, self.c, self.base = a, b, c, base
-        self.defined = True
-        
-    
+class RatingCurve:    
     def __init__(self):
         self.defined = False
+        self.type = None    
     
+    
+    def set(self, type, a, b, c=0, base=0):
+        if type not in ['power', 'quadratic']:
+            raise ValueError("Invalid rating curve type.")
+        
+        self.a, self.b, self.c, self.base_stage = a, b, c, base
+        self.defined = True
+        self.type = type
+        
     
     def discharge(self, stage):
         """
@@ -58,17 +63,22 @@ class RatingCurve:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        x = stage - self.base
-        discharge = self.a * x ** 2 + self.b * x + self.c
+        x = stage - self.base_stage
+        
+        if self.type == 'quadratic':
+            discharge = self.a * x ** 2 + self.b * x + self.c
+            
+        else:
+            discharge = self.a * x ** self.b
                 
-        return discharge
+        return float(discharge)
     
     
     def stage(self, discharge: float, tolerance: float = 1e-3) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        trial_stage = self.base * 1.05
+        trial_stage = self.base_stage * 1.05
         
         q = self.discharge(stage=trial_stage)
         
@@ -80,8 +90,9 @@ class RatingCurve:
         return trial_stage
     
     
-    def fit(self, discharges, stages):
-        from numpy import min, polyfit
+    def fit(self, discharges: list, stages: list, base: float=0, type='quadratic'):
+        self.type = type
+        from numpy import min, polyfit, array, log, exp
         
         if len(discharges) < 3:
             raise ValueError("Need at least 3 points.")
@@ -89,15 +100,58 @@ class RatingCurve:
         if len(discharges) != len(stages):
             raise ValueError("Q and Y lists should have the same lengths.")
         
-        self.base = min(stages) * 0.9
+        discharges = array(discharges, dtype=float)
+        stages = array(stages, dtype=float)
+            
+        self.base_stage = base
+        Y_shifted = stages - self.base_stage
+                
+        if any(Y_shifted <= 0):
+            raise ValueError("All (stage - base) values must be positive for power-law fitting.")
 
-        Y_shifted = stages - self.base
+        if type == 'quadratic':
+            a, b, c = polyfit(Y_shifted, discharges, deg=2)
+            
+            self.a = float(a)
+            self.b = float(b)
+            self.c = float(c)
+            
+        elif type == 'power':
+            log_Y = log(Y_shifted)
+            log_Q = log(discharges)
 
-        self.a, self.b, self.c = polyfit(Y_shifted, discharges, deg=2)
+            # Fit: log(Q) = b * log(Y_shifted) + log(a)
+            b, log_a = polyfit(log_Y, log_Q, deg=1)
+            a = exp(log_a)
 
+            self.a = float(a)
+            self.b = float(b)
+            
+        else:
+            raise ValueError("Invalid rating curve type.")
+        
         self.defined = True
         
         
     def discharge_derivative(self, stage, width):
-        return self.a * 2 * (stage - self.base) * (1. / width) + self.b * (1. / width)
+        if not self.defined:
+            raise ValueError("Rating curve is undefined.")
+        
+        if self.type == 'quadratic':
+            d = self.a * 2 * (stage - self.base_stage) * (1. / width) + self.b * (1. / width)
+        else:    
+            d = self.a * self.b * (stage - self.base_stage) ** (self.b - 1) * (1. / width)
+            
+        return d
     
+    
+    def tostring(self):
+        if not self.defined:
+            raise ValueError("Rating curve is undefined.")
+        
+        if self.type == 'quadratic':
+            equation = str(self.a) + ' (Y-' + str(self.base_stage) + ')^2 + ' + str(self.b) + ' (Y-' + str(self.base_stage) + ') + ' + str(self.c)
+        else:
+            equation = str(self.a) + ' (Y-' + str(self.base_stage) + ')^' + str(self.b)
+            
+        return equation

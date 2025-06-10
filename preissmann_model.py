@@ -2,6 +2,7 @@ from river import River
 import numpy as np
 from scipy.constants import g
 from utility import Utility
+from settings import USE_GVF
 
 
 class PreissmannModel:
@@ -50,7 +51,8 @@ class PreissmannModel:
                  river: River,
                  theta: int | float,
                  delta_t: int | float,
-                 delta_x: int | float):
+                 delta_x: int | float,
+                 fit_delta_x = True):
         """
         Initializes the class.
 
@@ -66,7 +68,8 @@ class PreissmannModel:
             Spatial step for the simulation in meters.
             
         """
-
+        self.solved = False
+        
         # Initialize the scheme discretization parameters.
         self.theta = theta
         self.delta_t, self.delta_x = delta_t, delta_x
@@ -76,7 +79,12 @@ class PreissmannModel:
         self.river = river
         self.W = self.river.width
         self.S_0 = self.river.bed_slope
-        self.n_nodes = self.river.length // self.delta_x + 1
+        
+        if fit_delta_x:
+            self.n_nodes = int(round(self.river.total_length / self.delta_x) + 1)
+            self.delta_x = self.river.total_length / (self.n_nodes - 1)
+        else:
+            self.n_nodes = int(self.river.total_length // self.delta_x + 1)
 
         # Declare empty lists for the flow variables at the previous time step, j.
         self.A_previous = []
@@ -91,10 +99,8 @@ class PreissmannModel:
         self.unknowns = []
 
         # Declare an empty list to store the simulation results.
-        self.results_A = []
-        self.results_Q = []
-        self.results_V = []
-        self.results_h = []
+        self.computed_areas = []
+        self.computed_flow_rates = []
 
         # Read the initial conditions of the river.
         self.initialize_t0()
@@ -112,7 +118,10 @@ class PreissmannModel:
         """
 
         # Compute the initial conditions at all nodes in the 'River' object.
-        self.river.initialize_conditions(self.delta_x)
+        if USE_GVF:
+            self.river.initialize_conditions_gvh(self.n_nodes)
+        else:
+            self.river.initialize_conditions(self.n_nodes)
 
         # Read the values of A and Q from the 'River' object and assign
         # them to the lists of unknowns, as well as the lists of A and Q at
@@ -132,8 +141,8 @@ class PreissmannModel:
         self.unknowns = np.array(self.unknowns)
 
         # Store the computed values of A and Q in the results list.
-        self.results_A.append(self.A_previous)
-        self.results_Q.append(self.Q_previous)
+        self.computed_areas.append(self.A_previous)
+        self.computed_flow_rates.append(self.Q_previous)
 
     def compute_residual_vector(self, time) -> np.ndarray:
         """
@@ -154,7 +163,7 @@ class PreissmannModel:
         # Declare a list to store the residuals and add the
         # upstream boundary condition residuals as its 1st element.
         equation_list = [self.upstream_eq(time)]
-
+        
         # Add the continuity and momentum residuals for all reaches.
         for i in range(self.n_nodes - 1):
             equation_list.append(self.continuity_eq(i))
@@ -162,7 +171,7 @@ class PreissmannModel:
 
         # Lastly, add the downstream boundary condition residuals.
         equation_list.append(self.downstream_eq(time))
-
+            
         # Return the list as a NumPy array.
         return np.array(equation_list)
 
@@ -244,27 +253,30 @@ class PreissmannModel:
 
                 # Compute the residual vector.
                 R = self.compute_residual_vector(time)
-
+                
                 # Compute the Jacobian matrix.
                 J = self.compute_jacobian(time)
 
                 # Solve the equation J * delta = -F to compute the delta vector.
-                #print(R)
                 delta = np.linalg.solve(J, -R)
 
                 # Improve the trial values using the computed delta.
                 self.unknowns += delta
 
                 # Compute the cumulative error as the Manhattan norm of delta.
-                error = Utility.manhattan_norm(delta)
+                error = Utility.euclidean_norm(delta)
 
                 if verbose >= 3:
                     print("Error = " + str(error))
+                    
+                if np.isnan(R).any() or np.isnan(J).any():
+                    raise ValueError("gr")
 
                 # End the loop and move to the next time step if the cumulative error is smaller
                 # than the specified tolerance. Otherwise, repeat the solution using the updated values.
                 if error < tolerance:
                     break
+                
             
             # Save the final values of the solved time step.
             self.append_results()
@@ -272,6 +284,10 @@ class PreissmannModel:
             # Update the values of the previous time step.
             self.update_parameters()
 
+        self.solved = True
+        
+        if verbose >= 1:
+            print("Simulation completed successfully.")
     
     def update_parameters(self) -> None:
         """
@@ -299,6 +315,7 @@ class PreissmannModel:
         """
         self.A_current = self.unknowns[::2]
         self.Q_current = self.unknowns[1::2]
+        
 
     def upstream_eq(self, t) -> float:
         """
@@ -365,7 +382,7 @@ class PreissmannModel:
         """
         Sf_i = self.river.friction_slope(self.A_current[i], self.Q_current[i])
         Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
-        
+                
         M = (
                 (g * self.theta / self.W) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
                 - self.delta_x * g * self.theta * self.S_0 * (self.A_current[i + 1] + self.A_current[i])
@@ -405,7 +422,7 @@ class PreissmannModel:
         q = self.Q_current[-1]
         
         D = self.river.downstream_bc(t, y, q)
-
+        
         return D
 
     
@@ -621,10 +638,10 @@ class PreissmannModel:
 
 
     def append_results(self):
-        self.results_A.append(self.A_current.tolist())
-        self.results_Q.append(self.Q_current.tolist())        
+        self.computed_areas.append(self.A_current.tolist())
+        self.computed_flow_rates.append(self.Q_current.tolist())        
         
-    def save_results(self, size: tuple) -> None:
+    def save_results(self, size: tuple, path: str = None) -> None:
         """
         Saves the results of the simulation in four .csv files, containing
         the computed cross-sectional flow area, discharge, flow depth, and velocity.
@@ -633,8 +650,8 @@ class PreissmannModel:
 
         Parameters
         ----------
-        size : tuple of int
-            The number of time steps and spatial steps to save.
+        size : tuple of float
+            The number of temporal and spatial nodes to save.
 
         Returns
         -------
@@ -642,52 +659,71 @@ class PreissmannModel:
 
         """
         
-        Utility.create_directory_if_not_exists('Results')
-        Utility.create_directory_if_not_exists('Results//Preissmann')
+        if path is None:
+            path = 'Results//Preissmann'
+            
+        Utility.create_directory_if_not_exists(path)
         
         t_step = x_step = 1
         
         if size[0] > 1:
-            t_step = (len(self.results_A) - 1) // (size[0] - 1)
+            t_step = (len(self.computed_areas) - 1) // (size[0] - 1)
 
         if size[1] > 1:
             x_step =  (self.n_nodes - 1) // (size[1] - 1)
+                    
+        areas = [a[::x_step]
+                for a in self.computed_areas[::t_step]]
 
-        A = [a[::x_step]
-                for a in self.results_A[::t_step]]
-
-        Q = [q[::x_step]
-                for q in self.results_Q[::t_step]]
+        flow_rates = [q[::x_step]
+                for q in self.computed_flow_rates[::t_step]]
         
         
         # Compute velocities
-        self.results_V = np.array(self.results_Q) / np.array(self.results_A)
-        self.results_V = self.results_V.tolist()
-        V = [v[::x_step]
-                for v in self.results_V[::t_step]]
+        velocities = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
+        velocities = velocities.tolist()
+        velocities = [v[::x_step]
+                for v in velocities[::t_step]]
         
-        # Compute depths
-        self.results_h = np.array(self.results_A) / self.W
-        self.results_h = self.results_h.tolist()
-        h = [h[::x_step]
-                for h in self.results_h[::t_step]]
+        # Compute depths and levels
+        depths = np.array(self.computed_areas) / self.W
+        depths = depths.tolist()
+        
+        levels = []
+        for sublist in depths:
+            levels.append([sublist[i] + self.river.upstream_boundary.bed_level - self.S_0 * self.delta_x * i for i in range(len(sublist))])
+            
+        levels = [levels[::x_step]
+                for levels in levels[::t_step]]
+        
+        depths = [h[::x_step]
+                for h in depths[::t_step]]
 
         data = {
-            'Area': A,
-            'Discharge': Q,
-            'Depth': h,
-            'Velocity': V
+            'Area': areas,
+            'Discharge': flow_rates,
+            'Depth': depths,
+            'Velocity': velocities,
+            'Level': levels
         }
+        
+        header = [self.river.upstream_boundary.chainage + x * self.delta_x for x in range(0, self.n_nodes, x_step)]
+        header = str(header)
+        for c in "[]' ":
+            header = header.replace(c, '')
+            
+        header += '\n'
 
         for key, value in data.items():
             value_str = str(value).replace('], [', '\n')
             for c in "[]' ":
                 value_str = value_str.replace(c, '')
-            with open(f'Results//Preissmann//{key}.csv', 'w') as output_file:
+            with open(path + f'//{key}.csv', 'w') as output_file:
+                output_file.write(header)
                 output_file.write(value_str)
                 
     
-    def get_results(self, parameter: str) -> tuple:
+    def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None) -> tuple:
         """
         Returns the results of the simulation.
 
@@ -698,14 +734,41 @@ class PreissmannModel:
             velocity, and flow depth.
 
         """
+        if not self.solved:
+            raise ValueError("Not solved yet.")
+        
+        reqursted = None
+
         if parameter == 'a':
-            return self.results_A
+            reqursted = self.computed_areas
+            
         elif parameter == 'q':
-            return self.results_Q
+            reqursted = self.computed_flow_rates
+            
         elif parameter == 'v':
-            return self.results_V
+            if self.results_V is None:
+                self.results_V = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
+                self.results_V = self.results_V.tolist()
+            reqursted = self.results_V
+        
         elif parameter == 'h':
-            return self.results_h
+            if self.results_h is None:
+                self.results_h = np.array(self.computed_areas) / self.W
+                self.results_h = self.results_h.tolist()
+            reqursted = self.results_h
+        
         else:
             raise ValueError("Invalid parameter. Choose between 'a', 'q', 'v', or 'h'.")
         
+        reqursted = np.array(reqursted)
+        
+        if spatial_node is not None:
+            if temporal_node is not None:
+                return reqursted[temporal_node, spatial_node]
+            else:
+                return reqursted[:, spatial_node]
+        
+        if temporal_node is not None:
+            return reqursted[temporal_node, :]
+            
+        return reqursted

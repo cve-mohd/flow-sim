@@ -1,5 +1,5 @@
 from boundary import Boundary
-from settings import APPROX_R, BED_SLOPE_CORRECTION
+from settings import APPROX_R
 
 
 class River:
@@ -22,15 +22,15 @@ class River:
         
     """
 
-    def __init__(self, length: float, width: float, bed_slope: float, manning_co: float,
-                 upstream_boundary: Boundary, downstream_boundary: Boundary):
+    def __init__(self, length: float, width: float, initial_flow_rate: float, bed_slope: float | str, manning_co: float,
+                 upstream_boundary: Boundary, downstream_boundary: Boundary, buffer_length: float = 0):
         """
         Initialized an instance.
 
         Parameters
         ----------
-        bed_slope : float
-            The slope of the river bed.
+        bed_slope : any
+            A value, 'normal', or 'real'.
         manning_co : float
             The river's Manning coefficient or coefficient of roughness.
         width : float
@@ -39,9 +39,12 @@ class River:
             The length of the river.
 
         """
-        self.length = length
+        self.real_length = length
+        self.buffer_length = buffer_length
+        self.total_length = self.real_length + self.buffer_length
+        
         self.width = float(width)
-        self.bed_slope = bed_slope
+        self.initial_flow_rate = initial_flow_rate
         self.manning_co = manning_co
         
         self.upstream_boundary = upstream_boundary
@@ -49,10 +52,21 @@ class River:
         
         self.initial_conditions = []
         
-        if BED_SLOPE_CORRECTION:
+        if isinstance(bed_slope, float) or isinstance(bed_slope, int):
+            self.bed_slope = bed_slope
+        
+        elif bed_slope == 'normal':
             A = upstream_boundary.initial_depth * self.width
-            Q = downstream_boundary.initial_discharge
+            Q = initial_flow_rate
             self.bed_slope = self.friction_slope(A, Q)
+            
+        elif bed_slope == 'real':
+            y1 = self.upstream_boundary.bed_level
+            y2 = self.downstream_boundary.bed_level
+            self.bed_slope = (y1 - y2) / self.real_length
+            
+        else:
+            raise ValueError("Invalid bed slope argument.")
         
 
     def friction_slope(self, A: float, Q: float, approx_R = APPROX_R) -> float:
@@ -80,7 +94,7 @@ class River:
             P = self.width + 2 * A / self.width
             
         Sf = (self.manning_co * P ** (2. / 3) * Q / A ** (5. / 3)) ** 2
-        
+                
         return Sf
     
     def friction_slope_deriv_A(self, A: float, Q: float, approx_R = APPROX_R) -> float:
@@ -148,7 +162,7 @@ class River:
         return trial_A
         
         
-    def initialize_conditions(self, delta_x: float) -> None:
+    def initialize_conditions(self, n_nodes: int) -> None:
         """
         Computes the initial conditions.
         Computes the initial values of the flow variables at each node
@@ -164,19 +178,66 @@ class River:
         None.
 
         """
-        
-        n_nodes = self.length // delta_x + 1
-        
+        y_0 = self.upstream_boundary.initial_depth
+        y_n = self.downstream_boundary.initial_depth
+                
         for i in range(n_nodes):
-            y = (self.upstream_boundary.initial_depth
-                 + (self.downstream_boundary.initial_depth - self.upstream_boundary.initial_depth) * i / float(n_nodes - 1))
-
-            Q = (self.upstream_boundary.initial_discharge
-                 + (self.downstream_boundary.initial_discharge - self.upstream_boundary.initial_discharge) * i / float(n_nodes - 1))
-
-            A = y * self.width
+            distance = self.total_length * float(i) / float(n_nodes-1)
             
+            if distance <= self.real_length:
+                y = (y_0 + (y_n - y_0) * distance / self.real_length)
+                
+            else:
+                y = y_n
+
+            A, Q = y * self.width, self.initial_flow_rate
             self.initial_conditions.append((A, Q))
+            
+            
+    def initialize_conditions_gvh(self, n_nodes: int) -> None:
+        """
+        Computes the initial backwater profile using the gradually varied flow (GVF) equation.
+        
+        Parameters
+        ----------
+        n_nodes : int
+            The number of spatial nodes along the river, including the two boundaries.
+            
+        Returns
+        -------
+        None.
+        """
+        from scipy.constants import g
+
+        dx = self.total_length / (n_nodes - 1)
+        h = self.downstream_boundary.initial_depth
+
+        for i in reversed(range(n_nodes)):
+            distance = i * dx
+
+            if distance > self.real_length:
+                A, Q = self.downstream_boundary.initial_depth * self.width, self.initial_flow_rate
+                            
+            else:
+                A = self.width * h
+                Sf = self.friction_slope(A, self.initial_flow_rate)
+                Fr2 = self.initial_flow_rate**2 / (g * A**3 / self.width)
+
+                denominator = 1 - Fr2
+                if abs(denominator) < 1e-6:
+                    dhdx = 0.0
+                else:
+                    dhdx = (self.bed_slope - Sf) / denominator
+
+                if i < n_nodes - 1:
+                    h -= dhdx * dx
+
+                if h < 0:
+                    raise ValueError("GVH failed.")
+
+                A, Q = h * self.width, self.initial_flow_rate
+                
+            self.initial_conditions.insert(0, (A, Q))
 
 
     def upstream_bc(self, time = None, depth = None, discharge = None):

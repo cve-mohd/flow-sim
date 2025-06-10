@@ -3,39 +3,41 @@ from boundary import Boundary
 from settings import *
 
 def f(t):
-    if t <= 6*3600:
-        return 1562.5 + (10000 - 1562.5) * t/(6*3600)
+    if t <= 24*3600:
+        return 1562.5 + (10000 - 1562.5) * t/(24*3600)
     else:
         return 10000
-    
-us = Boundary(7.5, 1562.5, 'hydrograph', 502.5, hydrograph_function=f)
-ds = Boundary(7.5, 1562.5, 'fixed_depth', 490, fixed_depth=7.5)
+
+us = Boundary(US_INIT_DEPTH, 'hydrograph', US_INIT_STAGE - US_INIT_DEPTH, hydrograph_function=f)
+ds = Boundary(DS_INIT_DEPTH, 'fixed_depth', DS_INIT_STAGE - DS_INIT_DEPTH, fixed_depth=DS_INIT_DEPTH)
 
 # Declare a 'River' object, specifying the geometric attributes of the river.
-blue_nile = River(LENGTH, WIDTH, BED_SLOPE, MANNING_COEFF, us, ds)
+channel = River(length = LENGTH,
+                width = WIDTH,
+                initial_flow_rate = FLOW_RATE,
+                bed_slope = 'real',
+                manning_co = MANNING_COEFF,
+                upstream_boundary = us,
+                downstream_boundary = ds,
+                buffer_length = 0)
 
 if SCHEME == 'preissmann':
     from preissmann_model import PreissmannModel
     
     # Declare a 'PreissmannModel' object, specifying the scheme parameters.
-    p_model = PreissmannModel(blue_nile, PREISSMANN_THETA, TIME_STEP, SPATIAL_STEP)
+    p_model = PreissmannModel(channel, 0.6, TIME_STEP, SPATIAL_STEP)
 
     # Solve the scheme using a specified tolerance.
-    p_model.solve(DURATION, TOLERANCE, verbose=3)
+    p_model.solve(DURATION, TOLERANCE, verbose=0)
 
     # Save the results.
-    p_model.save_results(RESULTS_SIZE)    
+    p_model.save_results((48, -1))               
 
 elif SCHEME == 'lax':
     from lax_model import LaxModel
     
-    # Declare a 'LaxModel' object, specifying the scheme parameters.
-    l_model = LaxModel(blue_nile, TIME_STEP, SPATIAL_STEP)
-
-    # Solve the scheme using a specified tolerance.
+    l_model = LaxModel(channel, TIME_STEP, SPATIAL_STEP)
     l_model.solve(DURATION)
-
-    # Save the results.
     l_model.save_results(RESULTS_SIZE)
     
 else:

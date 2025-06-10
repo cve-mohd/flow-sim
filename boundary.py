@@ -1,19 +1,15 @@
-from settings import *
-import numpy as np
-from utility import Utility, RatingCurve
+from utility import RatingCurve
 
 
 class Boundary:
-    def __init__(self, initial_depth, initial_discharge, condition, initial_stage = None, fixed_depth = None, rating_curve: RatingCurve = None, hydrograph_function = None):
+    def __init__(self, initial_depth, condition, bed_level,
+                 fixed_depth = None, rating_curve: RatingCurve = None, hydrograph_function = None, chainage: int | float = 0):
+        
         self.initial_depth = initial_depth
-        self.initial_discharge = initial_discharge
         
-        self.initial_stage = initial_stage
-        self.bed_level = None
-        
-        if initial_stage is not None:
-            self.bed_level = initial_stage - initial_depth
-        
+        self.bed_level = bed_level
+        self.initial_stage = bed_level + initial_depth
+                
         if condition in ['hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve']:
             self.condition = condition
         else:
@@ -22,6 +18,7 @@ class Boundary:
         self.rating_curve = rating_curve
         self.hydrograph = None
         self.fixed_depth = fixed_depth
+        self.chainage = chainage
         
         self.reservoir_area = None
         self.reservoir_exit_rating_curve = None
@@ -40,10 +37,7 @@ class Boundary:
     def update_fixed_depth(self, inflow, duration, stage):
         if self.reservoir_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
-        
-        if inflow is None or duration is None or stage is None:
-            raise ValueError("Insufficient arguments.")
-        
+                
         outflow = self.reservoir_exit_rating_curve.discharge(stage)
         
         if stage <= self.initial_stage and outflow >= inflow:
@@ -72,8 +66,9 @@ class Boundary:
         if self.hydrograph is None:
             raise ValueError("Hydrograph is not defined.")
         
+        from numpy import interp
         times, flows = zip(*self.hydrograph)
-        return float(np.interp(t, times, flows))
+        return float(interp(t, times, flows))
 
 
     def hydrograph_Q(self, time):
@@ -103,7 +98,7 @@ class Boundary:
             Q_t = self.hydrograph_Q(time)
             return discharge - Q_t
             
-        if self.condition == 'fixed_depth':
+        elif self.condition == 'fixed_depth':
             if depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             elif self.fixed_depth is None:
@@ -114,7 +109,7 @@ class Boundary:
                     
                 return depth - self.fixed_depth
         
-        if self.condition == 'normal_depth':
+        elif self.condition == 'normal_depth':
             if width is None or depth is None or discharge is None or bed_slope is None or manning_co is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
@@ -124,7 +119,7 @@ class Boundary:
             Q = (A ** (5./3) * bed_slope ** 0.5) / (manning_co * P ** (2./3))
             return discharge - Q
         
-        if DS_CONDITION == 'rating_curve':
+        elif self.condition == 'rating_curve':
             if depth is None or discharge is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
