@@ -9,7 +9,7 @@ APPROX_R = False
 
 ############                Simulation Parameters               ############
 
-SCHEME = 'preissmann' # 'preissmann' or 'lax'
+SCHEME = 'lax' # 'preissmann' or 'lax'
 
 TIME_STEP = 3600
 SPATIAL_STEP = 1000
@@ -41,7 +41,7 @@ PEAK_HOUR = 12
 
 ############                Downstream Boundary                 ############
 
-DS_INIT_DEPTH = 19.5
+DS_INIT_DEPTH = 7.5
 DS_INIT_DISCHARGE = 1562.5
 DS_INIT_STAGE = 490
 DS_MAX_STAGE = 493

@@ -2,7 +2,7 @@ from river import River
 from boundary import Boundary
 from settings import *
 from utility import RatingCurve
-from preissmann_model import PreissmannModel
+from lax import LaxSolver
 
 def f(t):
     if t <= 18*3600:
@@ -53,17 +53,17 @@ for reach in reaches:
                     upstream_boundary = us,
                     downstream_boundary = ds)
         
-    p_model = PreissmannModel(channel, PREISSMANN_THETA, TIME_STEP, 0.05 * channel.total_length)
+    solver = LaxSolver(channel, 10, 0.1 * channel.total_length)
 
-    p_model.solve(DURATION, TOLERANCE, verbose=0)
+    solver.run(24 * 3600, verbose=0)
     
-    depths = p_model.get_results('h', spatial_node=0)
+    depths = solver.get_results('h', spatial_node=0)
     stages = depths + channel.upstream_boundary.bed_level
-    discharges = p_model.get_results('q', spatial_node=0)
+    discharges = solver.get_results('q', spatial_node=0)
     
     rating_curve = RatingCurve()
     #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
-    rating_curve.fit(discharges=discharges, stages=stages)
+    rating_curve.fit(discharges=discharges[::360], stages=stages[::360])
     
     rating_curves.append(rating_curve)
 
@@ -83,8 +83,8 @@ for iteration in range(number_of_iterations):
         if reach['id'] == 0:
             us.set_hydrograph(f)
         else:
-            times = [t for t in range(0, DURATION + p_model.delta_t, p_model.delta_t)]
-            discharges = p_model.get_results('q', spatial_node=-1)
+            times = [t for t in range(0, DURATION + solver.temporal_step, solver.temporal_step)]
+            discharges = solver.get_results('q', spatial_node=-1)
             us.build_hydrograph(times, discharges.tolist())
         
         if reach['id'] < len(reaches) - 1:
@@ -93,31 +93,29 @@ for iteration in range(number_of_iterations):
         else:
             ds = Boundary(h_ds, 'fixed_depth', reach['ds_bed_level'], fixed_depth=h_ds)
             
-        channel = River(length = reach['length'],
+        channel = River(length = reach['length'], 
                         width = reach['width'],
                         initial_flow_rate = 1562.5,
-                        bed_slope = 'real',
                         manning_co = 0.027,
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
-        p_model = PreissmannModel(channel, PREISSMANN_THETA, TIME_STEP, 0.05 * channel.total_length)
-        p_model.solve(DURATION, TOLERANCE, verbose=0)
+        solver = LaxSolver(channel, 10, 0.1 * channel.total_length)
+        solver.run(24 * 3600, verbose=1)
         
         ##############
         
         if iteration < number_of_iterations - 1:
-            depths = p_model.get_results('h', spatial_node=0)
+            depths = solver.get_results('h', spatial_node=0)
             stages = depths + channel.upstream_boundary.bed_level
-            discharges = p_model.get_results('q', spatial_node=0)
+            discharges = solver.get_results('q', spatial_node=0)
             
             rating_curve = RatingCurve()
-            #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
-            rating_curve.fit(discharges=discharges, stages=stages)
+            rating_curve.fit(discharges=discharges[::360], stages=stages[::360])
             
             new_rating_curves.append(rating_curve)
         else:
-            p_model.save_results((25,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
+            solver.save_results((25,-1), 'Results//Lax//Reach ' + str( reach['id'] ))
         
         #############
                 

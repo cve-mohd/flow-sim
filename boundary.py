@@ -48,20 +48,6 @@ class Boundary:
         self.fixed_depth += added_depth
     
     
-    def rating_curve_Q(self, stage):
-        if self.rating_curve is None:
-            raise ValueError("Rating curve is undefined.")
-        
-        return self.rating_curve.discharge(stage)
-    
-    
-    def rating_curve_stage(self, discharge):
-        if self.rating_curve is None:
-            raise ValueError("Rating curve is undefined.")
-        
-        return self.rating_curve.stage(discharge)
-    
-    
     def interpolate_hydrograph(self, t):
         if self.hydrograph is None:
             raise ValueError("Hydrograph is not defined.")
@@ -123,7 +109,7 @@ class Boundary:
             if depth is None or discharge is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            residual = discharge - self.rating_curve_Q(self.bed_level + depth)
+            residual = discharge - self.rating_curve.discharge(self.bed_level + depth)
         
         return residual
         

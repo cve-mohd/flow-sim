@@ -1,6 +1,4 @@
 from boundary import Boundary
-from settings import APPROX_R
-
 
 class River:
     """
@@ -22,8 +20,8 @@ class River:
         
     """
 
-    def __init__(self, length: float, width: float, initial_flow_rate: float, bed_slope: float | str, manning_co: float,
-                 upstream_boundary: Boundary, downstream_boundary: Boundary, buffer_length: float = 0):
+    def __init__(self, length: float, width: float, initial_flow_rate: float, manning_co: float,
+                 upstream_boundary: Boundary, downstream_boundary: Boundary, bed_slope: float | str = 'real', flow_type: str = 'varied', buffer_length: float = 0):
         """
         Initialized an instance.
 
@@ -50,26 +48,29 @@ class River:
         self.upstream_boundary = upstream_boundary
         self.downstream_boundary = downstream_boundary
         
+        if flow_type in ['varied', 'uniform']:
+            self.flow_type = flow_type
+        
         self.initial_conditions = []
         
-        if isinstance(bed_slope, float) or isinstance(bed_slope, int):
+        if isinstance(bed_slope, float):
             self.bed_slope = bed_slope
         
         elif bed_slope == 'normal':
             A = upstream_boundary.initial_depth * self.width
-            Q = initial_flow_rate
-            self.bed_slope = self.friction_slope(A, Q)
+            Q = self.initial_flow_rate
+            self.bed_slope = self.friction_slope(A, Q, False)
             
         elif bed_slope == 'real':
             y1 = self.upstream_boundary.bed_level
             y2 = self.downstream_boundary.bed_level
-            self.bed_slope = (y1 - y2) / self.real_length
+            self.bed_slope = float(y1 - y2) / float(self.real_length)
             
         else:
             raise ValueError("Invalid bed slope argument.")
         
 
-    def friction_slope(self, A: float, Q: float, approx_R = APPROX_R) -> float:
+    def friction_slope(self, A: float, Q: float, approx_R = False) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -79,8 +80,6 @@ class River:
             The cross-sectional flow area.
         Q : float
             The discharge.
-        W : float
-            The channel width.
             
         Returns
         -------
@@ -97,7 +96,7 @@ class River:
                 
         return Sf
     
-    def friction_slope_deriv_A(self, A: float, Q: float, approx_R = APPROX_R) -> float:
+    def friction_slope_deriv_A(self, A: float, Q: float, approx_R = False) -> float:
         if approx_R:
             d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
         else:
@@ -106,7 +105,7 @@ class River:
 
         return d_Sf
     
-    def friction_slope_deriv_Q(self, A: float, Q: float, approx_R = APPROX_R) -> float:
+    def friction_slope_deriv_Q(self, A: float, Q: float, approx_R = False) -> float:
         if approx_R:
             P = self.width
         else:
@@ -144,20 +143,22 @@ class River:
         Q = A ** (5./3) * S ** 0.5 / (self.manning_co * P ** (2./3))
         return Q
     
+    def manning_Q_deriv(self, A, slope = None):
+        pass
     
-    def manning_A(self, Q, tolerance, slope = None):
+    def manning_A(self, flow_rate, tolerance = 1e-3, slope = None):
         if slope is not None:
             S = slope
         else:
             S = self.bed_slope
             
         trial_A = self.width * self.upstream_boundary.initial_depth
-        trial_Q = self.manning_Q(trial_A, S)
+        q = self.manning_Q(trial_A, S)
             
-        while abs(trial_Q - Q) >= tolerance:
-            error = (trial_Q - Q) / Q
+        while abs(q - flow_rate) >= tolerance:
+            error = (q - flow_rate) / flow_rate
             trial_A -= 0.1 * error * trial_A
-            trial_Q = self.manning_Q(trial_A, S)
+            q = self.manning_Q(trial_A, S)
             
         return trial_A
         
@@ -178,67 +179,58 @@ class River:
         None.
 
         """
-        y_0 = self.upstream_boundary.initial_depth
-        y_n = self.downstream_boundary.initial_depth
+        if self.flow_type == 'uniform':
+            y_0 = self.upstream_boundary.initial_depth
+            y_n = self.downstream_boundary.initial_depth
+                    
+            for i in range(n_nodes):
+                distance = self.total_length * float(i) / float(n_nodes-1)
                 
-        for i in range(n_nodes):
-            distance = self.total_length * float(i) / float(n_nodes-1)
-            
-            if distance <= self.real_length:
-                y = (y_0 + (y_n - y_0) * distance / self.real_length)
-                
-            else:
-                y = y_n
-
-            A, Q = y * self.width, self.initial_flow_rate
-            self.initial_conditions.append((A, Q))
-            
-            
-    def initialize_conditions_gvh(self, n_nodes: int) -> None:
-        """
-        Computes the initial backwater profile using the gradually varied flow (GVF) equation.
-        
-        Parameters
-        ----------
-        n_nodes : int
-            The number of spatial nodes along the river, including the two boundaries.
-            
-        Returns
-        -------
-        None.
-        """
-        from scipy.constants import g
-
-        dx = self.total_length / (n_nodes - 1)
-        h = self.downstream_boundary.initial_depth
-
-        for i in reversed(range(n_nodes)):
-            distance = i * dx
-
-            if distance > self.real_length:
-                A, Q = self.downstream_boundary.initial_depth * self.width, self.initial_flow_rate
-                            
-            else:
-                A = self.width * h
-                Sf = self.friction_slope(A, self.initial_flow_rate)
-                Fr2 = self.initial_flow_rate**2 / (g * A**3 / self.width)
-
-                denominator = 1 - Fr2
-                if abs(denominator) < 1e-6:
-                    dhdx = 0.0
+                if distance <= self.real_length:
+                    y = (y_0 + (y_n - y_0) * distance / self.real_length)
+                    
                 else:
-                    dhdx = (self.bed_slope - Sf) / denominator
+                    y = y_n
 
-                if i < n_nodes - 1:
-                    h -= dhdx * dx
-
-                if h < 0:
-                    raise ValueError("GVH failed.")
-
-                A, Q = h * self.width, self.initial_flow_rate
+                A, Q = y * self.width, self.initial_flow_rate
+                self.initial_conditions.append((A, Q))
                 
-            self.initial_conditions.insert(0, (A, Q))
+        elif self.flow_type == 'varied':
+            from scipy.constants import g
 
+            dx = self.total_length / (n_nodes - 1)
+            h = self.downstream_boundary.initial_depth
+
+            for i in reversed(range(n_nodes)):
+                distance = i * dx
+
+                if distance > self.real_length:
+                    A, Q = self.downstream_boundary.initial_depth * self.width, self.initial_flow_rate
+                                
+                else:
+                    A = self.width * h
+                    Sf = self.friction_slope(A, self.initial_flow_rate)
+                    Fr2 = self.initial_flow_rate**2 / (g * A**3 / self.width)
+
+                    denominator = 1 - Fr2
+                    if abs(denominator) < 1e-6:
+                        dhdx = 0.0
+                    else:
+                        dhdx = (self.bed_slope - Sf) / denominator
+
+                    if i < n_nodes - 1:
+                        h -= dhdx * dx
+
+                    if h < 0:
+                        raise ValueError("GVH failed.")
+
+                    A, Q = h * self.width, self.initial_flow_rate
+                    
+                self.initial_conditions.insert(0, (A, Q))
+                
+        else:
+            raise ValueError("Invalid flow type.")
+            
 
     def upstream_bc(self, time = None, depth = None, discharge = None):
         return self.upstream_boundary.condition_residual(time, depth, self.width, discharge, self.bed_slope, self.manning_co)
