@@ -62,7 +62,8 @@ for reach in reaches:
     discharges = p_model.get_results('q', spatial_node=0)
     
     rating_curve = RatingCurve()
-    rating_curve.fit(discharges=discharges, stages=stages, base=min(stages)-1, type='power')
+    #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
+    rating_curve.fit(discharges=discharges, stages=stages)
     
     rating_curves.append(rating_curve)
 
@@ -111,7 +112,8 @@ for iteration in range(number_of_iterations):
             discharges = p_model.get_results('q', spatial_node=0)
             
             rating_curve = RatingCurve()
-            rating_curve.fit(discharges=discharges, stages=stages, base=min(stages)-1, type='power')
+            #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
+            rating_curve.fit(discharges=discharges, stages=stages)
             
             new_rating_curves.append(rating_curve)
         else:

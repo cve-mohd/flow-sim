@@ -1,5 +1,8 @@
 import os
 from numpy import sum, abs, square
+from numpy import min, polyfit, array, log, exp
+from numpy.polynomial.polynomial import Polynomial
+import numpy as np
 
 
 class Utility:
@@ -31,15 +34,31 @@ class Utility:
     
 class RatingCurve:    
     def __init__(self):
+        self.function = None
+        self.derivative = None
+        
         self.defined = False
         self.type = None    
     
     
-    def set(self, type, a, b, c=0, base=0):
-        if type not in ['power', 'quadratic']:
-            raise ValueError("Invalid rating curve type.")
+    def set(self, type, a, b, c=None, stage_shift=None):
+        if stage_shift is None:
+            self.stage_shift = 0
+            
+        if type == 'polynomial':
+            if c is None:
+                raise ValueError("Insufficient arguments. c must be specified.")
+            else:
+                self.a, self.b, self.c = a, b, c
+            
+        elif type == 'power':
+            self.a, self.b = a, b
+            
+        else:
+            raise ValueError("Invalid type.")
         
-        self.a, self.b, self.c, self.base_stage = a, b, c, base
+        self.function = None
+        self.derivative = None
         self.defined = True
         self.type = type
         
@@ -63,22 +82,26 @@ class RatingCurve:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        x = stage - self.base_stage
+        if self.function is not None:
+            return self.function(stage)
         
-        if self.type == 'quadratic':
-            discharge = self.a * x ** 2 + self.b * x + self.c
-            
         else:
-            discharge = self.a * x ** self.b
+            x = stage + self.stage_shift
+            
+            if self.type == 'polynomial':
+                discharge = self.a * x ** 2 + self.b * x + self.c
                 
-        return float(discharge)
+            else:
+                discharge = self.a * x ** self.b
+                    
+            return float(discharge)
     
     
     def stage(self, discharge: float, tolerance: float = 1e-3) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        trial_stage = self.base_stage * 1.05
+        trial_stage = - self.stage_shift * 1.05
         
         q = self.discharge(stage=trial_stage)
         
@@ -90,9 +113,8 @@ class RatingCurve:
         return trial_stage
     
     
-    def fit(self, discharges: list, stages: list, base: float=0, type='quadratic'):
+    def fit(self, discharges: list, stages: list, stage_shift: float=0, type: str='polynomial', scale=True, degree: int=2):
         self.type = type
-        from numpy import min, polyfit, array, log, exp
         
         if len(discharges) < 3:
             raise ValueError("Need at least 3 points.")
@@ -103,24 +125,32 @@ class RatingCurve:
         discharges = array(discharges, dtype=float)
         stages = array(stages, dtype=float)
             
-        self.base_stage = base
-        Y_shifted = stages - self.base_stage
+        self.stage_shift = stage_shift
+        shifted_stages = stages + self.stage_shift
                 
-        if any(Y_shifted <= 0):
+        if any(shifted_stages <= 0):
             raise ValueError("All (stage - base) values must be positive for power-law fitting.")
 
-        if type == 'quadratic':
-            a, b, c = polyfit(Y_shifted, discharges, deg=2)
+        if type == 'polynomial':
+            if scale:
+                self.function = Polynomial.fit(x=shifted_stages, y=discharges, deg=degree)
+                self.derivative = self.function.deriv()
             
-            self.a = float(a)
-            self.b = float(b)
-            self.c = float(c)
+            else:
+                if degree != 2:
+                    print("WARNING: Polynomial degree defaults to 2 for unscaled fitting.")
+                    
+                a, b, c = polyfit(shifted_stages, discharges, deg=2)
+                
+                self.a = float(a)
+                self.b = float(b)
+                self.c = float(c)
             
         elif type == 'power':
-            log_Y = log(Y_shifted)
+            log_Y = log(shifted_stages)
             log_Q = log(discharges)
 
-            # Fit: log(Q) = b * log(Y_shifted) + log(a)
+            # Fit: log(Q) = b * log(shifted_stages) + log(a)
             b, log_a = polyfit(log_Y, log_Q, deg=1)
             a = exp(log_a)
 
@@ -133,14 +163,20 @@ class RatingCurve:
         self.defined = True
         
         
-    def discharge_derivative(self, stage, width):
+    def derivative_wrt_stage(self, stage):
+        Y_ = stage + self.stage_shift
+        
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        if self.type == 'quadratic':
-            d = self.a * 2 * (stage - self.base_stage) * (1. / width) + self.b * (1. / width)
+        if self.type == 'polynomial':
+            if self.function is not None:
+                d = self.derivative(Y_)
+            else:
+                d = self.a * 2 * Y_ + self.b
+        
         else:    
-            d = self.a * self.b * (stage - self.base_stage) ** (self.b - 1) * (1. / width)
+            d = self.a * self.b * Y_ ** (self.b - 1)
             
         return d
     
@@ -149,9 +185,13 @@ class RatingCurve:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
-        if self.type == 'quadratic':
-            equation = str(self.a) + ' (Y-' + str(self.base_stage) + ')^2 + ' + str(self.b) + ' (Y-' + str(self.base_stage) + ') + ' + str(self.c)
+        if self.type == 'polynomial':
+            if self.function is not None:
+                return str(self.function)
+            else:
+                equation = str(self.a) + ' (Y+' + str(self.stage_shift) + ')^2 + ' + str(self.b) + ' (Y+' + str(self.stage_shift) + ') + ' + str(self.c)
+        
         else:
-            equation = str(self.a) + ' (Y-' + str(self.base_stage) + ')^' + str(self.b)
+            equation = str(self.a) + ' (Y+' + str(self.stage_shift) + ')^' + str(self.b)
             
         return equation

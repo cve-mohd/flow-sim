@@ -746,16 +746,12 @@ class PreissmannModel:
             reqursted = self.computed_flow_rates
             
         elif parameter == 'v':
-            if self.results_V is None:
-                self.results_V = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
-                self.results_V = self.results_V.tolist()
-            reqursted = self.results_V
+            velocities = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
+            reqursted = velocities.tolist()
         
         elif parameter == 'h':
-            if self.results_h is None:
-                self.results_h = np.array(self.computed_areas) / self.W
-                self.results_h = self.results_h.tolist()
-            reqursted = self.results_h
+            depths = np.array(self.computed_areas) / self.W
+            reqursted = depths.tolist()
         
         else:
             raise ValueError("Invalid parameter. Choose between 'a', 'q', 'v', or 'h'.")

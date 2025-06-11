@@ -96,7 +96,7 @@ class Boundary:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             Q_t = self.hydrograph_Q(time)
-            return discharge - Q_t
+            residual = discharge - Q_t
             
         elif self.condition == 'fixed_depth':
             if depth is None:
@@ -107,7 +107,7 @@ class Boundary:
                 if self.reservoir_area is not None:
                     self.update_fixed_depth(discharge, delta_t, self.bed_level + depth)
                     
-                return depth - self.fixed_depth
+                residual = depth - self.fixed_depth
         
         elif self.condition == 'normal_depth':
             if width is None or depth is None or discharge is None or bed_slope is None or manning_co is None:
@@ -117,54 +117,62 @@ class Boundary:
             A = width * depth
             
             Q = (A ** (5./3) * bed_slope ** 0.5) / (manning_co * P ** (2./3))
-            return discharge - Q
+            residual = discharge - Q
         
         elif self.condition == 'rating_curve':
             if depth is None or discharge is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return discharge - self.rating_curve_Q(self.bed_level + depth)
+            residual = discharge - self.rating_curve_Q(self.bed_level + depth)
+        
+        return residual
         
         
     def condition_derivative_wrt_A(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
+        dy_dA = 1. / width
+        
         if self.condition == 'hydrograph':
-            return 0
+            derivative = 0
             
-        if self.condition == 'fixed_depth':
+        elif self.condition == 'fixed_depth':
             if width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return 1./width
+            derivative = dy_dA - 0
         
-        if self.condition == 'normal_depth':
+        elif self.condition == 'normal_depth':
             if width is None or area is None or bed_slope is None or manning_co is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             P = width + 2 * area/width
             R = area/P
             
-            return - bed_slope ** 0.5 / manning_co * (
+            derivative = - bed_slope ** 0.5 / manning_co * (
                 -4. / (3*width) * R ** (5./3) + 5./3 * R ** (2./3)
                 )
         
-        if self.condition == 'rating_curve':
+        elif self.condition == 'rating_curve':
             if width is None or area is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             stage = self.bed_level + area/width
             
-            return 0 - self.rating_curve.discharge_derivative(stage, width)
+            derivative = 0 - self.rating_curve.derivative_wrt_stage(stage) * dy_dA
+        
+        return derivative
         
     
     def condition_derivative_wrt_Q(self):
         if self.condition == 'hydrograph':
-            return 1
+            derivative = 1
             
         if self.condition == 'fixed_depth':
-            return 0
+            derivative = 0
         
         if self.condition == 'normal_depth':
-            return 1
+            derivative = 1
         
         if self.condition == 'rating_curve':
-            return 1
+            derivative = 1
+            
+        return derivative
