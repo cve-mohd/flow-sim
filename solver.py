@@ -69,8 +69,8 @@ class Solver:
         self.river = river
         self.solved = False
                 
-        self.temporal_step, self.spatial_step = temporal_step, spatial_step
-        self.num_celerity = self.spatial_step / float(self.temporal_step)
+        self.time_step, self.spatial_step = temporal_step, spatial_step
+        self.num_celerity = self.spatial_step / float(self.time_step)
 
         if fit_spatial_step:
             self.number_of_nodes = int(round(self.river.total_length / self.spatial_step) + 1)
@@ -191,7 +191,8 @@ class Solver:
 
         for key, value in data.items():
             value_str = str(value).replace('], [', '\n')
-            for c in "[]' ":
+            value_str = str(value_str).replace('np.float64', '')
+            for c in "[]' ()":
                 value_str = value_str.replace(c, '')
             with open(path + f'//{key}.csv', 'w') as output_file:
                 output_file.write(header)

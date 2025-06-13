@@ -137,7 +137,7 @@ class PreissmannSolver(Solver):
             equation_list.append(self.momentum_eq(i))
 
         # Lastly, add the downstream boundary condition residuals.
-        equation_list.append(self.downstream_eq(time))
+        equation_list.append(self.downstream_eq())
             
         # Return the list as a NumPy array.
         return np.array(equation_list)
@@ -204,7 +204,7 @@ class PreissmannSolver(Solver):
         """
 
         # Loop through the time steps, incrementing the time by delta t every time.
-        for time in range(self.temporal_step, duration + self.temporal_step, self.temporal_step):
+        for time in range(self.time_step, duration + self.time_step, self.time_step):
             if verbose >= 1:
                 print('\n---------- Time = ' + str(time) + 's ----------\n')
 
@@ -243,8 +243,7 @@ class PreissmannSolver(Solver):
                 # than the specified tolerance. Otherwise, repeat the solution using the updated values.
                 if error < tolerance:
                     break
-                
-            
+                                    
             # Save the final values of the solved time step.
             self.append_result()
 
@@ -269,6 +268,10 @@ class PreissmannSolver(Solver):
         self.A_previous = [i for i in self.unknowns[::2]]
         self.Q_previous = [i for i in self.unknowns[1::2]]
         self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
+        
+        if self.river.downstream_boundary.reservoir_exit_rating_curve is not None:
+            s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
+            self.river.downstream_boundary.update_fixed_depth(self.Q_current[-1], self.time_step, s)
 
     def update_guesses(self) -> None:
         """
@@ -374,7 +377,7 @@ class PreissmannSolver(Solver):
 
         return M
 
-    def downstream_eq(self, t) -> float:
+    def downstream_eq(self) -> float:
         """
         Computes the residual of the downstream boundary condition equation.
 
@@ -384,10 +387,10 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        y = float(self.A_current[-1]) / self.river.width
-        q = self.Q_current[-1]
+        depth = float(self.A_current[-1]) / self.river.width
+        inflow = self.Q_current[-1]
         
-        D = self.river.downstream_bc(t, y, q)
+        D = self.river.downstream_bc(depth=depth, discharge=inflow, time_step=self.time_step)
         
         return D
 

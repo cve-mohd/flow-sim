@@ -2,10 +2,11 @@ from utility import RatingCurve
 
 
 class Boundary:
-    def __init__(self, initial_depth, condition, bed_level,
-                 fixed_depth = None, rating_curve: RatingCurve = None, hydrograph_function = None, chainage: int | float = 0):
+    def __init__(self, initial_depth, condition, bed_level, rating_curve: RatingCurve = None,
+                 hydrograph_function = None, chainage: int | float = 0):
         
         self.initial_depth = initial_depth
+        self.fixed_depth = self.initial_depth
         
         self.bed_level = bed_level
         self.initial_stage = bed_level + initial_depth
@@ -17,7 +18,6 @@ class Boundary:
         
         self.rating_curve = rating_curve
         self.hydrograph = None
-        self.fixed_depth = fixed_depth
         self.chainage = chainage
         
         self.reservoir_area = None
@@ -40,13 +40,13 @@ class Boundary:
                 
         outflow = self.reservoir_exit_rating_curve.discharge(stage)
         
-        if stage <= self.initial_stage and outflow >= inflow:
-            return
-        
         added_volume = (inflow - outflow) * duration
-        added_depth = added_volume / self.reservoir_area
+        added_depth = added_volume / float(self.reservoir_area)
+                
         self.fixed_depth += added_depth
-    
+        
+        if self.fixed_depth < self.initial_depth:
+            self.fixed_depth = self.initial_depth    
     
     def interpolate_hydrograph(self, t):
         if self.hydrograph is None:
@@ -76,7 +76,7 @@ class Boundary:
         self.rating_curve = rating_curve
         
     
-    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None, delta_t = None):
+    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None, time_step = None):
         if self.condition == 'hydrograph':
             if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
@@ -90,8 +90,10 @@ class Boundary:
             elif self.fixed_depth is None:
                 raise ValueError("Fixed depth is not defined.")
             else:
-                if self.reservoir_area is not None:
-                    self.update_fixed_depth(discharge, delta_t, self.bed_level + depth)
+                """if self.reservoir_area is not None:
+                    if discharge is None or time_step is None:
+                        raise ValueError("Insufficient arguments for boundary condition.")
+                    self.update_fixed_depth(inflow=discharge, duration=time_step, stage=self.bed_level + depth)"""
                     
                 residual = depth - self.fixed_depth
         

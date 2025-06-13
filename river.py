@@ -235,8 +235,8 @@ class River:
     def upstream_bc(self, time = None, depth = None, discharge = None):
         return self.upstream_boundary.condition_residual(time, depth, self.width, discharge, self.bed_slope, self.manning_co)
         
-    def downstream_bc(self, time = None, depth = None, discharge = None):
-        return self.downstream_boundary.condition_residual(time, depth, self.width, discharge, self.bed_slope, self.manning_co)
+    def downstream_bc(self, depth = None, discharge = None, time_step = None):
+        return self.downstream_boundary.condition_residual(None, depth, self.width, discharge, self.bed_slope, self.manning_co, time_step)
         
     def upstream_bc_deriv_A(self, time = None, area = None):
         return self.upstream_boundary.condition_derivative_wrt_A(time, area, self.width, self.bed_slope, self.manning_co)

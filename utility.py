@@ -65,13 +65,13 @@ class RatingCurve:
     
     def discharge(self, stage):
         """
-        Computes the discharge for a given flow depth using
-        the rating curve equation of the upstream boundary.
+        Computes the discharge for a given stage using
+        the rating curve equation.
 
         Parameters
         ----------
-        flow_depth : float
-            The flow depth at the upstream boundary in meters.
+        stage : float
+            The stage or water level.
 
         Returns
         -------

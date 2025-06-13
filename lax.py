@@ -109,7 +109,7 @@ class LaxSolver(Solver):
         """
         
         # Loop through the time steps, incrementing the time by delta t every time.
-        for time in range(self.temporal_step, duration + self.temporal_step, self.temporal_step):
+        for time in range(self.time_step, duration + self.time_step, self.time_step):
             if verbose >= 1:
                 print('\n---------- Time = ' + str(time) + 's ----------')
             
@@ -146,6 +146,12 @@ class LaxSolver(Solver):
             self.A_current[0] = self.area_advanced_t(self.A_previous[1],
                                                         self.A_previous[1],
                                                         self.Q_previous[1],
+                                                        self.Q_previous[1])
+            
+        elif self.secondary_boundary_conditions[0] == 'extrapolate':
+            self.A_current[0] = self.area_advanced_t(2 * self.A_previous[0] - self.A_previous[1],
+                                                        self.A_previous[1],
+                                                        2 * self.Q_previous[0] - self.Q_previous[1],
                                                         self.Q_previous[1])
                 
         else:
@@ -192,6 +198,11 @@ class LaxSolver(Solver):
                                                                self.A_previous[-2],
                                                                self.Q_previous[-2],
                                                                self.Q_previous[-2])
+        elif self.secondary_boundary_conditions[1] == 'extrapolate':
+            self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
+                                                               2 * self.A_previous[-1] - self.A_previous[-2],
+                                                               self.Q_previous[-2],
+                                                               2 * self.Q_previous[-1] - self.Q_previous[-2],)
         else:
             raise ValueError("Invalid secondary downstream boundary condition.")
         
@@ -224,10 +235,10 @@ class LaxSolver(Solver):
         
         Q = (
              - g / (4 * self.river.width * self.num_celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * self.temporal_step * self.river.bed_slope * (A_i_plus_1 + A_i_minus_1)
+             + 0.5 * g * self.time_step * self.river.bed_slope * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
              - 1. / (2 * self.num_celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
-             - 0.5 * g * self.temporal_step * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
+             - 0.5 * g * self.time_step * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
              )
         
         return Q
