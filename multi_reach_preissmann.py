@@ -29,7 +29,7 @@ rs_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 965
 roseires_rating_curve = RatingCurve()
 
 roseires_rating_curve.fit(discharges=rs_discharges, stages=rs_stages)
-reservoir_area = 5e7
+reservoir_area = 30e6
 
 reaches = [
     {
@@ -69,13 +69,17 @@ for reach in reaches:
     stages = depths + channel.upstream_boundary.bed_level
     discharges = p_model.get_results('q', spatial_node=0)
     
+    if reach['id'] < len(lengths) - 2:
+        d = 2
+    else:
+        d = 1
+    
     rating_curve = RatingCurve()
-    #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
-    rating_curve.fit(discharges=discharges, stages=stages)
+    rating_curve.fit(discharges=discharges, stages=stages, degree=d)
     
     rating_curves.append(rating_curve)
 
-number_of_iterations = 1
+number_of_iterations = 5
 for iteration in range(number_of_iterations):
     
     new_rating_curves = []
@@ -95,12 +99,12 @@ for iteration in range(number_of_iterations):
             discharges = p_model.get_results('q', spatial_node=-1)
             us.build_hydrograph(times, discharges.tolist())
         
-        if reach['id'] < len(reaches) - 1:
-            rc = rating_curves[reach['id']+1]
-            ds = Boundary(h_ds, 'rating_curve', reach['ds_bed_level'], rating_curve=rc)
-        else:
+        if reach['id'] == len(lengths) - 1:
             ds = Boundary(h_ds, 'fixed_depth', reach['ds_bed_level'])
             ds.set_storage_behavior(reservoir_area=reservoir_area, reservoir_exit_rating_curve=roseires_rating_curve)
+        else:
+            rc = rating_curves[reach['id']+1]
+            ds = Boundary(h_ds, 'rating_curve', reach['ds_bed_level'], rating_curve=rc)
             
         channel = River(length = reach['length'],
                         width = reach['width'],
@@ -110,8 +114,14 @@ for iteration in range(number_of_iterations):
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
-        p_model = PreissmannSolver(channel, PREISSMANN_THETA, time_step, 0.05 * channel.total_length)
-        p_model.run(DURATION, TOLERANCE, verbose=0)
+        p_model = PreissmannSolver(channel, PREISSMANN_THETA, int(time_step * 1), 0.05 * channel.total_length)
+        
+        if (reach['id'] > 2):
+            v = 0
+        else:
+            v = 0
+        
+        p_model.run(DURATION, TOLERANCE, verbose=v)
         
         ##############
         
@@ -120,13 +130,17 @@ for iteration in range(number_of_iterations):
             stages = depths + channel.upstream_boundary.bed_level
             discharges = p_model.get_results('q', spatial_node=0)
             
+            if reach['id'] < len(lengths) - 2:
+                d = 2
+            else:
+                d = 1
+    
             rating_curve = RatingCurve()
-            #rating_curve.fit(discharges=discharges, stages=stages, stage_shift=min(stages)-1, type='power')
-            rating_curve.fit(discharges=discharges, stages=stages)
+            rating_curve.fit(discharges=discharges, stages=stages, degree=d)
             
             new_rating_curves.append(rating_curve)
         else:
-            p_model.save_results((-1,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
+            p_model.save_results((25,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
         
         #############
                 

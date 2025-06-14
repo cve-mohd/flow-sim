@@ -13,42 +13,32 @@ class Solver:
     ----------
     river : River
         An instance of the `River` class, representing the river being modeled.
-    theta : float
-        The weighting factor of the Preissmann scheme (between 0.5 and 1).
-    delta_t : float
+    time_step : float
         Time step for the simulation in seconds.
-    delta_x : float
+    spatial_step : float
         Spatial step for the simulation in meters.
-    celerity : float
+    num_celerity : float
         Ratio of spatial to time step, representing the wave celerity.
-    n_nodes : int
+    number_of_nodes : int
         Number of spatial nodes along the river.
     A_previous : list of float
         Cross-sectional areas at the previous time step.
     Q_previous : list of float
         Discharges at the previous time step.
-    Sf_previous : list of float
-        Friction slopes at the previous time step.
     A_current : list of float
         Cross-sectional areas at the current iteration of the current time step.
     Q_current : list of float
         Discharges at the current iteration of the current time step.
-    unknowns : list of float
-        Vector of unknowns for the current iteration (alternating A and Q).
-    results_A : list of list of float
+    computed_areas : list of list of float
         Stores the computed A values over time.
-    results_Q : list of list of float
+    computed_flow_rates : list of list of float
         Stores the computed Q values over time.
-    results_V : list of list of float
-        Stores the computed V values over time.
-    results_y : list of list of float
-        Stores the computed y values over time.
             
     """
 
     def __init__(self,
                  river: River,
-                 temporal_step: int | float,
+                 time_step: int | float,
                  spatial_step: int | float,
                  fit_spatial_step = True):
         """
@@ -58,18 +48,16 @@ class Solver:
         ----------
         river : River
             The River object on which the simulation is performed.
-        theta : float
-            The weighting factor of the Preissmann scheme.
-        delta_t : float
+        time_step : float
             Time step for the simulation in seconds.
-        delta_x : float
+        spatial_step : float
             Spatial step for the simulation in meters.
             
         """
         self.river = river
         self.solved = False
                 
-        self.time_step, self.spatial_step = temporal_step, spatial_step
+        self.time_step, self.spatial_step = time_step, spatial_step
         self.num_celerity = self.spatial_step / float(self.time_step)
 
         if fit_spatial_step:

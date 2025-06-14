@@ -12,45 +12,21 @@ class PreissmannSolver(Solver):
 
     Attributes
     ----------
-    river : River
-        An instance of the `River` class, representing the river being modeled.
     theta : float
         The weighting factor of the Preissmann scheme (between 0.5 and 1).
-    delta_t : float
-        Time step for the simulation in seconds.
-    delta_x : float
-        Spatial step for the simulation in meters.
-    celerity : float
-        Ratio of spatial to time step, representing the wave celerity.
-    n_nodes : int
-        Number of spatial nodes along the river.
-    A_previous : list of float
-        Cross-sectional areas at the previous time step.
-    Q_previous : list of float
-        Discharges at the previous time step.
     Sf_previous : list of float
         Friction slopes at the previous time step.
-    A_current : list of float
-        Cross-sectional areas at the current iteration of the current time step.
-    Q_current : list of float
-        Discharges at the current iteration of the current time step.
     unknowns : list of float
         Vector of unknowns for the current iteration (alternating A and Q).
-    results_A : list of list of float
-        Stores the computed A values over time.
-    results_Q : list of list of float
-        Stores the computed Q values over time.
-    results_V : list of list of float
-        Stores the computed V values over time.
-    results_y : list of list of float
-        Stores the computed y values over time.
+    active_storage : bool
+        Whether the downstream boundary condition is a storage-controlled Dirichlet stage.
             
     """
 
     def __init__(self,
                  river: River,
                  theta: int | float,
-                 temporal_step: int | float,
+                 time_step: int | float,
                  spatial_step: int | float,
                  fit_spatial_step = True):
         """
@@ -62,17 +38,19 @@ class PreissmannSolver(Solver):
             The River object on which the simulation is performed.
         theta : float
             The weighting factor of the Preissmann scheme.
-        delta_t : float
+        time_step : float
             Time step for the simulation in seconds.
-        delta_x : float
+        spatial_step : float
             Spatial step for the simulation in meters.
             
         """
-        super().__init__(river, temporal_step, spatial_step, fit_spatial_step)
+        super().__init__(river, time_step, spatial_step, fit_spatial_step)
         
         self.theta = theta
         self.Sf_previous = []
         self.unknowns = []
+        
+        self.active_storage = ((self.river.downstream_boundary.condition == 'fixed_depth') and (self.river.downstream_boundary.reservoir_exit_rating_curve is not None))
 
         self.initialize_t0()
 
@@ -104,6 +82,9 @@ class PreissmannSolver(Solver):
             # Calculate the friction slope at all nodes at the previous (first) time step
             self.Sf_previous.append(self.river.friction_slope(A, Q))
 
+        if self.active_storage:
+            self.unknowns.append(self.river.downstream_boundary.storage_stage)
+            
         # Convert the list of unknowns to a NumPy array.
         self.unknowns = np.array(self.unknowns)
 
@@ -138,6 +119,9 @@ class PreissmannSolver(Solver):
 
         # Lastly, add the downstream boundary condition residuals.
         equation_list.append(self.downstream_eq())
+        
+        if self.active_storage:
+            equation_list.append(self.storage_eq())
             
         # Return the list as a NumPy array.
         return np.array(equation_list)
@@ -155,7 +139,12 @@ class PreissmannSolver(Solver):
 
         # Declare a 2N by 2N matrix, where N is the number of nodes along the river,
         # and initialize all elements to zeros.
-        jacobian_matrix = np.zeros(shape=(2 * self.number_of_nodes, 2 * self.number_of_nodes))
+        if self.active_storage:
+            matrix_shape = (2 * self.number_of_nodes + 1, 2 * self.number_of_nodes + 1)
+        else:
+            matrix_shape = (2 * self.number_of_nodes, 2 * self.number_of_nodes)
+            
+        jacobian_matrix = np.zeros(shape=matrix_shape)
 
         # Compute the derivatives of the upstream boundary condition with respect to A and Q
         # at the first node, and assign the computed values to the first 2 elements of the first row.
@@ -179,8 +168,17 @@ class PreissmannSolver(Solver):
 
         # Lastly, compute the derivatives of the downstream boundary condition with respect to A and Q
         # at the last node, and place their values in the last 2 places of the last row.
-        jacobian_matrix[-1, -2] = self.downstream_deriv_A(t)
-        jacobian_matrix[-1, -1] = self.downstream_deriv_Q()
+        if self.active_storage:
+            jacobian_matrix[-2, -3] = self.downstream_deriv_A(t)
+            jacobian_matrix[-2, -2] = self.downstream_deriv_Q()
+            jacobian_matrix[-2, -1] = self.downstream_deriv_res_h()
+            
+            jacobian_matrix[-1, -3] = self.storage_eq_deriv_A()
+            jacobian_matrix[-1, -2] = self.storage_eq_deriv_Q()
+            jacobian_matrix[-1, -1] = self.storage_eq_deriv_res_h()
+        else:
+            jacobian_matrix[-1, -2] = self.downstream_deriv_A(t)
+            jacobian_matrix[-1, -1] = self.downstream_deriv_Q()
 
         return jacobian_matrix
 
@@ -235,6 +233,10 @@ class PreissmannSolver(Solver):
 
                 # Compute the cumulative error as the Manhattan norm of delta.
                 error = Utility.euclidean_norm(delta)
+                
+                if iteration > 100:
+                    print(R)
+                    raise ValueError("")
 
                 if verbose >= 3:
                     print("Error = " + str(error))
@@ -265,13 +267,15 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.A_previous = [i for i in self.unknowns[::2]]
-        self.Q_previous = [i for i in self.unknowns[1::2]]
-        self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
+        if self.active_storage:
+            self.A_previous = [i for i in self.unknowns[:-1:2]]
+            self.Q_previous = [i for i in self.unknowns[1:-1:2]]
+            self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
+        else:
+            self.A_previous = [i for i in self.unknowns[::2]]
+            self.Q_previous = [i for i in self.unknowns[1::2]]
+            self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
         
-        if self.river.downstream_boundary.reservoir_exit_rating_curve is not None:
-            s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
-            self.river.downstream_boundary.update_fixed_depth(self.Q_current[-1], self.time_step, s)
 
     def update_guesses(self) -> None:
         """
@@ -283,8 +287,13 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.A_current = self.unknowns[::2]
-        self.Q_current = self.unknowns[1::2]
+        if self.active_storage:
+            self.A_current = self.unknowns[:-1:2]
+            self.Q_current = self.unknowns[1:-1:2]
+            self.river.downstream_boundary.storage_stage = self.unknowns[-1]
+        else:
+            self.A_current = self.unknowns[::2]
+            self.Q_current = self.unknowns[1::2]
         
     def upstream_eq(self, t) -> float:
         """
@@ -603,5 +612,46 @@ class PreissmannSolver(Solver):
         """
         d = self.river.downstream_bc_deriv_Q()
 
+        return d
+    
+    def downstream_deriv_res_h(self) -> float:
+        """
+        Computes the derivative of the downstream boundary condition equation
+        with respect to the storage depth.
+
+        Returns
+        -------
+        float
+            The computed derivative.
+
+        """
+        d = self.river.downstream_bc_deriv_res_h()
+
+        return d
+    
+    def storage_eq(self):
+        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
+        new_storage_stage = self.river.downstream_boundary.mass_balance(self.Q_current[-1], self.time_step, s)
+        
+        residual = self.river.downstream_boundary.storage_stage - new_storage_stage
+        return residual
+        
+    
+    def storage_eq_deriv_A(self):
+        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
+        d_storage_depth_dh = self.river.downstream_boundary.mass_balance_deriv_h(self.Q_current[-1], self.time_step, s)
+        
+        d = 0 - d_storage_depth_dh * 1./ self.river.width
+        return d
+    
+    def storage_eq_deriv_Q(self):
+        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
+        d_storage_depth_dQ = self.river.downstream_boundary.mass_balance_deriv_Q(self.Q_current[-1], self.time_step, s)
+        
+        d = 0 - d_storage_depth_dQ
+        return d
+    
+    def storage_eq_deriv_res_h(self):
+        d = 1
         return d
     

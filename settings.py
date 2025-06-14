@@ -13,7 +13,7 @@ SCHEME = 'lax' # 'preissmann' or 'lax'
 
 TIME_STEP = 3600
 SPATIAL_STEP = 1000
-DURATION = 3600 * 24
+DURATION = 3600 * 48
 TOLERANCE = 1e-6
 
 LAX_US_2ND_COND = 'constant' # 'constant', 'mirror', or 'rating_curve'

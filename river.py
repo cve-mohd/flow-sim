@@ -249,4 +249,7 @@ class River:
         
     def downstream_bc_deriv_Q(self):
         return self.downstream_boundary.condition_derivative_wrt_Q()
-        
+    
+    def downstream_bc_deriv_res_h(self):
+        return self.downstream_boundary.condition_derivative_wrt_res_h()
+    

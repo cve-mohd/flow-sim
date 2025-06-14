@@ -6,10 +6,10 @@ class Boundary:
                  hydrograph_function = None, chainage: int | float = 0):
         
         self.initial_depth = initial_depth
-        self.fixed_depth = self.initial_depth
         
         self.bed_level = bed_level
         self.initial_stage = bed_level + initial_depth
+        self.storage_stage = self.initial_stage
                 
         if condition in ['hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve']:
             self.condition = condition
@@ -32,21 +32,7 @@ class Boundary:
     def set_storage_behavior(self, reservoir_area: float, reservoir_exit_rating_curve: RatingCurve):
         self.reservoir_area = reservoir_area
         self.reservoir_exit_rating_curve = reservoir_exit_rating_curve
-        
-        
-    def update_fixed_depth(self, inflow, duration, stage):
-        if self.reservoir_exit_rating_curve is None:
-            raise ValueError("Storage is undefined.")
-                
-        outflow = self.reservoir_exit_rating_curve.discharge(stage)
-        
-        added_volume = (inflow - outflow) * duration
-        added_depth = added_volume / float(self.reservoir_area)
-                
-        self.fixed_depth += added_depth
-        
-        if self.fixed_depth < self.initial_depth:
-            self.fixed_depth = self.initial_depth    
+    
     
     def interpolate_hydrograph(self, t):
         if self.hydrograph is None:
@@ -87,15 +73,10 @@ class Boundary:
         elif self.condition == 'fixed_depth':
             if depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
-            elif self.fixed_depth is None:
+            elif self.storage_stage is None:
                 raise ValueError("Fixed depth is not defined.")
-            else:
-                """if self.reservoir_area is not None:
-                    if discharge is None or time_step is None:
-                        raise ValueError("Insufficient arguments for boundary condition.")
-                    self.update_fixed_depth(inflow=discharge, duration=time_step, stage=self.bed_level + depth)"""
-                    
-                residual = depth - self.fixed_depth
+            else:                    
+                residual = depth - (self.storage_stage - self.bed_level)
         
         elif self.condition == 'normal_depth':
             if width is None or depth is None or discharge is None or bed_slope is None or manning_co is None:
@@ -126,7 +107,7 @@ class Boundary:
             if width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            derivative = dy_dA - 0
+            derivative = dy_dA * (1 - 0)
         
         elif self.condition == 'normal_depth':
             if width is None or area is None or bed_slope is None or manning_co is None:
@@ -162,5 +143,96 @@ class Boundary:
         
         if self.condition == 'rating_curve':
             derivative = 1
+            
+        return derivative
+
+
+    def mass_balance(self, inflow, duration, stage) -> float:
+        """
+        Computes the new storage stage using a mass-balance equation.
+
+        Parameters
+        ----------
+        inflow : float
+            The rate of flow entering the storage.
+        duration : float
+            The time during which the inflow occurs. Normally, this is the models time step.
+        stage : float
+            The current stage of the storage.
+
+        """
+        
+        if self.reservoir_exit_rating_curve is None:
+            raise ValueError("Storage is undefined.")
+                
+        outflow = self.reservoir_exit_rating_curve.discharge(stage)
+        
+        added_volume = (inflow - outflow) * duration
+        added_depth = added_volume / float(self.reservoir_area)
+                
+        new_storage_stage = stage + added_depth
+        
+        if new_storage_stage < self.initial_stage:
+            new_storage_stage = self.initial_stage    
+        
+        return new_storage_stage
+    
+    def mass_balance_deriv_h(self, inflow, duration, stage) -> float:
+        """
+        Computes the new storage stage using a mass-balance equation.
+
+        Parameters
+        ----------
+        inflow : float
+            The rate of flow entering the storage.
+        duration : float
+            The time during which the inflow occurs. Normally, this is the models time step.
+        stage : float
+            The current stage of the storage.
+
+        """
+        
+        if self.reservoir_exit_rating_curve is None:
+            raise ValueError("Storage is undefined.")
+                
+        der_outflow = self.reservoir_exit_rating_curve.derivative(stage)
+        
+        derivative = 1 - der_outflow * duration / float(self.reservoir_area)
+        
+        if self.mass_balance(inflow, duration, stage) <= self.initial_stage:
+            derivative = 0
+        
+        return derivative
+    
+    def mass_balance_deriv_Q(self, inflow, duration, stage) -> float:
+        """
+        Computes the new storage stage using a mass-balance equation.
+
+        Parameters
+        ----------
+        inflow : float
+            The rate of flow entering the storage.
+        duration : float
+            The time during which the inflow occurs. Normally, this is the models time step.
+        stage : float
+            The current stage of the storage.
+
+        """
+        
+        if self.reservoir_exit_rating_curve is None:
+            raise ValueError("Storage is undefined.")
+        
+        derivative = duration / float(self.reservoir_area)
+        
+        if self.mass_balance(inflow, duration, stage) <= self.initial_stage:
+            derivative = 0
+        
+        return derivative
+    
+    def condition_derivative_wrt_res_h(self):
+        if self.condition == 'fixed_depth':
+            derivative = -1
+        else:
+            derivative = 0
             
         return derivative
