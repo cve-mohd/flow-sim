@@ -50,8 +50,6 @@ class PreissmannSolver(Solver):
         self.Sf_previous = []
         self.unknowns = []
         
-        self.active_storage = ((self.river.downstream_boundary.condition == 'fixed_depth') and (self.river.downstream_boundary.reservoir_exit_rating_curve is not None))
-
         self.initialize_t0()
 
 
@@ -173,7 +171,6 @@ class PreissmannSolver(Solver):
             jacobian_matrix[-2, -2] = self.downstream_deriv_Q()
             jacobian_matrix[-2, -1] = self.downstream_deriv_res_h()
             
-            jacobian_matrix[-1, -3] = self.storage_eq_deriv_A()
             jacobian_matrix[-1, -2] = self.storage_eq_deriv_Q()
             jacobian_matrix[-1, -1] = self.storage_eq_deriv_res_h()
         else:
@@ -630,28 +627,21 @@ class PreissmannSolver(Solver):
         return d
     
     def storage_eq(self):
-        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
-        new_storage_stage = self.river.downstream_boundary.mass_balance(self.Q_current[-1], self.time_step, s)
+        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        new_storage_stage = self.river.downstream_boundary.mass_balance(inflow, self.time_step)
         
         residual = self.river.downstream_boundary.storage_stage - new_storage_stage
         return residual
-        
-    
-    def storage_eq_deriv_A(self):
-        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
-        d_storage_depth_dh = self.river.downstream_boundary.mass_balance_deriv_h(self.Q_current[-1], self.time_step, s)
-        
-        d = 0 - d_storage_depth_dh * 1./ self.river.width
-        return d
-    
+            
     def storage_eq_deriv_Q(self):
-        s = self.river.downstream_boundary.bed_level + self.A_current[-1] / self.river.width
-        d_storage_depth_dQ = self.river.downstream_boundary.mass_balance_deriv_Q(self.Q_current[-1], self.time_step, s)
+        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        d = 0 - 0.5 * self.river.downstream_boundary.mass_balance_deriv_Q(inflow, self.time_step)
         
-        d = 0 - d_storage_depth_dQ
         return d
     
     def storage_eq_deriv_res_h(self):
-        d = 1
+        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        d = 1 - self.river.downstream_boundary.mass_balance_deriv_res_h(inflow, self.time_step)
+        
         return d
     

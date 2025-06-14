@@ -147,7 +147,7 @@ class Boundary:
         return derivative
 
 
-    def mass_balance(self, inflow, duration, stage) -> float:
+    def mass_balance(self, inflow, duration) -> float:
         """
         Computes the new storage stage using a mass-balance equation.
 
@@ -157,74 +157,44 @@ class Boundary:
             The rate of flow entering the storage.
         duration : float
             The time during which the inflow occurs. Normally, this is the models time step.
-        stage : float
-            The current stage of the storage.
 
         """
         
         if self.reservoir_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
                 
-        outflow = self.reservoir_exit_rating_curve.discharge(stage)
+        outflow = self.reservoir_exit_rating_curve.discharge(self.storage_stage)
         
         added_volume = (inflow - outflow) * duration
         added_depth = added_volume / float(self.reservoir_area)
                 
-        new_storage_stage = stage + added_depth
+        new_storage_stage = self.storage_stage + added_depth
         
         if new_storage_stage < self.initial_stage:
             new_storage_stage = self.initial_stage    
         
         return new_storage_stage
-    
-    def mass_balance_deriv_h(self, inflow, duration, stage) -> float:
-        """
-        Computes the new storage stage using a mass-balance equation.
-
-        Parameters
-        ----------
-        inflow : float
-            The rate of flow entering the storage.
-        duration : float
-            The time during which the inflow occurs. Normally, this is the models time step.
-        stage : float
-            The current stage of the storage.
-
-        """
-        
-        if self.reservoir_exit_rating_curve is None:
-            raise ValueError("Storage is undefined.")
-                
-        der_outflow = self.reservoir_exit_rating_curve.derivative(stage)
-        
-        derivative = 1 - der_outflow * duration / float(self.reservoir_area)
-        
-        if self.mass_balance(inflow, duration, stage) <= self.initial_stage:
-            derivative = 0
-        
-        return derivative
-    
-    def mass_balance_deriv_Q(self, inflow, duration, stage) -> float:
-        """
-        Computes the new storage stage using a mass-balance equation.
-
-        Parameters
-        ----------
-        inflow : float
-            The rate of flow entering the storage.
-        duration : float
-            The time during which the inflow occurs. Normally, this is the models time step.
-        stage : float
-            The current stage of the storage.
-
-        """
-        
+       
+    def mass_balance_deriv_Q(self, inflow, duration) -> float:
         if self.reservoir_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
         
         derivative = duration / float(self.reservoir_area)
         
-        if self.mass_balance(inflow, duration, stage) <= self.initial_stage:
+        if self.mass_balance(inflow, duration) <= self.initial_stage:
+            derivative = 0
+        
+        return derivative
+    
+    def mass_balance_deriv_res_h(self, inflow, duration) -> float:        
+        if self.reservoir_exit_rating_curve is None:
+            raise ValueError("Storage is undefined.")
+        
+        der_outflow = self.reservoir_exit_rating_curve.derivative(self.storage_stage)
+        
+        derivative = 1 - der_outflow * duration / float(self.reservoir_area)
+        
+        if self.mass_balance(inflow, duration, self.storage_stage) <= self.initial_stage:
             derivative = 0
         
         return derivative

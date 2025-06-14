@@ -56,6 +56,7 @@ class Solver:
         """
         self.river = river
         self.solved = False
+        self.active_storage = ((self.river.downstream_boundary.condition == 'fixed_depth') and (self.river.downstream_boundary.reservoir_exit_rating_curve is not None))
                 
         self.time_step, self.spatial_step = time_step, spatial_step
         self.num_celerity = self.spatial_step / float(self.time_step)

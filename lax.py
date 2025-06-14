@@ -156,24 +156,7 @@ class LaxSolver(Solver):
                 
         else:
             raise ValueError("Invalid secondary upstream boundary condition.")
-        
-        
-    def upstream_A_given_Q(self, Q, tolerance = 1e-4):
-        """Computes the upstream flow area for a given discharge from the rating curve
-        using trial and error.
-
-        Args:
-            Q (float): The upstream discharge
-
-        Returns:
-            float: The computed flow area
-        """        
-        stage = self.river.upstream_boundary.rating_curve.stage(Q, tolerance)
-        depth = stage - self.river.upstream_boundary.bed_level
-        area = depth * self.river.width    
-        
-        return area
-        
+               
 
     def compute_node(self, i):
         self.A_current[i] = self.area_advanced_t(self.A_previous[i - 1],
@@ -207,7 +190,15 @@ class LaxSolver(Solver):
             raise ValueError("Invalid secondary downstream boundary condition.")
         
         if self.river.downstream_boundary.condition == 'fixed_depth':
-            self.A_current[-1] = self.A_previous[-1]
+            if self.active_storage:
+                depth = self.A_previous[-1] / self.river.width
+                stage = self.river.downstream_boundary.bed_level + depth
+                new_stage = self.river.downstream_boundary.mass_balance(self.Q_previous[-1], self.time_step, stage)
+                
+                new_depth = new_stage - self.river.downstream_boundary.bed_level
+                self.A_current[-1] = new_depth * self.river.width
+            else:
+                self.A_current[-1] = self.A_previous[-1]
             
         elif self.river.downstream_boundary.condition == 'normal_depth':
             self.A_current[-1] = self.river.manning_A(self.Q_current[-1])
