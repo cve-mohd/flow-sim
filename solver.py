@@ -101,8 +101,8 @@ class Solver:
     def append_result(self):
         if isinstance(self.A_current, list):
             from copy import copy
-            self.computed_areas.append(copy(self.A_current))
-            self.computed_flow_rates.append(copy(self.Q_current))
+            self.computed_areas.append([float(i) for i in self.A_current])
+            self.computed_flow_rates.append([float(i) for i in self.Q_current])
         
         else:
             self.computed_areas.append(self.A_current.tolist())
@@ -180,7 +180,6 @@ class Solver:
 
         for key, value in data.items():
             value_str = str(value).replace('], [', '\n')
-            value_str = str(value_str).replace('np.float64', '')
             for c in "[]' ()":
                 value_str = value_str.replace(c, '')
             with open(path + f'//{key}.csv', 'w') as output_file:
@@ -188,17 +187,7 @@ class Solver:
                 output_file.write(value_str)
                 
     
-    def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None) -> tuple:
-        """
-        Returns the results of the simulation.
-
-        Returns
-        -------
-        tuple
-            A tuple containing the computed cross-sectional flow area, discharge,
-            velocity, and flow depth.
-
-        """
+    def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None):
         if not self.solved:
             raise ValueError("Not solved yet.")
         
@@ -212,16 +201,17 @@ class Solver:
             
         elif parameter == 'v':
             velocities = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
-            reqursted = velocities.tolist()
+            reqursted = velocities
         
         elif parameter == 'h':
             depths = np.array(self.computed_areas) / self.river.width
-            reqursted = depths.tolist()
+            reqursted = depths
         
         else:
             raise ValueError("Invalid parameter. Choose between 'a', 'q', 'v', or 'h'.")
         
-        reqursted = np.array(reqursted)
+        if isinstance(reqursted, list):
+            reqursted = np.array(reqursted)
         
         if spatial_node is not None:
             if temporal_node is not None:

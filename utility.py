@@ -97,7 +97,7 @@ class RatingCurve:
             return float(discharge)
     
     
-    def stage(self, discharge: float, trial_stage: float = None, tolerance: float = 1e-3, rate=1) -> float:
+    def stage(self, discharge: float, trial_stage: float = None, tolerance: float = 1e-2, rate=1) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
@@ -112,6 +112,7 @@ class RatingCurve:
             delta = - rate * func / deriv
                         
             trial_stage += delta
+            #print(trial_stage)
             
             q = self.discharge(stage=trial_stage)
         

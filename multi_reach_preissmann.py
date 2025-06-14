@@ -5,10 +5,11 @@ from utility import RatingCurve
 from preissmann import PreissmannSolver
 
 time_step = 3600
+duration = 18 * 3600
 
 def f(t):
-    if t <= 18*3600:
-        return 1562.5 + (10000 - 1562.5) * t/(18*3600)
+    if t <= duration:
+        return 1562.5 + (10000 - 1562.5) * t/duration
     else:
         return 10000
 
@@ -63,7 +64,7 @@ for reach in reaches:
         
     p_model = PreissmannSolver(channel, PREISSMANN_THETA, time_step, 0.05 * channel.total_length)
 
-    p_model.run(18 * 3600, TOLERANCE, verbose=0)
+    p_model.run(duration, TOLERANCE, verbose=0)
     
     depths = p_model.get_results('h', spatial_node=0)
     stages = depths + channel.upstream_boundary.bed_level
@@ -80,7 +81,11 @@ for reach in reaches:
     rating_curves.append(rating_curve)
 
 number_of_iterations = 5
+
 for iteration in range(number_of_iterations):
+    
+    if iteration == number_of_iterations - 1:
+        duration = DURATION
     
     new_rating_curves = []
     
@@ -95,7 +100,7 @@ for iteration in range(number_of_iterations):
         if reach['id'] == 0:
             us.set_hydrograph(f)
         else:
-            times = [t for t in range(0, DURATION + p_model.time_step, p_model.time_step)]
+            times = [t for t in range(0, duration + p_model.time_step, p_model.time_step)]
             discharges = p_model.get_results('q', spatial_node=-1)
             us.build_hydrograph(times, discharges.tolist())
         
@@ -114,14 +119,9 @@ for iteration in range(number_of_iterations):
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
-        p_model = PreissmannSolver(channel, PREISSMANN_THETA, int(time_step * 1), 0.05 * channel.total_length)
+        p_model = PreissmannSolver(channel, PREISSMANN_THETA, time_step, 0.05 * channel.total_length)       
         
-        if (reach['id'] > 2):
-            v = 0
-        else:
-            v = 0
-        
-        p_model.run(DURATION, TOLERANCE, verbose=v)
+        p_model.run(duration, verbose=0)
         
         ##############
         
@@ -140,7 +140,7 @@ for iteration in range(number_of_iterations):
             
             new_rating_curves.append(rating_curve)
         else:
-            p_model.save_results((25,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
+            p_model.save_results((49,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
         
         #############
                 

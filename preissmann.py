@@ -231,10 +231,6 @@ class PreissmannSolver(Solver):
                 # Compute the cumulative error as the Manhattan norm of delta.
                 error = Utility.euclidean_norm(delta)
                 
-                if iteration > 100:
-                    print(R)
-                    raise ValueError("")
-
                 if verbose >= 3:
                     print("Error = " + str(error))
                     

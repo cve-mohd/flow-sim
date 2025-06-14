@@ -194,7 +194,7 @@ class Boundary:
         
         derivative = 1 - der_outflow * duration / float(self.reservoir_area)
         
-        if self.mass_balance(inflow, duration, self.storage_stage) <= self.initial_stage:
+        if self.mass_balance(inflow, duration) <= self.initial_stage:
             derivative = 0
         
         return derivative

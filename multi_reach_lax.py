@@ -6,9 +6,11 @@ from lax import LaxSolver
 
 sec_bc = ('constant', 'constant')
 
+duration = 3600 * 18
+
 def f(t):
-    if t <= 18*3600:
-        return 1562.5 + (10000 - 1562.5) * t/(18*3600)
+    if t <= duration:
+        return 1562.5 + (10000 - 1562.5) * t/(duration)
     else:
         return 10000
 
@@ -29,7 +31,7 @@ rs_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 965
 roseires_rating_curve = RatingCurve()
 
 roseires_rating_curve.fit(discharges=rs_discharges, stages=rs_stages)
-reservoir_area = widths[-1] * 5000
+reservoir_area = 30e6
 
 reaches = [
     {
@@ -60,23 +62,27 @@ for reach in reaches:
                     manning_co = 0.027,
                     upstream_boundary = us,
                     downstream_boundary = ds)
-        
-    solver = LaxSolver(channel, 10, 0.1 * channel.total_length, secondary_boundary_conditions=sec_bc)
+    
+    lax_time_step = 5 * int(float(reaches[-1]['ds_water_level'] - reaches[-1]['ds_bed_level']) // float(h_ds))
+    solver = LaxSolver(channel, lax_time_step, 0.1 * channel.total_length, secondary_boundary_conditions=sec_bc)
 
-    solver.run(24 * 3600, verbose=0)
+    solver.run(duration, verbose=0)
     
     depths = solver.get_results('h', spatial_node=0)
     stages = depths + channel.upstream_boundary.bed_level
     discharges = solver.get_results('q', spatial_node=0)
     
     rating_curve = RatingCurve()
-    rating_curve.fit(discharges=discharges[::360], stages=stages[::360])
+    rating_curve.fit(discharges=discharges[::3600//lax_time_step], stages=stages[::3600//lax_time_step])
     
     rating_curves.append(rating_curve)
 
 number_of_iterations = 1
 for iteration in range(number_of_iterations):
     
+    if iteration == number_of_iterations - 1:
+        duration = DURATION
+        
     new_rating_curves = []
     
     for reach in reaches:
@@ -90,7 +96,7 @@ for iteration in range(number_of_iterations):
         if reach['id'] == 0:
             us.set_hydrograph(f)
         else:
-            times = [t for t in range(0, DURATION + solver.time_step, solver.time_step)]
+            times = [t for t in range(0, duration + solver.time_step, solver.time_step)]
             discharges = solver.get_results('q', spatial_node=-1)
             us.build_hydrograph(times, discharges.tolist())
         
@@ -108,27 +114,30 @@ for iteration in range(number_of_iterations):
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
-        solver = LaxSolver(channel, 5, 0.01 * channel.total_length, secondary_boundary_conditions=sec_bc)
-        solver.run(24 * 3600, verbose=0)
-        
+        lax_time_step = 5 * int(float(reaches[-1]['ds_water_level'] - reaches[-1]['ds_bed_level']) // float(h_ds))
+        solver = LaxSolver(channel, lax_time_step, 0.01 * channel.total_length, secondary_boundary_conditions=sec_bc)
+                    
+        solver.run(duration, verbose=0)
+        print(f'Finished reach {reach['id']}')
+                    
         ##############
         
         if iteration < number_of_iterations - 1:
             depths = solver.get_results('h', spatial_node=0)
             stages = depths + channel.upstream_boundary.bed_level
             discharges = solver.get_results('q', spatial_node=0)
-            
+                    
             rating_curve = RatingCurve()
-            rating_curve.fit(discharges=discharges[::60], stages=stages[::60])
+            rating_curve.fit(discharges=discharges[::3600//lax_time_step], stages=stages[::3600//lax_time_step], degree=1)
             
             new_rating_curves.append(rating_curve)
         else:
-            solver.save_results((25,-1), 'Results//Lax//Reach ' + str( reach['id'] ))
+            solver.save_results((49,-1), 'Results//Lax//Reach ' + str( reach['id'] ))
             
         
         #############
                 
-        
     rating_curves = new_rating_curves
+    print(f'Finished epoch {iteration}')
             
 print("Success!")

@@ -191,20 +191,17 @@ class LaxSolver(Solver):
         
         if self.river.downstream_boundary.condition == 'fixed_depth':
             if self.active_storage:
-                depth = self.A_previous[-1] / self.river.width
-                stage = self.river.downstream_boundary.bed_level + depth
-                new_stage = self.river.downstream_boundary.mass_balance(self.Q_previous[-1], self.time_step, stage)
+                inflow = 0.5 * (self.Q_previous[-1] + self.Q_current[-1])
+                new_stage = self.river.downstream_boundary.mass_balance(inflow, self.time_step)
+                self.river.downstream_boundary.storage_stage = new_stage
                 
-                new_depth = new_stage - self.river.downstream_boundary.bed_level
-                self.A_current[-1] = new_depth * self.river.width
-            else:
-                self.A_current[-1] = self.A_previous[-1]
+            self.A_current[-1] = self.river.width * (self.river.downstream_boundary.storage_stage - self.river.downstream_boundary.bed_level)
             
         elif self.river.downstream_boundary.condition == 'normal_depth':
             self.A_current[-1] = self.river.manning_A(self.Q_current[-1])
             
         elif self.river.downstream_boundary.condition == 'rating_curve':
-            stage = self.river.downstream_boundary.bed_level + self.river.downstream_boundary.initial_depth
+            stage = self.river.downstream_boundary.initial_stage
             stage = self.river.downstream_boundary.rating_curve.stage(self.Q_current[-1], stage)
             depth = stage - self.river.downstream_boundary.bed_level
             
