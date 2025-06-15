@@ -20,8 +20,9 @@ class Boundary:
         self.hydrograph = None
         self.chainage = chainage
         
-        self.reservoir_area = None
-        self.reservoir_exit_rating_curve = None
+        self.storage_area = None
+        self.storage_exit_rating_curve = None
+        self.active_storage = False
         
         if hydrograph_function is not None:
             self.hydrograph_Q_func = hydrograph_function
@@ -29,9 +30,10 @@ class Boundary:
             self.hydrograph_Q_func = self.interpolate_hydrograph
     
     
-    def set_storage_behavior(self, reservoir_area: float, reservoir_exit_rating_curve: RatingCurve):
-        self.reservoir_area = reservoir_area
-        self.reservoir_exit_rating_curve = reservoir_exit_rating_curve
+    def set_storage_behavior(self, storage_area: float, storage_exit_rating_curve: RatingCurve):
+        self.storage_area = storage_area
+        self.storage_exit_rating_curve = storage_exit_rating_curve
+        self.active_storage = True
     
     
     def interpolate_hydrograph(self, t):
@@ -160,13 +162,13 @@ class Boundary:
 
         """
         
-        if self.reservoir_exit_rating_curve is None:
+        if self.storage_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
                 
-        outflow = self.reservoir_exit_rating_curve.discharge(self.storage_stage)
+        outflow = self.storage_exit_rating_curve.discharge(self.storage_stage)
         
         added_volume = (inflow - outflow) * duration
-        added_depth = added_volume / float(self.reservoir_area)
+        added_depth = added_volume / float(self.storage_area)
                 
         new_storage_stage = self.storage_stage + added_depth
         
@@ -176,10 +178,10 @@ class Boundary:
         return new_storage_stage
        
     def mass_balance_deriv_Q(self, inflow, duration) -> float:
-        if self.reservoir_exit_rating_curve is None:
+        if self.storage_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
         
-        derivative = duration / float(self.reservoir_area)
+        derivative = duration / float(self.storage_area)
         
         if self.mass_balance(inflow, duration) <= self.initial_stage:
             derivative = 0
@@ -187,12 +189,12 @@ class Boundary:
         return derivative
     
     def mass_balance_deriv_res_h(self, inflow, duration) -> float:        
-        if self.reservoir_exit_rating_curve is None:
+        if self.storage_exit_rating_curve is None:
             raise ValueError("Storage is undefined.")
         
-        der_outflow = self.reservoir_exit_rating_curve.derivative(self.storage_stage)
+        der_outflow = self.storage_exit_rating_curve.derivative(self.storage_stage)
         
-        derivative = 1 - der_outflow * duration / float(self.reservoir_area)
+        derivative = 1 - der_outflow * duration / float(self.storage_area)
         
         if self.mass_balance(inflow, duration) <= self.initial_stage:
             derivative = 0

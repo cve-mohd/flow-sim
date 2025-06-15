@@ -9,7 +9,6 @@ class Utility:
     def __init__():
         pass
     
-    
     def create_directory_if_not_exists(directory):
         """
         Checks if a directory exists and creates it if it doesn't.
@@ -23,14 +22,22 @@ class Utility:
         if not os.path.exists(directory):
             os.makedirs(directory)
             
-            
     def manhattan_norm(vector):
         return sum(abs(vector))
-    
     
     def euclidean_norm(vector):
         return sum(square(vector)) ** 0.5
     
+    def seconds_to_hms(seconds):
+        if seconds < 0:
+            return "0:00:00"
+        
+        total_seconds = int(seconds)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        remaining_seconds = total_seconds % 60
+        
+        return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"    
     
 class RatingCurve:    
     def __init__(self):

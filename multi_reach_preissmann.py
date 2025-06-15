@@ -4,47 +4,6 @@ from settings import *
 from utility import RatingCurve
 from preissmann import PreissmannSolver
 
-time_step = 3600
-duration = 18 * 3600
-
-def f(t):
-    if t <= duration:
-        return 1562.5 + (10000 - 1562.5) * t/duration
-    else:
-        return 10000
-
-lengths        = [16000, 32000, 37000, 8000, 27000]
-widths         = [250  , 650  , 1500 , 3000, 6000]
-
-us_water_level = [502.5, 490  , 490  , 490  , 490]
-ds_water_level = [490  , 490  , 490  , 490  , 490]
-
-us_bed_levels  = [495.0, 482.5, 479.6, 476.3, 475.5]
-ds_bed_levels  = [482.5, 479.6, 476.3, 475.5, 473.1]
-
-chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
-
-rating_curves = []
-rs_stages = [480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493]
-rs_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 9653, 9891, 10122, 10346]
-roseires_rating_curve = RatingCurve()
-
-roseires_rating_curve.fit(discharges=rs_discharges, stages=rs_stages)
-reservoir_area = 30e6
-
-reaches = [
-    {
-        'id': i,
-        'length': lengths[i],
-        'width': widths[i],
-        'us_water_level': us_water_level[i],
-        'ds_water_level': ds_water_level[i],
-        'us_bed_level': us_bed_levels[i],
-        'ds_bed_level': ds_bed_levels[i],
-        'chainage': chainages[i]
-    }
-    for i in range(len(lengths))]
-
 for reach in reaches:
     ## First pass. Here we build the rating curves ##
     
@@ -56,15 +15,18 @@ for reach in reaches:
 
     channel = River(length = reach['length'],
                     width = reach['width'],
-                    initial_flow_rate = 1562.5,
+                    initial_flow_rate = initial_flow_rate,
                     bed_slope = 'real',
-                    manning_co = 0.027,
+                    manning_co = manning_coefficient,
                     upstream_boundary = us,
                     downstream_boundary = ds)
-        
-    p_model = PreissmannSolver(channel, PREISSMANN_THETA, time_step, 0.05 * channel.total_length)
-
-    p_model.run(duration, TOLERANCE, verbose=0)
+    
+    ###
+    
+    p_model = PreissmannSolver(channel, theta, preissmann_time_step, 0.05 * channel.total_length)
+    p_model.run(hydrograph_duration, auto=False, verbose=0)
+    
+    ###
     
     depths = p_model.get_results('h', spatial_node=0)
     stages = depths + channel.upstream_boundary.bed_level
@@ -80,12 +42,9 @@ for reach in reaches:
     
     rating_curves.append(rating_curve)
 
-number_of_iterations = 5
+epochs = 1
 
-for iteration in range(number_of_iterations):
-    
-    if iteration == number_of_iterations - 1:
-        duration = DURATION
+for e in range(epochs):
     
     new_rating_curves = []
     
@@ -100,32 +59,33 @@ for iteration in range(number_of_iterations):
         if reach['id'] == 0:
             us.set_hydrograph(f)
         else:
-            times = [t for t in range(0, duration + p_model.time_step, p_model.time_step)]
-            discharges = p_model.get_results('q', spatial_node=-1)
-            us.build_hydrograph(times, discharges.tolist())
+            times = [t for t in range(0, hydrograph_duration + p_model.time_step, p_model.time_step)]
+            discharges = p_model.get_results('q', spatial_node=-1).tolist()
+            discharges = discharges[:len(times)]
+            us.build_hydrograph(times, discharges)
         
         if reach['id'] == len(lengths) - 1:
             ds = Boundary(h_ds, 'fixed_depth', reach['ds_bed_level'])
-            ds.set_storage_behavior(reservoir_area=reservoir_area, reservoir_exit_rating_curve=roseires_rating_curve)
+            ds.set_storage_behavior(storage_area=storage_area, storage_exit_rating_curve=roseires_rating_curve)
         else:
             rc = rating_curves[reach['id']+1]
             ds = Boundary(h_ds, 'rating_curve', reach['ds_bed_level'], rating_curve=rc)
             
         channel = River(length = reach['length'],
                         width = reach['width'],
-                        initial_flow_rate = 1562.5,
+                        initial_flow_rate = initial_flow_rate,
                         bed_slope = 'real',
-                        manning_co = 0.027,
+                        manning_co = manning_coefficient,
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
-        p_model = PreissmannSolver(channel, PREISSMANN_THETA, time_step, 0.05 * channel.total_length)       
+        p_model = PreissmannSolver(channel, theta, preissmann_time_step, 0.05 * channel.total_length)       
         
-        p_model.run(duration, verbose=0)
+        p_model.run(sim_duration, auto=False, tolerance=tolerance, verbose=0)
         
         ##############
         
-        if iteration < number_of_iterations - 1:
+        if e < epochs - 1:
             depths = p_model.get_results('h', spatial_node=0)
             stages = depths + channel.upstream_boundary.bed_level
             discharges = p_model.get_results('q', spatial_node=0)
@@ -140,7 +100,7 @@ for iteration in range(number_of_iterations):
             
             new_rating_curves.append(rating_curve)
         else:
-            p_model.save_results((49,-1), 'Results//Preissmann//Reach ' + str( reach['id'] ))
+            p_model.save_results(results_size, 'Results//Preissmann//Reach ' + str( reach['id'] ))
         
         #############
                 

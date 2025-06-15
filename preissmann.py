@@ -49,6 +49,7 @@ class PreissmannSolver(Solver):
         self.theta = theta
         self.Sf_previous = []
         self.unknowns = []
+        self.type = 'preissmann'
         
         self.initialize_t0()
 
@@ -179,7 +180,7 @@ class PreissmannSolver(Solver):
 
         return jacobian_matrix
 
-    def run(self, duration: int, tolerance=1e-4, verbose=3) -> None:
+    def run(self, duration: int, auto = True, tolerance=1e-4, verbose=3) -> None:
         """
         Solves the system of equations using the Newton-Raphson method, and stores
         the obtained values of the flow variables.
@@ -199,13 +200,23 @@ class PreissmannSolver(Solver):
         """
 
         # Loop through the time steps, incrementing the time by delta t every time.
-        for time in range(self.time_step, duration + self.time_step, self.time_step):
+        time = 0
+        running = True
+        
+        while running:
+            time += self.time_step
+            if time > duration and not auto:
+                running = False
+                time -= self.time_step
+                break
+            
             if verbose >= 1:
                 print('\n---------- Time = ' + str(time) + 's ----------\n')
 
             iteration = 0
+            converged = False
 
-            while True:
+            while not converged:
                 iteration += 1
                 if verbose >= 2:
                     print("--- Iteration #" + str(iteration) + ':')
@@ -237,15 +248,18 @@ class PreissmannSolver(Solver):
                 # End the loop and move to the next time step if the cumulative error is smaller
                 # than the specified tolerance. Otherwise, repeat the solution using the updated values.
                 if error < tolerance:
-                    break
+                    converged = True
+                    if iteration == 1 and auto and time >= duration:
+                        running = False
                                     
             # Save the final values of the solved time step.
             self.append_result()
 
             # Update the values of the previous time step.
             self.update_parameters()
-
+        
         self.solved = True
+        self.total_sim_duration = time
         
         if verbose >= 1:
             print("Simulation completed successfully.")

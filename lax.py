@@ -126,6 +126,7 @@ class LaxSolver(Solver):
             self.update()
             
         self.solved = True
+        self.total_sim_duration = duration
             
 
     def compute_upstream_boundary(self, time):

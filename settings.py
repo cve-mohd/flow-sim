@@ -1,74 +1,64 @@
 ############                River Parameters                    ############
 
-LENGTH = 15000
-WIDTH = 250
-MANNING_COEFF = 0.027
-FLOW_RATE = 1562.5
-USE_GVF = True
-APPROX_R = False
+manning_coefficient = 0.027
+initial_flow_rate = 1562.5
 
 ############                Simulation Parameters               ############
 
-SCHEME = 'lax' # 'preissmann' or 'lax'
+epochs = 1
+scheme = 'lax' # 'preissmann' or 'lax'
+sim_duration = 3600 * 48
 
-TIME_STEP = 3600
-SPATIAL_STEP = 1000
-DURATION = 3600 * 48
-TOLERANCE = 1e-6
+preissmann_time_step = 3600
+theta = 0.6
+tolerance = 1e-6
 
-LAX_US_2ND_COND = 'constant' # 'constant', 'mirror', or 'rating_curve'
-LAX_DS_2ND_COND = 'constant' # 'constant' or 'mirror'
+lax_time_step = 5
 
-PREISSMANN_THETA = 0.6
+storage_area = 30e6
 
-RESULTS_SIZE = (-1, -1) # Default is -1, meaning print all data points. (t, x)
 
-############                Upstream Boundary                   ############
+results_size = (-1, -1) # Default is -1, meaning print all data points. (t, x)
 
-US_INIT_DEPTH = 15.9
-US_INIT_STAGE = 490
 
-"""
-CUSTOM_INFLOW = False
-# Default wave shape is sinus. To override, set CUSTOM_INFLOW to True and
-# implement custom_hydrograph(time) at the bottom of the file.
+sec_bc = ('constant', 'constant')
 
-PEAK_DISCHARGE = 50000
-PEAK_HOUR = 12
-"""
+hydrograph_duration = 18 * 3600
 
-#US_RATING_CURVE = {"base": 500, "coefficients": [327.23, 318.44, 70.26]}
-
-############                Downstream Boundary                 ############
-
-DS_INIT_DEPTH = 7.5
-DS_INIT_DISCHARGE = 1562.5
-DS_INIT_STAGE = 490
-DS_MAX_STAGE = 493
-
-DS_POND_AREA = 478983175
-
-DS_CONDITION = 'fixed_depth' # 'fixed_depth', 'rating_curve' or 'normal_depth'.
-#DS_RATING_CURVE = {"base": 466.7, "coefficients": [8266.62, 469.31, -2.64]}
-
-############           Akbari & Firoozi's Hydrograph            ############
-
-def custom_hydrograph(time: float | int) -> float:
-    from math import sin, cos, pi
-    
-    Qb= 100.
-    Qp = 200.
-    
-    tb = 15.
-    tp = 5.
-    
-    t = time / 3600.
-    
-    if t <= tp:
-        Q = Qp / 2 * sin (pi * t / tp - pi / 2) + Qp / 2 + Qb
-    elif tp < t and t <= tb:
-        Q = Qp / 2 * cos (pi * (t - tp) / (tb - tp)) + Qp / 2 + Qb
+def f(t):
+    if t <= hydrograph_duration:
+        return 1562.5 + (10000 - 1562.5) * t/hydrograph_duration
     else:
-        Q = Qb
-        
-    return Q
+        return 10000
+
+lengths        = [16000, 32000, 37000, 8000, 27000]
+widths         = [250  , 650  , 1500 , 3000, 6000]
+
+us_water_level = [502.5, 490  , 490  , 490  , 490]
+ds_water_level = [490  , 490  , 490  , 490  , 490]
+
+us_bed_levels  = [495.0, 482.5, 479.6, 476.3, 475.5]
+ds_bed_levels  = [482.5, 479.6, 476.3, 475.5, 473.1]
+
+chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
+
+rating_curves = []
+rs_stages = [480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493]
+rs_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 9653, 9891, 10122, 10346]
+
+from utility import RatingCurve
+roseires_rating_curve = RatingCurve()
+roseires_rating_curve.fit(discharges=rs_discharges, stages=rs_stages)
+
+reaches = [
+    {
+        'id': i,
+        'length': lengths[i],
+        'width': widths[i],
+        'us_water_level': us_water_level[i],
+        'ds_water_level': ds_water_level[i],
+        'us_bed_level': us_bed_levels[i],
+        'ds_bed_level': ds_bed_levels[i],
+        'chainage': chainages[i]
+    }
+    for i in range(len(lengths))]
