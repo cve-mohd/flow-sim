@@ -1,44 +1,40 @@
-from river import River
+from channel import Channel
 from boundary import Boundary
-from settings import *
+from settings import trapzoid_hydrograph
 
-def f(t):
-    hours = 12
-    
-    if t <= hours*3600:
-        return 1562.5 + (10000 - 1562.5) * t/(hours*3600)
-    else:
-        return 10000
+us = Boundary(initial_depth=3,
+              condition='flow_hydrograph',
+              bed_level=495,
+              flow_hydrograph_function=trapzoid_hydrograph)
 
-us = Boundary(2.9, 'hydrograph', 495, hydrograph_function=f)
-ds = Boundary(7.5, 'fixed_depth', 490 - 7.5, fixed_depth=7.5)
+ds = Boundary(initial_depth=3,
+              condition='normal_depth',
+              bed_level=482.5)
 
-# Declare a 'River' object, specifying the geometric attributes of the river.
-channel = River(length = 15000,
-                width = 250,
-                initial_flow_rate = 1562.5,
-                manning_co = 0.027,
-                upstream_boundary = us,
-                downstream_boundary = ds)
+example_channel = Channel(length = 120000,
+                          width = 250,
+                          initial_flow_rate = 1562.5,
+                          manning_co = 0.029,
+                          upstream_boundary = us,
+                          downstream_boundary = ds,)
 
-if SCHEME == 'preissmann':
-    from preissmann import PreissmannSolver
-    
-    # Declare a 'PreissmannModel' object, specifying the scheme parameters.
-    p_model = PreissmannSolver(channel, 0.6, TIME_STEP, SPATIAL_STEP)
+from preissmann import PreissmannSolver
 
-    # Solve the scheme using a specified tolerance.
-    p_model.run(3600 * 24, verbose=3)
+p_model = PreissmannSolver(channel=example_channel,
+                           theta=0.8,
+                           time_step=3600,
+                           spatial_step=1000)
 
-    # Save the results.
-    p_model.save_results((-1, -1))               
+p_model.run(duration=3600*72, verbose=3)
+p_model.save_results()
 
-elif SCHEME == 'lax':
-    from lax import LaxSolver
-    
-    l_model = LaxSolver(channel, 10, 1000)
-    l_model.run(3600 * 24)
-    l_model.save_results((25, -1))
-    
-else:
-    raise ValueError("Invalid scheme. Choose 'preissmann' or 'lax'.")  
+"""
+from lax import LaxSolver
+
+l_model = LaxSolver(channel=example_channel,
+                    time_step=50,
+                    spatial_step=1000)
+
+l_model.run(duration=3600*72)
+l_model.save_results()
+"""

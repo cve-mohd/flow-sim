@@ -1,5 +1,5 @@
 from solver import Solver
-from river import River
+from channel import Channel
 import numpy as np
 from scipy.constants import g
 from utility import Utility
@@ -24,7 +24,7 @@ class PreissmannSolver(Solver):
     """
 
     def __init__(self,
-                 river: River,
+                 channel: Channel,
                  theta: int | float,
                  time_step: int | float,
                  spatial_step: int | float,
@@ -34,8 +34,8 @@ class PreissmannSolver(Solver):
 
         Parameters
         ----------
-        river : River
-            The River object on which the simulation is performed.
+        channel : Channel
+            The Channel object on which the simulation is performed.
         theta : float
             The weighting factor of the Preissmann scheme.
         time_step : float
@@ -44,7 +44,7 @@ class PreissmannSolver(Solver):
             Spatial step for the simulation in meters.
             
         """
-        super().__init__(river, time_step, spatial_step, fit_spatial_step)
+        super().__init__(channel, time_step, spatial_step, fit_spatial_step)
         
         self.theta = theta
         self.Sf_previous = []
@@ -57,7 +57,7 @@ class PreissmannSolver(Solver):
     def initialize_t0(self) -> None:
         """
         Retrieves the values of the initial values of the flow variables
-        from the initial conditions of the river.
+        from the initial conditions of the channel.
 
         Returns
         -------
@@ -65,24 +65,24 @@ class PreissmannSolver(Solver):
 
         """
 
-        # Compute the initial conditions at all nodes in the 'River' object.
-        self.river.initialize_conditions(self.number_of_nodes)
+        # Compute the initial conditions at all nodes in the 'Channel' object.
+        self.channel.initialize_conditions(self.number_of_nodes)
 
-        # Read the values of A and Q from the 'River' object and assign
+        # Read the values of A and Q from the 'Channel' object and assign
         # them to the lists of unknowns, as well as the lists of A and Q at
         # the previous (first) time step.
 
-        for A, Q in self.river.initial_conditions:
+        for A, Q in self.channel.initial_conditions:
             self.unknowns += [A, Q]
 
             self.A_previous.append(A)
             self.Q_previous.append(Q)
             
             # Calculate the friction slope at all nodes at the previous (first) time step
-            self.Sf_previous.append(self.river.friction_slope(A, Q))
+            self.Sf_previous.append(self.channel.friction_slope(A, Q))
 
         if self.active_storage:
-            self.unknowns.append(self.river.downstream_boundary.storage_stage)
+            self.unknowns.append(self.channel.downstream_boundary.storage_stage)
             
         # Convert the list of unknowns to a NumPy array.
         self.unknowns = np.array(self.unknowns)
@@ -109,18 +109,18 @@ class PreissmannSolver(Solver):
 
         # Declare a list to store the residuals and add the
         # upstream boundary condition residuals as its 1st element.
-        equation_list = [self.upstream_eq(time)]
+        equation_list = [self.upstream_bc_residual(time)]
         
         # Add the continuity and momentum residuals for all reaches.
         for i in range(self.number_of_nodes - 1):
-            equation_list.append(self.continuity_eq(i))
-            equation_list.append(self.momentum_eq(i))
+            equation_list.append(self.continuity_eq_residual(i))
+            equation_list.append(self.momentum_eq_residual(i))
 
         # Lastly, add the downstream boundary condition residuals.
-        equation_list.append(self.downstream_eq())
+        equation_list.append(self.downstream_bc_residual(time=time))
         
         if self.active_storage:
-            equation_list.append(self.storage_eq())
+            equation_list.append(self.storage_eq_residual())
             
         # Return the list as a NumPy array.
         return np.array(equation_list)
@@ -136,7 +136,7 @@ class PreissmannSolver(Solver):
             
         """
 
-        # Declare a 2N by 2N matrix, where N is the number of nodes along the river,
+        # Declare a 2N by 2N matrix, where N is the number of nodes along the channel,
         # and initialize all elements to zeros.
         if self.active_storage:
             matrix_shape = (2 * self.number_of_nodes + 1, 2 * self.number_of_nodes + 1)
@@ -147,36 +147,36 @@ class PreissmannSolver(Solver):
 
         # Compute the derivatives of the upstream boundary condition with respect to A and Q
         # at the first node, and assign the computed values to the first 2 elements of the first row.
-        jacobian_matrix[0, 0] = self.upstream_deriv_A(t)
-        jacobian_matrix[0, 1] = self.upstream_deriv_Q()
+        jacobian_matrix[0, 0] = self.d_upstream_bc_residual_dA(t)
+        jacobian_matrix[0, 1] = self.d_upstream_bc_residual_dQ()
 
         # The loop computes the derivatives of the continuity equation with respect to A and Q at each of the
         # ith and (i+1)th node, and stores their values in the next row The same is done for the momentum
         # equation. The derivatives are placed in their appropriate positions along the matrix diagonal.
         # Alternate between the continuity and momentum equation until the second to last row.
         for row in range(1, 2 * self.number_of_nodes - 1, 2):
-            jacobian_matrix[row, row - 1] = self.continuity_deriv_Ai()
-            jacobian_matrix[row, row + 0] = self.continuity_deriv_Qi()
-            jacobian_matrix[row, row + 1] = self.continuity_deriv_Ai_plus1()
-            jacobian_matrix[row, row + 2] = self.continuity_deriv_Qi_plus1()
+            jacobian_matrix[row, row - 1] = self.d_continuity_eq_residual_dAi()
+            jacobian_matrix[row, row + 0] = self.d_continuity_eq_residual_dQi()
+            jacobian_matrix[row, row + 1] = self.d_continuity_eq_residual_dAi_plus1()
+            jacobian_matrix[row, row + 2] = self.d_continuity_eq_residual_dQi_plus1()
 
-            jacobian_matrix[row + 1, row - 1] = self.momentum_deriv_Ai( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 0] = self.momentum_deriv_Qi( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 1] = self.momentum_deriv_Ai_plus1( (row - 1) // 2 )
-            jacobian_matrix[row + 1, row + 2] = self.momentum_deriv_Qi_plus1( (row - 1) // 2 )
-
+            jacobian_matrix[row + 1, row - 1] = self.d_momentum_residual_dAi( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 0] = self.d_momentum_residual_dQi( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 1] = self.d_momentum_residual_dAi_plus1( (row - 1) // 2 )
+            jacobian_matrix[row + 1, row + 2] = self.d_momentum_residual_dQi_plus1( (row - 1) // 2 )
+        
         # Lastly, compute the derivatives of the downstream boundary condition with respect to A and Q
         # at the last node, and place their values in the last 2 places of the last row.
-        if self.active_storage:
-            jacobian_matrix[-2, -3] = self.downstream_deriv_A(t)
-            jacobian_matrix[-2, -2] = self.downstream_deriv_Q()
-            jacobian_matrix[-2, -1] = self.downstream_deriv_res_h()
+        if self.active_storage:        
+            jacobian_matrix[-2, -3] = self.d_downstream_residual_dA(t)
+            jacobian_matrix[-2, -2] = self.d_downstream_residual_dQ()
+            jacobian_matrix[-2, -1] = self.d_downstream_residual_d_storage_stage()
             
-            jacobian_matrix[-1, -2] = self.storage_eq_deriv_Q()
-            jacobian_matrix[-1, -1] = self.storage_eq_deriv_res_h()
+            jacobian_matrix[-1, -2] = self.d_storage_residual_dQ()
+            jacobian_matrix[-1, -1] = self.d_storage_residual_d_storage_stage()
         else:
-            jacobian_matrix[-1, -2] = self.downstream_deriv_A(t)
-            jacobian_matrix[-1, -1] = self.downstream_deriv_Q()
+            jacobian_matrix[-1, -2] = self.d_downstream_residual_dA(t)
+            jacobian_matrix[-1, -1] = self.d_downstream_residual_dQ()
 
         return jacobian_matrix
 
@@ -223,15 +223,16 @@ class PreissmannSolver(Solver):
 
                 # Update the trial values for the unknown variables.
                 self.update_guesses()
-
+                
                 # Compute the residual vector.
                 R = self.compute_residual_vector(time)
-                
+                                
                 # Compute the Jacobian matrix.
                 J = self.compute_jacobian(time)
                 
                 if np.isnan(R).any() or np.isnan(J).any():
-                    raise ValueError("Solution failed.")
+                    self.log_status()
+                    raise ValueError(f"Solution failed.\n")
 
                 # Solve the equation J * delta = -F to compute the delta vector.
                 delta = np.linalg.solve(J, -R)
@@ -277,11 +278,11 @@ class PreissmannSolver(Solver):
         if self.active_storage:
             self.A_previous = [i for i in self.unknowns[:-1:2]]
             self.Q_previous = [i for i in self.unknowns[1:-1:2]]
-            self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
+            self.Sf_previous = [self.channel.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
         else:
             self.A_previous = [i for i in self.unknowns[::2]]
             self.Q_previous = [i for i in self.unknowns[1::2]]
-            self.Sf_previous = [self.river.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
+            self.Sf_previous = [self.channel.friction_slope(A, Q) for A, Q in zip(self.A_previous, self.Q_previous)]
         
 
     def update_guesses(self) -> None:
@@ -297,18 +298,18 @@ class PreissmannSolver(Solver):
         if self.active_storage:
             self.A_current = self.unknowns[:-1:2]
             self.Q_current = self.unknowns[1:-1:2]
-            self.river.downstream_boundary.storage_stage = self.unknowns[-1]
+            self.channel.downstream_boundary.storage_stage = self.unknowns[-1]
         else:
             self.A_current = self.unknowns[::2]
             self.Q_current = self.unknowns[1::2]
         
-    def upstream_eq(self, t) -> float:
+    def upstream_bc_residual(self, time) -> float:
         """
         Computes the residual of the upstream boundary condition equation.
 
         Parameters
         ----------
-        t : float
+        time : float
             Current simulation time in seconds.
 
         Returns
@@ -317,14 +318,15 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        y = float(self.A_current[0]) / self.river.width
-        q = self.Q_current[0]
+        depth = float(self.A_current[0]) / self.channel.width
+        flow = self.Q_current[0]
         
-        U = self.river.upstream_bc(t, y, q)
+        residual = self.channel.upstream_boundary.condition_residual(time, depth, self.channel.width, flow, self.channel.bed_slope,
+                                                            self.channel.manning_co, self.time_step)
 
-        return U
+        return residual
 
-    def continuity_eq(self, i) -> float:
+    def continuity_eq_residual(self, i) -> float:
         """
         Computes the residual of the continuity equation for a specific node.
 
@@ -339,7 +341,7 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        C = (
+        residual = (
                 self.num_celerity * (self.A_current[i] + self.A_current[i + 1])
                 + 2 * self.theta * (self.Q_current[i + 1] - self.Q_current[i])
                 - (
@@ -348,9 +350,9 @@ class PreissmannSolver(Solver):
                 )
         )
 
-        return C
+        return residual
 
-    def momentum_eq(self, i) -> float:
+    def momentum_eq_residual(self, i) -> float:
         """
         Computes the residual of the momentum equation for a specific node.
 
@@ -365,12 +367,12 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        Sf_i = self.river.friction_slope(self.A_current[i], self.Q_current[i])
-        Sf_iplus1 = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        Sf_i = self.channel.friction_slope(self.A_current[i], self.Q_current[i])
+        Sf_iplus1 = self.channel.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
                 
-        M = (
-                (g * self.theta / self.river.width) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
-                - self.spatial_step * g * self.theta * self.river.bed_slope * (self.A_current[i + 1] + self.A_current[i])
+        residual = (
+                (g * self.theta / self.channel.width) * (self.A_current[i + 1] ** 2 - self.A_current[i] ** 2)
+                - self.spatial_step * g * self.theta * self.channel.bed_slope * (self.A_current[i + 1] + self.A_current[i])
                 + self.theta * g * self.spatial_step * (Sf_iplus1 * self.A_current[i+1] + Sf_i * self.A_current[i])
                 + self.num_celerity * (self.Q_current[i + 1] + self.Q_current[i])
                 + 2 * self.theta * (
@@ -380,20 +382,20 @@ class PreissmannSolver(Solver):
                         self.num_celerity * (self.Q_previous[i + 1] + self.Q_previous[i])
                         - 2 * (1 - self.theta) * (
                                 self.Q_previous[i + 1] ** 2 / self.A_previous[i + 1]
-                                + (0.5 * g / self.river.width) * self.A_previous[i + 1] ** 2
+                                + (0.5 * g / self.channel.width) * self.A_previous[i + 1] ** 2
                                 - self.Q_previous[i] ** 2 / self.A_previous[i]
-                                - (0.5 * g / self.river.width) * self.A_previous[i] ** 2
+                                - (0.5 * g / self.channel.width) * self.A_previous[i] ** 2
                         )
                         + self.spatial_step * (1 - self.theta) * g * (
-                                self.A_previous[i + 1] * (self.river.bed_slope - self.Sf_previous[i + 1])
-                                + self.A_previous[i] * (self.river.bed_slope - self.Sf_previous[i])
+                                self.A_previous[i + 1] * (self.channel.bed_slope - self.Sf_previous[i + 1])
+                                + self.A_previous[i] * (self.channel.bed_slope - self.Sf_previous[i])
                         )
                 )
         )
 
-        return M
+        return residual
 
-    def downstream_eq(self) -> float:
+    def downstream_bc_residual(self, time) -> float:
         """
         Computes the residual of the downstream boundary condition equation.
 
@@ -403,15 +405,17 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        depth = float(self.A_current[-1]) / self.river.width
-        inflow = self.Q_current[-1]
+        depth = float(self.A_current[-1]) / self.channel.width
+        flow = self.Q_current[-1]
         
-        D = self.river.downstream_bc(depth=depth, discharge=inflow, time_step=self.time_step)
+        residual = self.channel.downstream_boundary.condition_residual(time, depth, self.channel.width, flow,
+                                                              self.channel.bed_slope, self.channel.manning_co,
+                                                              self.time_step)
         
-        return D
+        return residual
 
     
-    def upstream_deriv_A(self, t) -> int:
+    def d_upstream_bc_residual_dA(self, time) -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the upstream node.
@@ -422,12 +426,13 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.river.upstream_bc_deriv_A(t, self.A_current[0])
+        derivative = self.channel.upstream_boundary.condition_derivative_wrt_A(time, self.A_current[0], self.channel.width,
+                                                                    self.channel.bed_slope, self.channel.manning_co)
 
-        return d
+        return derivative
 
     
-    def upstream_deriv_Q(self) -> int:
+    def d_upstream_bc_residual_dQ(self) -> int:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the upstream node.
@@ -438,11 +443,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.river.upstream_bc_deriv_Q()
+        derivative = self.channel.upstream_boundary.condition_derivative_wrt_Q()
 
-        return d
+        return derivative
 
-    def continuity_deriv_Ai_plus1(self) -> float:
+    def d_continuity_eq_residual_dAi_plus1(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the advanced spatial point.
@@ -453,11 +458,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.num_celerity
+        derivative = self.num_celerity
 
-        return d
+        return derivative
 
-    def continuity_deriv_Ai(self) -> float:
+    def d_continuity_eq_residual_dAi(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the current spatial point.
@@ -468,11 +473,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.num_celerity
+        derivative = self.num_celerity
 
-        return d
+        return derivative
 
-    def continuity_deriv_Qi_plus1(self) -> float:
+    def d_continuity_eq_residual_dQi_plus1(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the advanced spatial point.
@@ -483,11 +488,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = 2 * self.theta
+        derivative = 2 * self.theta
 
-        return d
+        return derivative
 
-    def continuity_deriv_Qi(self) -> float:
+    def d_continuity_eq_residual_dQi(self) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the current spatial point.
@@ -498,11 +503,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = -2 * self.theta
+        derivative = -2 * self.theta
 
-        return d
+        return derivative
 
-    def momentum_deriv_Ai_plus1(self, i) -> float:
+    def d_momentum_residual_dAi_plus1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the advanced spatial point.
@@ -513,19 +518,19 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
-        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
+        Sf = self.channel.friction_slope(self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dA = self.channel.friction_slope_deriv_A(self.A_current[i + 1], self.Q_current[i + 1])
         
-        d = (
-                2 * g * self.theta / self.river.width * self.A_current[i + 1]
-                - self.spatial_step * g * self.theta * self.river.bed_slope
+        derivative = (
+                2 * g * self.theta / self.channel.width * self.A_current[i + 1]
+                - self.spatial_step * g * self.theta * self.channel.bed_slope
                 - 2 * self.theta * (self.Q_current[i + 1] / self.A_current[i + 1]) ** 2
                 + self.theta * g * self.spatial_step * (Sf + self.A_current[i + 1] * dSf_dA)
         )
 
-        return d
+        return derivative
 
-    def momentum_deriv_Ai(self, i) -> float:
+    def d_momentum_residual_dAi(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the current spatial point.
@@ -536,19 +541,19 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        Sf = self.river.friction_slope(self.A_current[i], self.Q_current[i])
-        dSf_dA = self.river.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
+        Sf = self.channel.friction_slope(self.A_current[i], self.Q_current[i])
+        dSf_dA = self.channel.friction_slope_deriv_A(self.A_current[i], self.Q_current[i])
         
-        d = (
-                - 2 * g * self.theta / self.river.width * self.A_current[i]
-                - self.spatial_step * g * self.theta * self.river.bed_slope
+        derivative = (
+                - 2 * g * self.theta / self.channel.width * self.A_current[i]
+                - self.spatial_step * g * self.theta * self.channel.bed_slope
                 + 2 * self.theta * (self.Q_current[i] / self.A_current[i]) ** 2
                 + self.theta * g * self.spatial_step * (Sf + self.A_current[i] * dSf_dA)
         )
 
-        return d
+        return derivative
 
-    def momentum_deriv_Qi_plus1(self, i) -> float:
+    def d_momentum_residual_dQi_plus1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the advanced spatial point.
@@ -559,17 +564,17 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i + 1], self.Q_current[i + 1])
+        dSf_dQ = self.channel.friction_slope_deriv_Q(self.A_current[i + 1], self.Q_current[i + 1])
                 
-        d = (
+        derivative = (
                 self.num_celerity
                 + 4 * self.theta * self.Q_current[i + 1] / self.A_current[i + 1]
                 + self.theta * g * self.spatial_step * self.A_current[i + 1] * dSf_dQ
         )
 
-        return d
+        return derivative
 
-    def momentum_deriv_Qi(self, i) -> float:
+    def d_momentum_residual_dQi(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the current spatial point.
@@ -580,17 +585,17 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.river.friction_slope_deriv_Q(self.A_current[i], self.Q_current[i])
+        dSf_dQ = self.channel.friction_slope_deriv_Q(self.A_current[i], self.Q_current[i])
         
-        d = (
+        derivative = (
                 self.num_celerity
                 - 4 * self.theta * self.Q_current[i] / self.A_current[i]
                 + self.theta * g * self.spatial_step * self.A_current[i] * dSf_dQ
         )
 
-        return d
+        return derivative
 
-    def downstream_deriv_A(self, t) -> float:
+    def d_downstream_residual_dA(self, time) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -601,12 +606,12 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.river.downstream_bc_deriv_A(t, self.A_current[-1])
+        derivative = self.channel.downstream_boundary.condition_derivative_wrt_A(time, self.A_current[-1], self.channel.width,
+                                                                               self.channel.bed_slope, self.channel.manning_co)
 
-        return d
+        return derivative
 
-    
-    def downstream_deriv_Q(self):
+    def d_downstream_residual_dQ(self):
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the downstream node.
@@ -617,11 +622,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.river.downstream_bc_deriv_Q()
+        derivative = self.channel.downstream_boundary.condition_derivative_wrt_Q()
 
-        return d
+        return derivative
     
-    def downstream_deriv_res_h(self) -> float:
+    def d_downstream_residual_d_storage_stage(self) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the storage depth.
@@ -632,26 +637,62 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        d = self.river.downstream_bc_deriv_res_h()
+        derivative = self.channel.downstream_boundary.condition_derivative_wrt_res_h()
 
-        return d
+        return derivative
     
-    def storage_eq(self):
-        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
-        new_storage_stage = self.river.downstream_boundary.mass_balance(inflow, self.time_step)
+    def storage_eq_residual(self):
+        average_inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        average_stage = 0.5 * (self.channel.downstream_boundary.storage_stage + self.A_previous[-1]/float(self.channel.width) + self.channel.downstream_boundary.bed_level)
         
-        residual = self.river.downstream_boundary.storage_stage - new_storage_stage
+        new_storage_stage = self.channel.downstream_boundary.mass_balance(self.time_step, average_inflow, average_stage)
+        
+        residual = self.channel.downstream_boundary.storage_stage - new_storage_stage
+        
         return residual
             
-    def storage_eq_deriv_Q(self):
-        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
-        d = 0 - 0.5 * self.river.downstream_boundary.mass_balance_deriv_Q(inflow, self.time_step)
+    def d_storage_residual_dQ(self):
+        average_inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        average_stage = 0.5 * (self.channel.downstream_boundary.storage_stage + self.A_previous[-1]/float(self.channel.width) + self.channel.downstream_boundary.bed_level)
         
-        return d
-    
-    def storage_eq_deriv_res_h(self):
-        inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
-        d = 1 - self.river.downstream_boundary.mass_balance_deriv_res_h(inflow, self.time_step)
+        derivative = 0 - 0.5 * self.channel.downstream_boundary.mass_balance_deriv_wrt_Q(self.time_step, average_inflow, average_stage)
         
-        return d
+        return derivative
     
+    def d_storage_residual_d_storage_stage(self):
+        average_inflow = 0.5 * (self.Q_current[-1] + self.Q_previous[-1])
+        average_stage = 0.5 * (self.channel.downstream_boundary.storage_stage + self.A_previous[-1]/float(self.channel.width) + self.channel.downstream_boundary.bed_level)
+        
+        derivative = 1 - 0.5 * self.channel.downstream_boundary.mass_balance_deriv_wrt_stage(self.time_step, average_inflow, average_stage)
+        
+        return derivative
+    
+    def log_status(self):
+        Utility.create_directory_if_not_exists('error_log')
+        
+        with open('error_log//status.txt', 'w') as output_file:
+            output_file.write(f'Spatial step = {self.spatial_step} m\n')
+            output_file.write(f'Time step = {self.time_step} s\n')
+            output_file.write(f'Theta = {self.theta}\n')
+            
+            output_file.write(f'Channel length = {self.channel.total_length}\n')
+            output_file.write(f'Channel width = {self.channel.width}\n')
+            output_file.write(f'Manning\'s coefficient = {self.channel.manning_co}\n')
+            output_file.write(f'Bed slope = {self.channel.bed_slope}\n')
+            
+            output_file.write('\n##############################################################\n\n')
+            
+            output_file.write(f'Upstream boundary:\n{self.channel.upstream_boundary.status()}\n')
+            
+            output_file.write('\n##############################################################\n\n')
+            
+            output_file.write(f'Downstream boundary:\n{self.channel.downstream_boundary.status()}\n')
+            
+            output_file.write('\n##############################################################\n\n')
+            
+            output_file.write('Initial conditions:')
+            for a, q in self.channel.initial_conditions:
+                output_file.write(f'A = {a:.2f}, Q = {q:.2f} m^3/s\n')
+            
+        self.save_results(path='error_log')
+            
