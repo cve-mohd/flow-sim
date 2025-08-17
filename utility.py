@@ -37,8 +37,8 @@ class Utility:
         minutes = (total_seconds % 3600) // 60
         remaining_seconds = total_seconds % 60
         
-        return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"    
-    
+        return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
+        
 class RatingCurve:    
     def __init__(self):
         self.function = None

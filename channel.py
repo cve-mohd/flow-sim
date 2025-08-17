@@ -1,4 +1,5 @@
 from boundary import Boundary
+from math import sqrt
 
 class Channel:
     """
@@ -87,21 +88,22 @@ class Channel:
             The computed friction slope.
             
         """       
+        
         if approx_R:
             P = self.width
         else:
             P = self.width + 2 * A / self.width
             
-        Sf = (self.manning_co * P ** (2. / 3) * Q / A ** (5. / 3)) ** 2
+        Sf = (self.manning_co * P ** (2. / 3) / A ** (5. / 3)) ** 2 * Q * abs(Q)
                 
         return Sf
     
     def friction_slope_deriv_A(self, A: float, Q: float, approx_R = False) -> float:
         if approx_R:
-            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
+            d_Sf = -10./3 * Q * abs(Q) * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
         else:
-            d_Sf = -10./3 * Q ** 2 * self.manning_co ** 2 * (self.width + 2 * A / self.width) ** (4./3) * A ** (-13./3)
-            + Q ** 2 * self.manning_co ** 2 * 4. / 3 * (self.width + 2 * A / self.width) ** (1./3) * A ** (-10./3) * 2 / self.width
+            d_Sf = -10./3 * Q * abs(Q) * self.manning_co ** 2 * (self.width + 2 * A / self.width) ** (4./3) * A ** (-13./3)
+            + Q * abs(Q) * self.manning_co ** 2 * 4. / 3 * (self.width + 2 * A / self.width) ** (1./3) * A ** (-10./3) * 2 / self.width
 
         return d_Sf
     
@@ -111,7 +113,7 @@ class Channel:
         else:
             P = self.width + 2 * A / self.width
             
-        d_Sf = 2 * Q * self.manning_co ** 2 * P ** (4./3) * A ** (-10./3)
+        d_Sf = 2 * abs(Q) * (self.manning_co * P ** (2. / 3) / A ** (5. / 3)) ** 2
         
         return d_Sf
 
@@ -135,12 +137,13 @@ class Channel:
 
 
     def manning_Q(self, A, slope = None):
-        S = self.bed_slope
         if slope is not None:
             S = slope
+        else:
+            S = self.bed_slope
             
         P = self.width + 2. * A / self.width
-        Q = A ** (5./3) * S ** 0.5 / (self.manning_co * P ** (2./3))
+        Q = A ** (5./3) * S / (self.manning_co * P ** (2./3) * abs(S) ** 0.5)
         return Q
     
     def manning_Q_deriv(self, A, slope = None):

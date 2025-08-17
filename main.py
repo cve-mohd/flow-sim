@@ -16,7 +16,7 @@ example_channel = Channel(length = 120000,
                           initial_flow_rate = 1562.5,
                           manning_co = 0.029,
                           upstream_boundary = us,
-                          downstream_boundary = ds,)
+                          downstream_boundary = ds)
 
 from preissmann import PreissmannSolver
 

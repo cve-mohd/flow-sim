@@ -50,7 +50,7 @@ for e in range(epochs):
 
         solver = PreissmannSolver(channel, theta, preissmann_time_step, spatial_resolution * reach['length'])
         
-        if reach['id']==4 and e==epochs-1:
+        if e==8:
             v = 0
         else:
             v = 0
@@ -74,7 +74,7 @@ for e in range(epochs):
     stage_hyd_times = deepcopy(new_stage_hyd_times)
     stage_hyd_stages = deepcopy(new_stage_hyd_stages)
     
-    #print(f"### Finished epoch {e} ###")
+    print(f"### Finished epoch {e+1} ###")
             
 print("Success!")
 

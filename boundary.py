@@ -120,7 +120,8 @@ class Boundary:
             P = width + 2 * depth
             A = width * depth
             
-            Q = (A ** (5./3) * bed_slope ** 0.5) / (manning_co * P ** (2./3))
+            Q = A ** (5./3) * bed_slope / (manning_co * P ** (2./3) * abs(bed_slope) ** 0.5)
+            
             residual = discharge - Q
         
         elif self.condition == 'rating_curve':
@@ -157,7 +158,7 @@ class Boundary:
             P = width + 2 * area/width
             R = area/P
             
-            derivative = - bed_slope ** 0.5 / manning_co * (
+            derivative = - bed_slope / (manning_co / abs(bed_slope) ** 0.5) * (
                 -4. / (3*width) * R ** (5./3) + 5./3 * R ** (2./3)
                 )
         
