@@ -16,14 +16,14 @@ chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
 sim_duration = 3600 * 72
 epochs = 10
 
-preissmann_time_step = 300
+preissmann_time_step = 3600
 theta = 0.8
 tolerance = 1e-6
 
 lax_time_step = 10
 lax_secondary_bc = ('constant', 'constant')
 
-spatial_resolution = 0.1
+spatial_resolution = 0.05
 
 results_size = (-1, -1) # (t, x)
 

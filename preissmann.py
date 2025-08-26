@@ -1,5 +1,5 @@
 from solver import Solver
-from channel import Channel
+from reach import Channel
 import numpy as np
 from scipy.constants import g
 from utility import Utility
@@ -88,8 +88,8 @@ class PreissmannSolver(Solver):
         self.unknowns = np.array(self.unknowns)
 
         # Store the computed values of A and Q in the results list.
-        self.computed_areas.append(self.A_previous)
-        self.computed_flow_rates.append(self.Q_previous)
+        self.results['area'].append(self.A_previous)
+        self.results['flow_rate'].append(self.Q_previous)
 
     def compute_residual_vector(self, time) -> np.ndarray:
         """
@@ -259,11 +259,7 @@ class PreissmannSolver(Solver):
             # Update the values of the previous time step.
             self.update_parameters()
         
-        self.solved = True
-        self.total_sim_duration = time
-        
-        if verbose >= 1:
-            print("Simulation completed successfully.")
+        super().finalize(time, verbose)
     
     def update_parameters(self) -> None:
         """

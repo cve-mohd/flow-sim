@@ -1,4 +1,4 @@
-from channel import Channel
+from reach import Channel
 from boundary import Boundary
 from case_study_settings import *
 from utility import RatingCurve

@@ -1,4 +1,4 @@
-from channel import Channel
+from reach import Channel
 from boundary import Boundary
 from settings import trapzoid_hydrograph
 
@@ -11,7 +11,7 @@ ds = Boundary(initial_depth=3,
               condition='normal_depth',
               bed_level=482.5)
 
-example_channel = Channel(length = 120000,
+example_channel = Channel(length = 15000,
                           width = 250,
                           initial_flow_rate = 1562.5,
                           manning_co = 0.029,

@@ -1,4 +1,4 @@
-from channel import Channel
+from reach import Channel
 import numpy as np
 from scipy.constants import g
 from utility import Utility
@@ -75,8 +75,14 @@ class Solver:
         self.A_current = []
         self.Q_current = []
 
-        self.computed_areas = []
-        self.computed_flow_rates = []
+        self.results = {
+            'area': [],
+            'flow_rate': [],
+            'velocity': [],
+            'depth': [],
+            'level': [],
+            'wave_celerity': [],
+        }
         
         self.peak_amplitude_profile = None
         self.depth_0 = 0
@@ -84,20 +90,41 @@ class Solver:
 
     def append_result(self):
         if isinstance(self.A_current, list):
-            self.computed_areas.append([float(i) for i in self.A_current])
-            self.computed_flow_rates.append([float(i) for i in self.Q_current])
+            self.results['area'].append([float(i) for i in self.A_current])
+            self.results['flow_rate'].append([float(i) for i in self.Q_current])
         
         else:
-            self.computed_areas.append(self.A_current.tolist())
-            self.computed_flow_rates.append(self.Q_current.tolist())
+            self.results['area'].append(self.A_current.tolist())
+            self.results['flow_rate'].append(self.Q_current.tolist())
                     
         if self.peak_amplitude_profile is None:
-            self.depth_0 = np.array(self.computed_areas[0]) / self.channel.width
+            self.depth_0 = np.array(self.results['area'][0]) / self.channel.width
             self.peak_amplitude_profile = self.depth_0 - self.depth_0
         else:
             peak_amplitudes = np.array(self.A_current) / self.channel.width - self.depth_0
             self.peak_amplitude_profile = [float(max(i, j)) for i,j in zip(peak_amplitudes, self.peak_amplitude_profile)]
         
+    def prepare_results(self) -> None:
+        # Compute velocities
+        self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
+        self.results['velocity'] = self.results['velocity'].tolist()
+                
+        # Compute depths and levels
+        self.results['depth'] = np.array(self.results['area']) / self.channel.width
+        self.results['depth'] = self.results['depth'].tolist()
+        
+        for sublist in self.results['depth']:
+            self.results['level'].append([sublist[i] + self.channel.upstream_boundary.bed_level - self.channel.bed_slope * self.spatial_step * i for i in range(len(sublist))])
+            
+        # Wave celerity
+        for i in range(len(self.results['velocity'])):
+            row = []
+            for j in range(len(self.results['velocity'][i])):
+                v = self.results['velocity'][i][j]
+                h = self.results['depth'][i][j]
+                celerity = v + sqrt(g * h)
+                row.append(celerity)
+            self.results['wave_celerity'].append(row)
     
     def save_results(self, size: tuple = (-1, -1), path: str = 'Results') -> None:
         """
@@ -119,53 +146,33 @@ class Solver:
         """
         Utility.create_directory_if_not_exists(path)
         
+        # Calculate steps
         t_step = x_step = 1
         
         if size[0] > 1:
-            t_step = (len(self.computed_areas) - 1) // (size[0] - 1)
+            t_step = (len(self.results['area']) - 1) // (size[0] - 1)
 
         if size[1] > 1:
             x_step =  (self.number_of_nodes - 1) // (size[1] - 1)
                     
+        # Compute the sets to be saved based on the steps
         areas = [a[::x_step]
-                for a in self.computed_areas[::t_step]]
+                for a in self.results['area'][::t_step]]
 
         flow_rates = [q[::x_step]
-                for q in self.computed_flow_rates[::t_step]]
+                for q in self.results['flow_rate'][::t_step]]
         
-        
-        # Compute velocities
-        velocities = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
-        velocities = velocities.tolist()
         velocities = [v[::x_step]
-                for v in velocities[::t_step]]
+                for v in self.results['velocity'][::t_step]]
         
-        # Compute depths and levels
-        depths = np.array(self.computed_areas) / self.channel.width
-        depths = depths.tolist()
-        
-        levels = []
-        for sublist in depths:
-            levels.append([sublist[i] + self.channel.upstream_boundary.bed_level - self.channel.bed_slope * self.spatial_step * i for i in range(len(sublist))])
-            
         levels = [levels[::x_step]
-                for levels in levels[::t_step]]
+                for levels in self.results['level'][::t_step]]
         
         depths = [h[::x_step]
-                for h in depths[::t_step]]
+                for h in self.results['depth'][::t_step]]
         
-        # Wave celerity
-        
-        analytical_wave_celerity = []
-    
-        for i in range(len(velocities)):
-            row = []
-            for j in range(len(velocities[i])):
-                v = velocities[i][j]
-                h = depths[i][j]
-                celerity = v + sqrt(g * h)
-                row.append(celerity)
-            analytical_wave_celerity.append(row)
+        celerities = [c[::x_step]
+                for c in self.results['wave_celerity'][::t_step]]
 
         data = {
             'flow_area': areas,
@@ -173,7 +180,7 @@ class Solver:
             'flow_depth': depths,
             'flow_velocity': velocities,
             'water_surface_level': levels,
-            'analytical_wave_celerity': analytical_wave_celerity
+            'analytical_wave_celerity': celerities
         }
         
         # Create header with time column first, then spatial coordinates
@@ -188,6 +195,7 @@ class Solver:
         # Generate time coordinates for each saved time step
         time_coords = [i * t_step * self.time_step for i in range(len(areas))]
 
+        # Save data
         for key, value in data.items():
             # Add time column to each row of data
             value_with_time = []
@@ -202,7 +210,6 @@ class Solver:
                 output_file.write(value_str)
         
         # Save peak amplitude profile
-        
         value_str = str([0] + self.peak_amplitude_profile)
         for c in "[]' ":
             value_str = value_str.replace(c, '')
@@ -211,8 +218,7 @@ class Solver:
                 output_file.write(header_str)
                 output_file.write(value_str)
                 
-        # Save other data
-        
+        # Save data summary
         with open(path + '//Data.txt', 'w') as output_file:
             # Spatial step
             output_file.write(f'Spatial step = {self.spatial_step} m\n')
@@ -228,7 +234,7 @@ class Solver:
             output_file.write(f'Simulation duration = {Utility.seconds_to_hms(self.total_sim_duration)}\n')
             
             # Mass imbalance
-            x = np.array(self.computed_flow_rates)
+            x = np.array(self.results['flow_rate'])
             Q_in = x[:, 0]
             Q_out = x[:, -1]
             mass_imbalance = np.sum(Q_in - Q_out) * self.time_step
@@ -259,37 +265,33 @@ class Solver:
             output_file.write(f'Median volume entry time = {Utility.seconds_to_hms(median_vol_entry_time)}\n')
             output_file.write(f'Median volume arrival time = {Utility.seconds_to_hms(median_vol_arrival_time)}\n')
             output_file.write(f'Median volume travel time = {Utility.seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
+            
+            
                 
-    
     def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None):
+        """
+        Retrieves the whole or a part of the 2D list containing the computed values of the specified parameter.
+
+        Parameters
+        ----------
+        parameter : str
+            The name of the wanted parameter. It should be one of the following:
+            'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'.
+
+        Returns
+        -------
+        float | np.ndarray
+            The requested parameter(s).
+
+        """
+        
         if not self.solved:
             raise ValueError("Not solved yet.")
         
-        reqursted = None
-
-        if parameter == 'a':
-            reqursted = self.computed_areas
-            
-        elif parameter == 'q':
-            reqursted = self.computed_flow_rates
-            
-        elif parameter == 'v':
-            velocities = np.array(self.computed_flow_rates) / np.array(self.computed_areas)
-            reqursted = velocities
+        if parameter not in ['area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity']:
+            raise ValueError(f"'parameter' should take one of these values: 'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'\nYou entered: {parameter}")
         
-        elif parameter == 'h':
-            depths = np.array(self.computed_areas) / self.channel.width
-            reqursted = depths
-            
-        elif parameter == 's':
-            bed_levels = [self.channel.upstream_boundary.bed_level - self.channel.bed_slope * self.spatial_step * i for i in range(self.number_of_nodes)]
-            bed_levels = np.array(bed_levels)
-            
-            stages = np.array(self.computed_areas) / self.channel.width + bed_levels
-            reqursted = stages
-        
-        else:
-            raise ValueError("Invalid parameter. Choose between 'a', 'q', 'v', or 'h'.")
+        reqursted = self.results[parameter]
         
         if isinstance(reqursted, list):
             reqursted = np.array(reqursted)
@@ -300,8 +302,18 @@ class Solver:
             else:
                 return reqursted[:, spatial_node]
         
-        if temporal_node is not None:
+        elif temporal_node is not None:
             return reqursted[temporal_node, :]
             
-        return reqursted
+        else:
+            return reqursted
     
+    def finalize(self, time, verbose):
+        self.solved = True
+        self.total_sim_duration = time
+        
+        self.prepare_results()
+        
+        if verbose >= 1:
+            print("Simulation completed successfully.")
+            

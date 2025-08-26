@@ -1,40 +1,13 @@
 from solver import Solver
-from channel import Channel
+from reach import Channel
 from scipy.constants import g
 from utility import Utility
 
 
 class LaxSolver(Solver):
     """
-    Implements the Preissmann implicit finite difference scheme to numerically
+    Implements the Lax-Friedrichs explicit finite difference scheme to numerically
     solve the Saint-Venant equations.
-
-    Attributes
-    ----------
-    channel : Channel
-        An instance of the 'Channel' class, representing the channel being modeled.
-    delta_t : float
-        Time step for the simulation in seconds.
-    delta_x : float
-        Spatial step for the simulation in meters.
-    celerity : float
-        Ratio of spatial to time step, representing the wave celerity.
-    A_previous : list of float
-        Cross-sectional areas at the previous time step.
-    Q_previous : list of float
-        Discharges at the previous time step.
-    A_current : list of float
-        Cross-sectional areas at the current iteration of the current time step.
-    Q_current : list of float
-        Discharges at the current iteration of the current time step.
-    results_A : list of list of float
-        Stores the computed A values over time.
-    results_Q : list of list of float
-        Stores the computed Q values over time.
-    results_V : list of list of float
-        Stores the computed V values over time.
-    results_y : list of list of float
-        Stores the computed y values over time.
         
     """
     
@@ -55,6 +28,10 @@ class LaxSolver(Solver):
             Time step for the simulation in seconds.
         spatial_step : float
             Spatial step for the simulation in meters.
+        secondary_boundary_conditions : tuple of str
+            The approximation methods used at the two boundaries. Options: 'constant', 'mirror', 'linear'.
+        fit_spatial_step : bool
+            Wheter or not the size of the spatial step should be adjusted suit the total length of the reach.
             
         """
         super().__init__(channel, temporal_step, spatial_step, fit_spatial_step)
@@ -125,10 +102,8 @@ class LaxSolver(Solver):
             self.append_result()
             self.update()
             
-        self.solved = True
-        self.total_sim_duration = duration
-            
-
+        super().finalize(time, verbose)
+        
     def compute_upstream_boundary(self, time):
         self.Q_current[0] = self.channel.inflow_Q(time)
         
@@ -149,7 +124,7 @@ class LaxSolver(Solver):
                                                         self.Q_previous[1],
                                                         self.Q_previous[1])
             
-        elif self.secondary_boundary_conditions[0] == 'extrapolate':
+        elif self.secondary_boundary_conditions[0] == 'linear':
             self.A_current[0] = self.area_advanced_t(2 * self.A_previous[0] - self.A_previous[1],
                                                         self.A_previous[1],
                                                         2 * self.Q_previous[0] - self.Q_previous[1],
@@ -182,7 +157,7 @@ class LaxSolver(Solver):
                                                                self.A_previous[-2],
                                                                self.Q_previous[-2],
                                                                self.Q_previous[-2])
-        elif self.secondary_boundary_conditions[1] == 'extrapolate':
+        elif self.secondary_boundary_conditions[1] == 'linear':
             self.Q_current[-1] = self.discharge_advanced_t(self.A_previous[-2],
                                                                2 * self.A_previous[-1] - self.A_previous[-2],
                                                                self.Q_previous[-2],
