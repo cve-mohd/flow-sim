@@ -1,7 +1,7 @@
 from boundary import Boundary
 from math import sqrt
 
-class Channel:
+class Reach:
     """
     Represents a channel with hydraulic and geometric attributes.
     

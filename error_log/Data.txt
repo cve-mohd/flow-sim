@@ -1,0 +1,11 @@
+Spatial step = 400.0 m
+Time step = 300 s
+Theta = 0.8
+Simulation duration = 0:00:00
+Mass imbalance (total inflow - total outflow) = -57965478.65 m^3 = -1.8280% of inflow.
+Peak inflow = 28402.17 m^3/s
+Peak outflow = 97330.77 m^3/s
+Attenuation = -242.69%
+Median volume entry time = 33:20:00
+Median volume arrival time = 34:00:00
+Median volume travel time = 0:40:00

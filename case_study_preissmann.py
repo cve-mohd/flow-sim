@@ -1,4 +1,4 @@
-from reach import Channel
+from reach import Reach
 from boundary import Boundary
 from case_study_settings import *
 from preissmann import PreissmannSolver
@@ -21,7 +21,7 @@ def run(roseires_level_):
             
         ds = Boundary(initial_depth=downstream_depth, condition='flow_hydrograph' , bed_level=reach['ds_bed_level'], chainage=reach['chainage'])
         
-        reach_instance = Channel(length=reach['length'], width=reach['width'], initial_flow_rate=initial_flow,
+        reach_instance = Reach(length=reach['length'], width=reach['width'], initial_flow_rate=initial_flow,
                                 manning_co=manning_coefficient, upstream_boundary=us, downstream_boundary=ds)
         reach_instance.initialize_conditions(20)
         
@@ -69,7 +69,7 @@ def run(roseires_level_):
                     ds.build_stage_hydrograph(stage_hyd_times[ reach['id'] + 1 ], stage_hyd_stages[ reach['id'] + 1 ])
                     
                 
-            channel = Channel(length = reach['length'],
+            channel = Reach(length = reach['length'],
                             width = reach['width'],
                             initial_flow_rate = initial_flow,
                             manning_co = manning_coefficient,

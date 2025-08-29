@@ -1,4 +1,4 @@
-from reach import Channel
+from reach import Reach
 import numpy as np
 from scipy.constants import g
 from utility import Utility
@@ -38,7 +38,7 @@ class Solver:
     """
 
     def __init__(self,
-                 channel: Channel,
+                 reach: Reach,
                  time_step: int | float,
                  spatial_step: int | float,
                  fit_spatial_step = True):
@@ -47,8 +47,8 @@ class Solver:
 
         Parameters
         ----------
-        channel : Channel
-            The Channel object on which the simulation is performed.
+        reach : reach
+            The Reach object on which the simulation is performed.
         time_step : float
             Time step for the simulation in seconds.
         spatial_step : float
@@ -56,18 +56,18 @@ class Solver:
             
         """
         self.type = None
-        self.channel = channel
+        self.reach = reach
         self.solved = False
-        self.active_storage = self.channel.downstream_boundary.active_storage
+        self.active_storage = self.reach.downstream_boundary.active_storage
                 
         self.time_step, self.spatial_step = time_step, spatial_step
         self.num_celerity = self.spatial_step / float(self.time_step)
 
         if fit_spatial_step:
-            self.number_of_nodes = int(round(self.channel.total_length / self.spatial_step) + 1)
-            self.spatial_step = self.channel.total_length / (self.number_of_nodes - 1)
+            self.number_of_nodes = int(round(self.reach.total_length / self.spatial_step) + 1)
+            self.spatial_step = self.reach.total_length / (self.number_of_nodes - 1)
         else:
-            self.number_of_nodes = int(self.channel.total_length // self.spatial_step + 1)
+            self.number_of_nodes = int(self.reach.total_length // self.spatial_step + 1)
 
         self.A_previous = []
         self.Q_previous = []
@@ -98,10 +98,10 @@ class Solver:
             self.results['flow_rate'].append(self.Q_current.tolist())
                     
         if self.peak_amplitude_profile is None:
-            self.depth_0 = np.array(self.results['area'][0]) / self.channel.width
+            self.depth_0 = np.array(self.results['area'][0]) / self.reach.width
             self.peak_amplitude_profile = self.depth_0 - self.depth_0
         else:
-            peak_amplitudes = np.array(self.A_current) / self.channel.width - self.depth_0
+            peak_amplitudes = np.array(self.A_current) / self.reach.width - self.depth_0
             self.peak_amplitude_profile = [float(max(i, j)) for i,j in zip(peak_amplitudes, self.peak_amplitude_profile)]
         
     def prepare_results(self) -> None:
@@ -110,11 +110,11 @@ class Solver:
         self.results['velocity'] = self.results['velocity'].tolist()
                 
         # Compute depths and levels
-        self.results['depth'] = np.array(self.results['area']) / self.channel.width
+        self.results['depth'] = np.array(self.results['area']) / self.reach.width
         self.results['depth'] = self.results['depth'].tolist()
         
         for sublist in self.results['depth']:
-            self.results['level'].append([sublist[i] + self.channel.upstream_boundary.bed_level - self.channel.bed_slope * self.spatial_step * i for i in range(len(sublist))])
+            self.results['level'].append([sublist[i] + self.reach.upstream_boundary.bed_level - self.reach.bed_slope * self.spatial_step * i for i in range(len(sublist))])
             
         # Wave celerity
         for i in range(len(self.results['velocity'])):
@@ -184,7 +184,7 @@ class Solver:
         }
         
         # Create header with time column first, then spatial coordinates
-        spatial_header = [self.channel.upstream_boundary.chainage + x * self.spatial_step for x in range(0, self.number_of_nodes, x_step)]
+        spatial_header = [self.reach.upstream_boundary.chainage + x * self.spatial_step for x in range(0, self.number_of_nodes, x_step)]
         header = ['Time'] + spatial_header
         header_str = str(header)
         for c in "[]' ":
@@ -317,3 +317,19 @@ class Solver:
         if verbose >= 1:
             print("Simulation completed successfully.")
             
+    def area_at(self, i, current_time_level: bool, regularization: bool = 0):
+        if current_time_level:
+            A = self.A_current[i]
+        else:
+            A = self.A_previous[i]
+            
+        if regularization:
+            return Utility.A_reg(A)
+        else:
+            return A
+        
+    def flow_at(self, i, current_time_level: bool):
+        if current_time_level:
+            return self.Q_current[i]
+        else:
+            return self.Q_previous[i]
