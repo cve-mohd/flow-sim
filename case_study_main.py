@@ -1,6 +1,7 @@
 import case_study_preissmann
 
-for peak_inflow in range(10000, 26000, 2000):
-    for roseires_initial_stage in range(487, 492, 1):
-        case_study_preissmann.run(peak_inflow=peak_inflow, initial_roseires_stage=roseires_initial_stage)
-        
+for roseires_level_ in [485, 487, 490, 491]:
+    case_study_preissmann.run(roseires_level_)
+    print(f'Finished {roseires_level_}')
+    
+import results_processor
