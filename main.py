@@ -20,7 +20,7 @@ example_channel = Reach(length = 15000,
 
 from preissmann import PreissmannSolver
 
-p_model = PreissmannSolver(channel=example_channel,
+p_model = PreissmannSolver(reach=example_channel,
                            theta=0.8,
                            time_step=3600,
                            spatial_step=1000)

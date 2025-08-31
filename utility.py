@@ -39,56 +39,6 @@ class Utility:
         
         return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
-    def A_reg(A, A_min=1e-8, eps=1e-8):
-        """
-        Regularized wetted area.
-        
-        Parameters
-        ----------
-        A : float
-            Raw area value.
-        A_min : float
-            Minimum positive area (floor).
-        eps : float
-            Smoothing parameter.
-
-        Returns
-        -------
-        float
-            Regularized area.
-            
-        """
-        return A_min + 0.5 * (
-            (A - A_min) + np.sqrt(
-                (A - A_min) ** 2 + eps ** 2
-                )
-            )
-
-    def dAreg_dA(A, A_min=1e-8, eps=1e-8):
-        """
-        Derivative of regularized area w.r.t. raw area.
-        
-        Parameters
-        ----------
-        A : float
-            Raw area value(s).
-        A_min : float
-            Minimum positive area (floor).
-        eps : float
-            Smoothing parameter.
-
-        Returns
-        -------
-        float
-            d(A_reg)/dA
-            
-        """
-        return 0.5 * (
-            1.0 + (A - A_min) / np.sqrt(
-                (A - A_min) ** 2 + eps ** 2
-                )
-            )
-
         
 class RatingCurve:    
     def __init__(self):

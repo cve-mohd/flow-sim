@@ -142,7 +142,7 @@ class Boundary:
         
         return residual
         
-    def condition_derivative_wrt_A(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
+    def df_dA(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
         dy_dA = 1. / width
         
         if self.condition == 'flow_hydrograph':
@@ -184,7 +184,7 @@ class Boundary:
         
         return derivative
         
-    def condition_derivative_wrt_Q(self):
+    def df_dQ(self):
         if self.condition == 'flow_hydrograph':
             derivative = 1
             

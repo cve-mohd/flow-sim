@@ -76,7 +76,7 @@ def run(roseires_level_):
                             upstream_boundary = us,
                             downstream_boundary = ds)
 
-            solver = PreissmannSolver(channel, theta, preissmann_time_step, spatial_resolution * reach['length'])
+            solver = PreissmannSolver(channel, theta, preissmann_time_step, spatial_resolution * reach['length'], enforce_physicality)
             
             if e==8:
                 v = 0

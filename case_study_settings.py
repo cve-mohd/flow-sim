@@ -13,10 +13,11 @@ chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
 
 ############                Simulation Parameters               ############
 
+enforce_physicality = True
 sim_duration = 3600 * 96
 epochs = 10
 
-preissmann_time_step = 300
+preissmann_time_step = 3600
 theta = 0.8
 tolerance = 1e-6
 

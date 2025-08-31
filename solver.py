@@ -41,6 +41,7 @@ class Solver:
                  reach: Reach,
                  time_step: int | float,
                  spatial_step: int | float,
+                 enforce_physicality: bool = True,
                  fit_spatial_step = True):
         """
         Initializes the class.
@@ -56,8 +57,10 @@ class Solver:
             
         """
         self.type = None
-        self.reach = reach
         self.solved = False
+        self.enforce_physicality = enforce_physicality
+        
+        self.reach = reach
         self.active_storage = self.reach.downstream_boundary.active_storage
                 
         self.time_step, self.spatial_step = time_step, spatial_step
@@ -317,19 +320,77 @@ class Solver:
         if verbose >= 1:
             print("Simulation completed successfully.")
             
-    def area_at(self, i, current_time_level: bool, regularization: bool = 0):
+    def area_at(self, i, current_time_level: bool, regularization: bool = None):
         if current_time_level:
             A = self.A_current[i]
         else:
             A = self.A_previous[i]
             
-        if regularization:
-            return Utility.A_reg(A)
-        else:
-            return A
+        if regularization is None:
+            regularization = self.enforce_physicality
         
-    def flow_at(self, i, current_time_level: bool):
+        if regularization:
+            h_min = 1e-4
+            A_min = self.reach.width * h_min
+            A = self.A_reg(A, A_min)
+        
+        return A
+        
+    def flow_at(self, i, current_time_level: bool, chi_scaling: bool = None):
         if current_time_level:
-            return self.Q_current[i]
+            Q = self.Q_current[i]
         else:
-            return self.Q_previous[i]
+            Q = self.Q_previous[i]
+            
+        if chi_scaling is None:
+            chi_scaling = 0 #self.enforce_physicality
+            
+        if chi_scaling:
+            A_reg = self.area_at(i, current_time_level, 1)
+            h_min = 1e-4
+            A_min = self.reach.width * h_min
+            
+            chi = A_reg / (A_reg + A_min)
+            Q = Q * chi
+            
+        return Q
+    
+    def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
+        A = self.area_at(i, current_time_level, regularization)
+        Q = self.flow_at(i, current_time_level, chi_scaling)
+        
+        return self.reach.friction_slope(A, Q)
+    
+    def A_reg(self, A, eps=1e-4):
+        """
+        Regularized wetted area.
+        
+        Parameters
+        ----------
+        A : float
+            Raw area value.
+        eps : float
+            Smoothing parameter.
+
+        Returns
+        -------
+        float
+            Regularized area.
+            
+        """
+        h_min = 1e-4
+        A_min = self.reach.width * h_min
+        
+        return A_min + 0.5 * (
+            (A - A_min) + np.sqrt(
+                (A - A_min) ** 2 + eps ** 2
+                )
+            )
+        
+    def Q_eff(self, Q, A_reg):
+        h_min = 1e-4
+        A_min = self.reach.width * h_min
+        
+        chi = A_reg / (A_reg + A_min)
+        return Q * chi
+        
