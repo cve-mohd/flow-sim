@@ -1,4 +1,4 @@
-from reach import Channel
+from reach import Reach
 from boundary import Boundary
 from settings import trapzoid_hydrograph
 
@@ -11,7 +11,7 @@ ds = Boundary(initial_depth=3,
               condition='normal_depth',
               bed_level=482.5)
 
-example_channel = Channel(length = 15000,
+example_channel = Reach(length = 15000,
                           width = 250,
                           initial_flow_rate = 1562.5,
                           manning_co = 0.029,
@@ -20,7 +20,7 @@ example_channel = Channel(length = 15000,
 
 from preissmann import PreissmannSolver
 
-p_model = PreissmannSolver(channel=example_channel,
+p_model = PreissmannSolver(reach=example_channel,
                            theta=0.8,
                            time_step=3600,
                            spatial_step=1000)

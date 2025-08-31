@@ -1,4 +1,4 @@
-from reach import Channel
+from reach import Reach
 from boundary import Boundary
 from case_study_settings import *
 from utility import RatingCurve
@@ -16,7 +16,7 @@ for reach in reaches:
     us = Boundary(h_us, 'flow_hydrograph' , reach['us_bed_level'], flow_hydrograph_function=trapzoid_hydrograph, chainage=reach['chainage'])
     ds = Boundary(h_ds, 'fixed_depth', reach['ds_bed_level'])
 
-    channel = Channel(length = reach['length'],
+    channel = Reach(length = reach['length'],
                     width = reach['width'],
                     initial_flow_rate = initial_flow,
                     bed_slope = 'real',
@@ -64,7 +64,7 @@ for iteration in range(number_of_iterations):
             ds = Boundary(h_ds, 'fixed_depth', reach['ds_bed_level'])
             ds.set_storage_behavior(storage_area=storage_area, storage_exit_rating_curve=roseires_spillway_rating_curve)
             
-        channel = Channel(length = reach['length'], 
+        channel = Reach(length = reach['length'], 
                         width = reach['width'],
                         initial_flow_rate = initial_flow,
                         manning_co = manning_coefficient,

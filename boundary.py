@@ -44,9 +44,9 @@ class Boundary:
         if self.flow_hydrograph is None:
             raise ValueError("Flow hydrograph is not defined.")
         
-        max_time, _ = self.flow_hydrograph[-1]
+        max_time, last_flow = self.flow_hydrograph[-1]
         if t > max_time:
-            raise ValueError("Specified time is out of bound.")
+            return last_flow
                 
         from numpy import interp
         times, flows = zip(*self.flow_hydrograph)
@@ -71,9 +71,9 @@ class Boundary:
         if self.stage_hydrograph is None:
             raise ValueError("Stage hydrograph is not defined.")
         
-        max_time, _ = self.stage_hydrograph[-1]
+        max_time, last_stage = self.stage_hydrograph[-1]
         if time > max_time:
-            raise ValueError("Specified time is out of bound.")
+            return last_stage
                 
         from numpy import interp
         times, stages = zip(*self.stage_hydrograph)
@@ -142,7 +142,7 @@ class Boundary:
         
         return residual
         
-    def condition_derivative_wrt_A(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
+    def df_dA(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
         dy_dA = 1. / width
         
         if self.condition == 'flow_hydrograph':
@@ -184,7 +184,7 @@ class Boundary:
         
         return derivative
         
-    def condition_derivative_wrt_Q(self):
+    def df_dQ(self):
         if self.condition == 'flow_hydrograph':
             derivative = 1
             

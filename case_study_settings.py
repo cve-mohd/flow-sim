@@ -13,7 +13,8 @@ chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
 
 ############                Simulation Parameters               ############
 
-sim_duration = 3600 * 72
+enforce_physicality = True
+sim_duration = 3600 * 96
 epochs = 10
 
 preissmann_time_step = 3600
@@ -29,8 +30,7 @@ results_size = (-1, -1) # (t, x)
 
 ############                Hydrologic Parameters               ############
 
-us_water_level = [498.1, 490  , 490  , 490  , 490]
-ds_water_level = [490  , 490  , 490  , 490  , 490]
+roseires_level = 485
 
 initial_flow = 1562.5
 peak_flow = 25000
@@ -75,8 +75,6 @@ reaches = [
         'id': i,
         'length': lengths[i],
         'width': widths[i],
-        'us_water_level': us_water_level[i],
-        'ds_water_level': ds_water_level[i],
         'us_bed_level': us_bed_levels[i],
         'ds_bed_level': ds_bed_levels[i],
         'chainage': chainages[i]
