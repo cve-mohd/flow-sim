@@ -67,10 +67,10 @@ class Solver:
         self.num_celerity = self.spatial_step / float(self.time_step)
 
         if fit_spatial_step:
-            self.number_of_nodes = int(round(self.reach.total_length / self.spatial_step) + 1)
-            self.spatial_step = self.reach.total_length / (self.number_of_nodes - 1)
+            self.number_of_nodes = int(round(self.reach.length / self.spatial_step) + 1)
+            self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
         else:
-            self.number_of_nodes = int(self.reach.total_length // self.spatial_step + 1)
+            self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
 
         self.A_previous = []
         self.Q_previous = []
@@ -355,11 +355,14 @@ class Solver:
             
         return Q
     
+    def depth_at(self, i, current_time_level: bool, regularization: bool = None):
+        return self.area_at(i, current_time_level, regularization) / self.reach.width
+    
     def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
         A = self.area_at(i, current_time_level, regularization)
         Q = self.flow_at(i, current_time_level, chi_scaling)
         
-        return self.reach.friction_slope(A, Q)
+        return self.reach.Sf(A, Q)
     
     def A_reg(self, A, eps=1e-4):
         """

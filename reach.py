@@ -1,5 +1,6 @@
 from boundary import Boundary
 from math import sqrt
+from utility import Hydraulics
 
 class Reach:
     """
@@ -20,16 +21,20 @@ class Reach:
         flow variables (A and Q) at the spatial point corresponding to its index.
         
     """
-
-    def __init__(self, length: float, width: float, initial_flow_rate: float, manning_co: float,
-                 upstream_boundary: Boundary, downstream_boundary: Boundary, bed_slope: float | str = 'real', interpolation_method: str = 'GVF_equation', buffer_length: float = 0):
+    def __init__(self,
+                 upstream_boundary: Boundary,
+                 downstream_boundary: Boundary,
+                 width: float,
+                 initial_flow_rate: float,
+                 channel_roughness: float,
+                 floodplain_roughness: float = None,
+                 bankful_depth: float = None,
+                 interpolation_method: str = 'GVF_equation'):
         """
         Initialized an instance.
 
         Parameters
         ----------
-        bed_slope : any
-            A value, 'normal', or 'real'.
         manning_co : float
             The channel's Manning coefficient or coefficient of roughness.
         width : float
@@ -38,40 +43,28 @@ class Reach:
             The length of the channel.
 
         """
-        self.real_length = length
-        self.buffer_length = buffer_length
-        self.total_length = self.real_length + self.buffer_length
-        
-        self.width = float(width)
+        self.width = width
         self.initial_flow_rate = initial_flow_rate
-        self.manning_co = manning_co
+        self.channel_roughness = channel_roughness
+        
+        self.bankful_depth = bankful_depth
+        self.floodplain_roughness = floodplain_roughness
         
         self.upstream_boundary = upstream_boundary
         self.downstream_boundary = downstream_boundary
+        
+        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
+        
+        y1 = self.upstream_boundary.bed_level
+        y2 = self.downstream_boundary.bed_level
+        self.bed_slope = float(y1 - y2) / self.length
         
         if interpolation_method in ['linear', 'GVF_equation']:
             self.interpolation_method = interpolation_method
         
         self.initial_conditions = []
-        
-        if isinstance(bed_slope, float):
-            self.bed_slope = bed_slope
-        
-        elif bed_slope == 'normal':
-            A = upstream_boundary.initial_depth * self.width
-            Q = self.initial_flow_rate
-            self.bed_slope = self.friction_slope(A, Q, False)
-            
-        elif bed_slope == 'real':
-            y1 = self.upstream_boundary.bed_level
-            y2 = self.downstream_boundary.bed_level
-            self.bed_slope = float(y1 - y2) / float(self.real_length)
-            
-        else:
-            raise ValueError("Invalid bed slope argument.")
-        
 
-    def friction_slope(self, A: float, Q: float, approx_R = False) -> float:
+    def Sf(self, A: float, Q: float) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -88,79 +81,35 @@ class Reach:
             The computed friction slope.
             
         """       
-        
-        if approx_R:
-            P = self.width
-        else:
-            P = self.width + 2 * A / self.width
-            
-        Sf = (self.manning_co * P ** (2. / 3) / A ** (5. / 3)) ** 2 * Q * abs(Q)
-                
-        return Sf
+        n = self.get_n(A=A)
+        return Hydraulics.Sf(A=A, Q=Q, n=n, B=self.width)
     
-    def friction_slope_deriv_A(self, A: float, Q: float, approx_R = False) -> float:
-        if approx_R:
-            d_Sf = -10./3 * Q * abs(Q) * self.manning_co ** 2 * self.width ** (4./3) * A ** (-13./3)
-        else:
-            d_Sf = -10./3 * Q * abs(Q) * self.manning_co ** 2 * (self.width + 2 * A / self.width) ** (4./3) * A ** (-13./3)
-            + Q * abs(Q) * self.manning_co ** 2 * 4. / 3 * (self.width + 2 * A / self.width) ** (1./3) * A ** (-10./3) * 2 / self.width
+    def dSf_dA(self, A: float, Q: float) -> float:
+        n = self.get_n(A=A)
+        
+        d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=self.width)
+        d2 = d1 * Hydraulics.dn_dh(depth=A/self.width,
+                                   steepness=0.15,
+                                   channel_roughness=self.channel_roughness,
+                                   floodplain_roughness=self.floodplain_roughness,
+                                   bankful_depth=self.bankful_depth)
+        
+        return d1 + d2
+    
+    def dSf_dQ(self, A: float, Q: float) -> float:
+        n = self.get_n(A=A)
+        return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=self.width)
 
-        return d_Sf
-    
-    def friction_slope_deriv_Q(self, A: float, Q: float, approx_R = False) -> float:
-        if approx_R:
-            P = self.width
-        else:
-            P = self.width + 2 * A / self.width
-            
-        d_Sf = 2 * abs(Q) * (self.manning_co * P ** (2. / 3) / A ** (5. / 3)) ** 2
+    def normal_flow(self, A):
+        n = self.get_n(A=A)
+        return Hydraulics.normal_flow(A=A, S=self.bed_slope, n=n, B=self.width)
         
-        return d_Sf
-
-    def manning_Q(self, A, slope = None):
-        if slope is not None:
-            S = slope
-        else:
-            S = self.bed_slope
-            
-        P = self.width + 2. * A / self.width
-        #Q = A ** (5./3) * S / (self.manning_co * P ** (2./3) * abs(S) ** 0.5)
-        Q = A ** (5./3) * S ** 0.5 / (self.manning_co * P ** (2./3))
-        return Q
+    def normal_area(self, Q):
+        A_guess = self.downstream_boundary.initial_depth * self.width
+        n = self.get_n(A=A_guess)
         
-    def manning_A(self, flow_rate, tolerance = 1e-3, slope = None):
-        if slope is not None:
-            S = slope
-        else:
-            S = self.bed_slope
+        return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=self.bed_slope, n=n, B=self.width)
             
-        trial_A = self.width * self.upstream_boundary.initial_depth
-        q = self.manning_Q(trial_A, S)
-            
-        while abs(q - flow_rate) >= tolerance:
-            error = (q - flow_rate) / flow_rate
-            trial_A -= 0.1 * error * trial_A
-            q = self.manning_Q(trial_A, S)
-            
-        return trial_A
-    
-    def inflow_Q(self, time: float) -> float:
-        """
-        Computes the discharge at a given time using the upstream flow hydrograph.
-        
-        Parameters
-        ----------
-        time : float
-            The time in seconds.
-            
-        Returns
-        -------
-        float
-            The computed discharge in cubic meters per second.
-            
-        """
-        return self.upstream_boundary.get_flow_from_hydrograph(time)
-        
     def initialize_conditions(self, n_nodes: int) -> None:
         """
         Computes the initial conditions.
@@ -182,50 +131,60 @@ class Reach:
             y_n = self.downstream_boundary.initial_depth
                     
             for i in range(n_nodes):
-                distance = self.total_length * float(i) / float(n_nodes-1)
+                distance = self.length * float(i) / float(n_nodes-1)
                 
-                if distance <= self.real_length:
-                    y = (y_0 + (y_n - y_0) * distance / self.real_length)
-                    
-                else:
-                    y = y_n
-
+                y = y_0 + (y_n - y_0) * distance / self.length
+                
                 A, Q = y * self.width, self.initial_flow_rate
                 self.initial_conditions.append((A, Q))
                 
         elif self.interpolation_method == 'GVF_equation':
             from scipy.constants import g
 
-            dx = self.total_length / (n_nodes - 1)
+            dx = self.length / (n_nodes - 1)
             h = self.downstream_boundary.initial_depth
 
             for i in reversed(range(n_nodes)):
                 distance = i * dx
+    
+                A, Q = self.width * h, self.initial_flow_rate
+                Sf = self.Sf(A, Q)
+                Fr2 = Q ** 2 / (g * A ** 3 / self.width)
 
-                if distance > self.real_length:
-                    A, Q = self.downstream_boundary.initial_depth * self.width, self.initial_flow_rate
-                                
+                denominator = 1 - Fr2
+                if abs(denominator) < 1e-6:
+                    dhdx = 0.0
                 else:
-                    A = self.width * h
-                    Sf = self.friction_slope(A, self.initial_flow_rate)
-                    Fr2 = self.initial_flow_rate**2 / (g * A**3 / self.width)
+                    dhdx = (self.bed_slope - Sf) / denominator
 
-                    denominator = 1 - Fr2
-                    if abs(denominator) < 1e-6:
-                        dhdx = 0.0
-                    else:
-                        dhdx = (self.bed_slope - Sf) / denominator
+                if i < n_nodes - 1:
+                    h -= dhdx * dx
 
-                    if i < n_nodes - 1:
-                        h -= dhdx * dx
+                if h < 0:
+                    raise ValueError("GVF failed.")
 
-                    if h < 0:
-                        raise ValueError("GVF failed.")
-
-                    A, Q = h * self.width, self.initial_flow_rate
+                A = h * self.width
                     
                 self.initial_conditions.insert(0, (A, Q))
                 
         else:
             raise ValueError("Invalid flow type.")
     
+    def get_n(self, A, steepness = 0.15):
+        h = A/self.width
+        return Hydraulics.effective_roughness(depth=h,
+                                              steepness=steepness,
+                                              channel_roughness=self.channel_roughness,
+                                              floodplain_roughness=self.floodplain_roughness,
+                                              bankful_depth=self.bankful_depth)
+      
+    def dn_dA(self, A, steepness = 0.15):
+        h = A/self.width
+        dn_dh = Hydraulics.dn_dh(depth=h,
+                                 steepness=steepness,
+                                 channel_roughness=self.channel_roughness,
+                                 floodplain_roughness=self.floodplain_roughness,
+                                 bankful_depth=self.bankful_depth)
+        dh_dA = 1. / self.width
+        return dn_dh * dh_dA
+        

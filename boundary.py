@@ -1,15 +1,21 @@
-from utility import RatingCurve
+from utility import RatingCurve, Hydrograph, Hydraulics
 
 
 class Boundary:
-    def __init__(self, initial_depth, condition, bed_level, rating_curve: RatingCurve = None,
-                 flow_hydrograph_function = None, stage_hydrograph_function = None, chainage: int | float = 0):
+    def __init__(self,
+                 condition: str,
+                 bed_level: float,
+                 chainage: int | float,
+                 initial_depth: float,
+                 rating_curve: RatingCurve = None,
+                 hydrograph: Hydrograph = None):
         
         self.initial_depth = initial_depth
         
         self.bed_level = bed_level
         self.initial_stage = bed_level + initial_depth
         self.storage_stage = self.initial_stage
+        self.chainage = chainage
                 
         if condition in ['flow_hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve', 'stage_hydrograph']:
             self.condition = condition
@@ -17,93 +23,27 @@ class Boundary:
             raise ValueError("Invalid boundary condition.")
         
         self.rating_curve = rating_curve
-        self.flow_hydrograph = None
-        self.stage_hydrograph = None
-        self.chainage = chainage
+        self.hydrograph = hydrograph
         
         self.storage_area = None
         self.storage_exit_rating_curve = None
         self.active_storage = False
-        
-        if flow_hydrograph_function is not None:
-            self.flow_hydrograph_func = flow_hydrograph_function
-        else:
-            self.flow_hydrograph_func = self.interpolate_flow_hydrograph
-            
-        if stage_hydrograph_function is not None:
-            self.stage_hydrograph_func = stage_hydrograph_function
-        else:
-            self.stage_hydrograph_func = self.interpolate_stage_hydrograph
     
-    def set_storage_behavior(self, storage_area: float, storage_exit_rating_curve: RatingCurve):
+    def set_storage(self, storage_area: float, storage_exit_rating_curve: RatingCurve):
         self.storage_area = storage_area
         self.storage_exit_rating_curve = storage_exit_rating_curve
         self.active_storage = True
     
-    def interpolate_flow_hydrograph(self, t):
-        if self.flow_hydrograph is None:
-            raise ValueError("Flow hydrograph is not defined.")
-        
-        max_time, last_flow = self.flow_hydrograph[-1]
-        if t > max_time:
-            return last_flow
-                
-        from numpy import interp
-        times, flows = zip(*self.flow_hydrograph)
-        
-        return float(interp(t, times, flows))
-
-    def get_flow_from_hydrograph(self, time):
-        return self.flow_hydrograph_func(time)
-        
-    def build_flow_hydrograph(self, times, discharges):
-        if len(times) != len(discharges):
-            raise ValueError("Times and discharges must have the same length.")
-        
-        self.flow_hydrograph = list(zip(times, discharges))
-            
-    def set_flow_hydrograph(self, func):
-        self.flow_hydrograph_func = func
-        
-    ###########################
-    
-    def interpolate_stage_hydrograph(self, time):
-        if self.stage_hydrograph is None:
-            raise ValueError("Stage hydrograph is not defined.")
-        
-        max_time, last_stage = self.stage_hydrograph[-1]
-        if time > max_time:
-            return last_stage
-                
-        from numpy import interp
-        times, stages = zip(*self.stage_hydrograph)
-        
-        return float(interp(time, times, stages))
-
-    def get_stage_from_hydrograph(self, time):
-        return self.stage_hydrograph_func(time)
-    
-    def build_stage_hydrograph(self, times, stages):
-        if len(times) != len(stages):
-            raise ValueError("Times and stages must have the same length.")
-        
-        self.stage_hydrograph = list(zip(times, stages))
-        
-    def set_stage_hydrograph(self, func):
-        self.stage_hydrograph_func = func
-        
-    ########################
-
     def set_rating_curve(self, rating_curve: RatingCurve):
         self.rating_curve = rating_curve
         
-    def condition_residual(self, time = None, depth = None, width = None, discharge = None, bed_slope = None, manning_co = None, time_step = None):
+    def condition_residual(self, time = None, depth = None, width = None, flow_rate = None, bed_slope = None, roughness = None):
         if self.condition == 'flow_hydrograph':
             if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            Q_t = self.get_flow_from_hydrograph(time)
-            residual = discharge - Q_t
+            Q_t = self.hydrograph.get_at(time=time)
+            residual = flow_rate - Q_t
             
         elif self.condition == 'fixed_depth':
             if depth is None:
@@ -114,35 +54,29 @@ class Boundary:
                 residual = depth - (self.storage_stage - self.bed_level)
         
         elif self.condition == 'normal_depth':
-            if width is None or depth is None or discharge is None or bed_slope is None or manning_co is None:
+            if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            P = width + 2 * depth
-            A = width * depth
-            
-            Q = A ** (5./3) * abs(bed_slope) ** 0.5 / (manning_co * P ** (2./3))
-            
-            if bed_slope < 0:
-                Q = -Q
-            
-            residual = discharge - Q
+            normal_flow = Hydraulics.normal_flow(A=width*depth, S=bed_slope, n=roughness, B=width)
+                        
+            residual = flow_rate - normal_flow
         
         elif self.condition == 'rating_curve':
-            if depth is None or discharge is None:
+            if depth is None or flow_rate is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            residual = discharge - self.rating_curve.discharge(self.bed_level + depth)
+            residual = flow_rate - self.rating_curve.discharge(self.bed_level + depth)
             
         if self.condition == 'stage_hydrograph':
             if time is None or depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            stage_t = self.get_stage_from_hydrograph(time)
+            stage_t = self.hydrograph.get_at(time=time)
             residual = self.bed_level + depth - stage_t
         
         return residual
         
-    def df_dA(self, time = None, area = None, width = None, bed_slope = None, manning_co = None):
+    def df_dA(self, area = None, width = None, bed_slope = None, roughness = None):
         dy_dA = 1. / width
         
         if self.condition == 'flow_hydrograph':
@@ -155,18 +89,10 @@ class Boundary:
             derivative = dy_dA
         
         elif self.condition == 'normal_depth':
-            if width is None or area is None or bed_slope is None or manning_co is None:
+            if width is None or area is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            P = width + 2 * area/width
-            R = area/P
-            
-            derivative = - abs(bed_slope) ** 0.5 / manning_co * (
-                -4. / (3*width) * R ** (5./3) + 5./3 * R ** (2./3)
-                )
-            
-            if bed_slope < 0:
-                derivative = -derivative
+            derivative = Hydraulics.dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
         
         elif self.condition == 'rating_curve':
             if width is None or area is None:
@@ -201,6 +127,22 @@ class Boundary:
             derivative = 0
                         
         return derivative
+    
+    def df_dn(self, depth, width, bed_slope, roughness):
+        if self.condition == 'normal_depth':
+            P = width + 2 * depth
+            A = width * depth
+            Q = - A ** (5./3) * abs(bed_slope) ** 0.5 / (roughness ** 2 * P ** (2./3))
+            
+            if bed_slope < 0:
+                Q = -Q
+            
+            df_dn = - Q
+        
+        else:
+            df_dn = 0
+        
+        return df_dn
 
     def mass_balance(self, duration, inflow, stage) -> float:
         """
@@ -266,9 +208,6 @@ class Boundary:
         tostring = f'Initial depth = {self.initial_depth}\nCondition: '
         if self.condition == 'flow_hydrograph':
             tostring += 'Flow hydrograph\n'
-            tostring += '\tValues:\n'
-            for a, b in self.flow_hydrograph:
-                tostring += '\t\t' + f'{a:.2f}, {b:.2f}\n'
             
         elif self.condition == 'fixed_depth':
             tostring += 'Fixed depth\n'
@@ -288,10 +227,6 @@ class Boundary:
         
         elif self.condition == 'stage_hydrograph':
             tostring += 'Stage hydrograph\n'
-            tostring += '\tValues:\n'
-            for a, b in self.stage_hydrograph:
-                tostring += '\t\t' + f'{a:.2f}, {b:.2f}\n'
             
-                        
         return tostring
     

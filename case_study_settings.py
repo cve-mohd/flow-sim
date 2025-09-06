@@ -1,6 +1,8 @@
 ############                Channel Geometry                    ############
 
-manning_coefficient = 0.029
+wet_roughness = 0.027
+dry_roughness = 0.030
+
 lengths        = [16000, 32000, 37000, 8000, 27000]
 widths         = [250  , 650  , 1500 , 3000, 6000]
 
@@ -13,9 +15,9 @@ chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
 
 ############                Simulation Parameters               ############
 
-enforce_physicality = True
+enforce_physicality = False
 sim_duration = 3600 * 96
-epochs = 10
+epochs = 3
 
 preissmann_time_step = 3600
 theta = 0.8
