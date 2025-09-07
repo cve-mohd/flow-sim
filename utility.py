@@ -212,8 +212,6 @@ class RatingCurve:
 
 class Hydrograph:
     def __init__(self, function = None):
-        self.values = None
-        
         if function is not None:
             self.used_function = function
         else:
@@ -223,14 +221,11 @@ class Hydrograph:
         if self.values is None:
             raise ValueError("Hydrograph is not defined.")
         
-        max_time, last_flow = self.values[-1]
-        if time > max_time:
-            return last_flow
+        if time > self.times[-1]:
+            return self.values[-1]
                 
-        from numpy import interp
-        times, flows = zip(*self.values)
-        
-        return float(interp(time, times, flows))
+        from numpy import interp        
+        return float(interp(time, self.times, self.values))
 
     def get_at(self, time):
         return self.used_function(time)
@@ -239,17 +234,15 @@ class Hydrograph:
         if len(times) != len(values):
             raise ValueError("Times and values must have the same length.")
         
-        self.values = list(zip(times, values))
+        self.times, self.values = times, values
         
     def load_csv(self, path):
         import pandas as pd
         hydrograph_file = pd.read_csv(path, thousands=',')
         
-        times = hydrograph_file.iloc[:,0].astype(float).tolist()
-        values = hydrograph_file.iloc[:,1].astype(float).tolist()
-        
-        self.values = list(zip(times, values))
-            
+        self.times = hydrograph_file.iloc[:,0].astype(float).tolist()
+        self.values = hydrograph_file.iloc[:,1].astype(float).tolist()
+                    
     def set_function(self, func):
         self.used_function = func
     
