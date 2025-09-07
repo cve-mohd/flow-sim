@@ -40,7 +40,7 @@ class Utility:
         return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
         
-class RatingCurve:    
+class RatingCurve:
     def __init__(self):
         self.function = None
         self.derivative = None
@@ -209,3 +209,184 @@ class RatingCurve:
             equation = str(self.a) + ' (Y+' + str(self.stage_shift) + ')^' + str(self.b)
             
         return equation
+
+class Hydrograph:
+    def __init__(self, function = None):
+        self.values = None
+        
+        if function is not None:
+            self.used_function = function
+        else:
+            self.used_function = self.interpolate_hydrograph
+    
+    def interpolate_hydrograph(self, time):
+        if self.values is None:
+            raise ValueError("Hydrograph is not defined.")
+        
+        max_time, last_flow = self.values[-1]
+        if time > max_time:
+            return last_flow
+                
+        from numpy import interp
+        times, flows = zip(*self.values)
+        
+        return float(interp(time, times, flows))
+
+    def get_at(self, time):
+        return self.used_function(time)
+        
+    def set_values(self, times, values):
+        if len(times) != len(values):
+            raise ValueError("Times and values must have the same length.")
+        
+        self.values = list(zip(times, values))
+        
+    def load_csv(self, path):
+        import pandas as pd
+        hydrograph_file = pd.read_csv(path, thousands=',')
+        
+        times = hydrograph_file.iloc[:,0].astype(float).tolist()
+        values = hydrograph_file.iloc[:,1].astype(float).tolist()
+        
+        self.values = list(zip(times, values))
+            
+    def set_function(self, func):
+        self.used_function = func
+    
+class Hydraulics:
+    def normal_flow(A, S, n, B):
+        R = Hydraulics.R(A, B)
+        
+        Q = A * R ** (2./3) * abs(S) ** 0.5 / n
+        if S < 0:
+            Q = -Q
+            
+        return Q
+        
+    def normal_area(Q, A_guess, S_0, n, B, tolerance = 1e-3):
+        Q_guess = Hydraulics.normal_flow(A_guess, S_0, n, B)
+            
+        while abs(Q_guess - Q) >= tolerance:
+            error = (Q_guess - Q) / Q
+            A_guess -= 0.1 * error * A_guess
+            Q_guess = Hydraulics.normal_flow(A_guess, S_0, n, B)
+            
+        return A_guess
+    
+    def effective_roughness(depth: float, steepness, channel_roughness, floodplain_roughness, bankful_depth):
+        if floodplain_roughness is None or bankful_depth is None:
+            return channel_roughness
+        
+        transition_depth = steepness * bankful_depth
+        
+        if depth <= bankful_depth:
+            return channel_roughness
+        if transition_depth == 0 or depth - bankful_depth > transition_depth:
+            return floodplain_roughness
+        else:
+            return channel_roughness + (floodplain_roughness - channel_roughness) * (depth - bankful_depth) / transition_depth
+        
+    def Sf(A: float, Q: float, n: float, B: float, approx_R = False) -> float:
+        """
+        Computes the friction slope using Manning's equation.
+        
+        Parameters
+        ----------
+        A : float
+            The cross-sectional flow area.
+        Q : float
+            The discharge.
+            
+        Returns
+        -------
+        float
+            The computed friction slope.
+            
+        """
+        R = Hydraulics.R(A, B)
+        return n ** 2 * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
+    
+    def dSf_dA(A: float, Q: float, n: float, B: float) -> float:
+        """Computes the partial derivative of Sf w.r.t. A.
+
+        Args:
+            A (float): Cross-sectional flow area
+            Q (float): Flow rate
+            n (float): Manning's coefficient
+            B (float): Cross-sectional width
+            approx_R (bool, optional): Whether P (wetted perimeter) is approximated to B. Defaults to False.
+
+        Returns:
+            float: dSf/dA
+        """
+        R = Hydraulics.R(A, B)
+        
+        dSf_dA = -2 * n ** 2 * A ** -3 * R ** (-4. / 3) * Q * abs(Q)
+        dSf_dR = (-4./3) * n ** 2 * A ** -2 * R ** (-4./3 - 1) * Q * abs(Q)
+
+        return dSf_dA + dSf_dR * Hydraulics.dR_dA(A, B)
+    
+    def dSf_dQ(A: float, Q: float, n: float, B: float, approx_R = False) -> float:
+        """Computes the partial derivative of Sf w.r.t. Q.
+
+        Args:
+            A (float): Cross-sectional flow area
+            Q (float): Flow rate
+            n (float): Manning's coefficient
+            B (float): Cross-sectional width
+            approx_R (bool, optional): Whether P (wetted perimeter) is approximated to B. Defaults to False.
+
+        Returns:
+            float: dSf/dQ
+        """
+        R = Hydraulics.R(A, B)
+        
+        d_Sf = 2 * abs(Q) * (n / (A * R ** (2. / 3))) ** 2
+        
+        return d_Sf
+    
+    def R(A, B, approx = False):
+        if approx:
+            P = B
+        else:
+            P = B + 2. * A / B
+                    
+        return A / P
+    
+    def dR_dA(A, B, approx = False):
+        if approx:
+            P = B
+            dP_dA = 0
+        else:
+            P = B + 2. * A / B
+            dP_dA = 2. / B
+                
+        dR_dP = - A / P ** 2
+        
+        return dR_dP * dP_dA
+        
+    def dSf_dn(A, Q, n, B):
+        R = Hydraulics.R(A, B)
+        return 2 * n * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
+    
+    def dn_dh(depth: float, steepness, channel_roughness, floodplain_roughness, bankful_depth):
+        if floodplain_roughness is None or bankful_depth is None:
+            return 0
+        
+        transition_depth = steepness * bankful_depth
+        
+        if depth <= bankful_depth or depth - bankful_depth > transition_depth:
+            return 0
+        else:
+            return (floodplain_roughness - channel_roughness) / transition_depth
+        
+    def dQn_dA(A, S, n, B):
+        R = Hydraulics.R(A, B)
+        dQn_dR = (2./3) * A * R ** (2./3 - 1) * abs(S) ** 0.5 / n
+        
+        dQn_dA = R ** (2./3) * abs(S) ** 0.5 / n + dQn_dR * Hydraulics.dR_dA(A, B)
+        if S < 0:
+            dQn_dA = -dQn_dA
+            
+        return dQn_dA
+    
