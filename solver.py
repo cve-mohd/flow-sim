@@ -64,13 +64,14 @@ class Solver:
         self.active_storage = self.reach.downstream_boundary.active_storage
                 
         self.time_step, self.spatial_step = time_step, spatial_step
-        self.num_celerity = self.spatial_step / float(self.time_step)
 
         if fit_spatial_step:
             self.number_of_nodes = int(round(self.reach.length / self.spatial_step) + 1)
             self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
         else:
             self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
+            
+        self.num_celerity = self.spatial_step / float(self.time_step)
 
         self.A_previous = []
         self.Q_previous = []
