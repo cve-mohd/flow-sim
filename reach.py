@@ -44,7 +44,9 @@ class Reach:
 
         """
         self.width = width
+        self.conditions_initialized = False
         self.fixed_width = True
+        self.fixed_bed_slope = True
         self.initial_flow_rate = initial_flow_rate
         self.channel_roughness = channel_roughness
         
@@ -56,9 +58,9 @@ class Reach:
         
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         
-        y1 = self.upstream_boundary.bed_level
-        y2 = self.downstream_boundary.bed_level
-        self.bed_slope = float(y1 - y2) / self.length
+        z1 = self.upstream_boundary.bed_level
+        z2 = self.downstream_boundary.bed_level
+        self.bed_slope = float(z1 - z2) / self.length
         
         if interpolation_method in ['linear', 'GVF_equation']:
             self.interpolation_method = interpolation_method
@@ -170,6 +172,8 @@ class Reach:
                 
         else:
             raise ValueError("Invalid flow type.")
+        
+        self.conditions_initialized = True
     
     def get_n(self, A, steepness = 0.15):
         h = A/self.width
@@ -188,4 +192,62 @@ class Reach:
                                  bankful_depth=self.bankful_depth)
         dh_dA = 1. / self.width
         return dn_dh * dh_dA
+    
+    def set_intermediate_widths(self, widths: list, chainages: list):
+        if not self.conditions_initialized:
+            raise ValueError("Conditions must be initialized first.")
         
+        if len(widths) != len(chainages):
+            raise ValueError("")
+        
+        widths = [self.width] + widths + [self.width]
+        chainages = [0] + chainages + [self.downstream_boundary.chainage]
+        
+        n_nodes = len(self.initial_conditions)
+        
+        interp_widths = []
+        for i in range(n_nodes):
+            x = self.length * float(i) / float(n_nodes-1)
+            interp_widths.append(self.calc_B(x, chainages=chainages, widths=widths))
+            
+        self.width = interp_widths
+        self.fixed_width = False
+        
+    def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
+        if not self.conditions_initialized:
+            raise ValueError("Conditions must be initialized first.")
+        
+        if len(bed_levels) != len(chainages):
+            raise ValueError("")
+        
+        bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
+        chainages = [0] + chainages + [self.downstream_boundary.chainage]
+        
+        n_nodes = len(self.initial_conditions)
+        
+        interp_bed_slopes = []
+        for i in range(n_nodes):
+            x = self.length * float(i) / float(n_nodes-1)
+            interp_bed_slopes.append(self.calc_S0(x, chainages=chainages, bed_levels=bed_levels))
+            
+        self.bed_slope = interp_bed_slopes
+        self.fixed_bed_slope = False
+        
+    def calc_B(self, x, chainages, widths):
+        if self.fixed_width:
+            return self.width
+                        
+        from numpy import interp        
+        return float(interp(x, chainages, widths))
+    
+    def calc_S0(self, x, chainages, bed_levels):
+        if self.fixed_bed_slope:
+            return self.bed_slope
+        
+        from numpy import array, gradient, interp
+        chainages = array(chainages, dtype=float)
+        levels = array(bed_levels, dtype=float)
+
+        slopes = gradient(levels, chainages)
+        return -float(interp(x, chainages, slopes))
+    
