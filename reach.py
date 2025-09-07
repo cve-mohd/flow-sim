@@ -44,6 +44,7 @@ class Reach:
 
         """
         self.width = width
+        self.fixed_width = True
         self.initial_flow_rate = initial_flow_rate
         self.channel_roughness = channel_roughness
         
@@ -88,11 +89,11 @@ class Reach:
         n = self.get_n(A=A)
         
         d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=self.width)
-        d2 = d1 * Hydraulics.dn_dh(depth=A/self.width,
-                                   steepness=0.15,
-                                   channel_roughness=self.channel_roughness,
-                                   floodplain_roughness=self.floodplain_roughness,
-                                   bankful_depth=self.bankful_depth)
+        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=self.width) * Hydraulics.dn_dh(depth=A/self.width,
+                                                                               steepness=0.15,
+                                                                               channel_roughness=self.channel_roughness,
+                                                                               floodplain_roughness=self.floodplain_roughness,
+                                                                               bankful_depth=self.bankful_depth) * 1./self.width
         
         return d1 + d2
     
