@@ -91,7 +91,7 @@ class Boundary:
             if width is None or area is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            derivative = Hydraulics.dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
+            derivative = 0 - Hydraulics.dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
         
         elif self.condition == 'rating_curve':
             if width is None or area is None:
@@ -129,7 +129,7 @@ class Boundary:
     
     def df_dn(self, depth, width, bed_slope, roughness):
         if self.condition == 'normal_depth':
-            df_dn = Hydraulics.dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            df_dn = 0 - Hydraulics.dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
         else:
             df_dn = 0
         

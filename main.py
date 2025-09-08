@@ -30,7 +30,7 @@ solver = PreissmannSolver(reach=example_channel,
                           spatial_step=1000,
                           enforce_physicality=False)
 
-solver.run(duration=3600*72, verbose=3)
+solver.run(duration=3600*72, verbose=2)
 solver.save_results()
 
 """

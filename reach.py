@@ -202,8 +202,8 @@ class Reach:
         if len(widths) != len(chainages):
             raise ValueError("")
         
-        self.inter_widths = [self.width] + widths + [self.width]
-        self.width_chainages = [0] + chainages + [self.downstream_boundary.chainage]
+        self.inter_widths = [self.width] + widths
+        self.width_chainages = [0] + chainages
         self.fixed_width = False
 
     def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
@@ -233,6 +233,9 @@ class Reach:
     def calc_B(self, x):
         if self.fixed_width:
             return self.width
+                        
+        if x >= self.width_chainages[-1]:
+            return self.inter_widths[-1]
                         
         from numpy import interp        
         return float(interp(x, self.width_chainages, self.inter_widths))
