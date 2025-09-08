@@ -103,7 +103,7 @@ class PreissmannSolver(Solver):
             
         return np.array(equation_list)
 
-    def compute_jacobian(self, time) -> np.ndarray:
+    def compute_jacobian(self) -> np.ndarray:
         """
         Constructs the Jacobian matrix J of the system of equations.
 
@@ -120,7 +120,7 @@ class PreissmannSolver(Solver):
             
         jacobian_matrix = np.zeros(shape=matrix_shape)
 
-        jacobian_matrix[0, 0] = self.dU_dA(time)
+        jacobian_matrix[0, 0] = self.dU_dA()
         jacobian_matrix[0, 1] = self.dU_dQ()
 
         for row in range(1, 2 * self.number_of_nodes - 1, 2):
@@ -137,14 +137,14 @@ class PreissmannSolver(Solver):
             jacobian_matrix[row + 1, row + 2] = self.dM_dQiplus1(i = spatial_node)
         
         if self.active_storage:        
-            jacobian_matrix[-2, -3] = self.dD_dA(time = time)
+            jacobian_matrix[-2, -3] = self.dD_dA()
             jacobian_matrix[-2, -2] = self.dD_dQ()
             jacobian_matrix[-2, -1] = self.dD_dhs()
             
             jacobian_matrix[-1, -2] = self.dSr_dQ()
             jacobian_matrix[-1, -1] = self.dSr_dhs()
         else:
-            jacobian_matrix[-1, -2] = self.dD_dA(time = time)
+            jacobian_matrix[-1, -2] = self.dD_dA()
             jacobian_matrix[-1, -1] = self.dD_dQ()
 
         return jacobian_matrix
@@ -192,7 +192,7 @@ class PreissmannSolver(Solver):
                 self.update_guesses()
                 
                 R = self.compute_residual_vector(time = time)
-                J = self.compute_jacobian(time = time)
+                J = self.compute_jacobian()
                 
                 if np.isnan(R).any() or np.isnan(J).any():
                     raise ValueError("NaN in system assembly")
@@ -268,15 +268,16 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i=0, current_time_level=1)
         h = self.depth_at(i=0, current_time_level=1)
+        B = self.width_at(0)
         Q = self.flow_at(i=0, current_time_level=1)
-        
-        n = self.reach.get_n(A=A)
+        S_0 = self.bed_slope_at(0)
+        n = self.reach.get_n(A=A, B=B)
                 
         residual = self.reach.upstream_boundary.condition_residual(time=time,
                                                                    depth=h,
-                                                                   width=self.reach.width,
+                                                                   width=B,
                                                                    flow_rate=Q,
-                                                                   bed_slope=self.reach.bed_slope,
+                                                                   bed_slope=S_0,
                                                                    roughness=n)
 
         return residual
@@ -323,27 +324,29 @@ class PreissmannSolver(Solver):
 
         """     
         residual = (
-            (g * self.theta / self.reach.width) * (self.area_at(i + 1, 1) ** 2 - self.area_at(i, 1) ** 2)
-            - self.spatial_step * g * self.theta * self.reach.bed_slope * (self.area_at(i + 1, 1) + self.area_at(i, 1))
-            + self.theta * g * self.spatial_step * (self.Sf_at(i + 1, 1) * self.area_at(i + 1, 1) + self.Sf_at(i, 1) * self.area_at(i, 1))
+            + (g * self.theta) * (self.area_at(i + 1, 1) ** 2 / self.width_at(i + 1) - self.area_at(i, 1) ** 2 / self.width_at(i))
+            + self.spatial_step * g * self.theta * (
+                + (self.Sf_at(i + 1, 1) - self.bed_slope_at(i + 1)) * self.area_at(i + 1, 1)
+                + (self.Sf_at(i, 1) - self.bed_slope_at(i)) * self.area_at(i, 1)
+                )
             + self.num_celerity * (self.flow_at(i + 1, 1) + self.flow_at(i, 1))
             + 2 * self.theta * (
                 self.flow_at(i + 1, 1) ** 2 / self.area_at(i + 1, 1) - self.flow_at(i, 1) ** 2 / self.area_at(i, 1)
-            )
+                )
             - (
-                self.num_celerity * (self.flow_at(i + 1, 0) + self.flow_at(i, 0))
+                + self.num_celerity * (self.flow_at(i + 1, 0) + self.flow_at(i, 0))
                 - 2 * (1 - self.theta) * (
-                    self.flow_at(i + 1, 0) ** 2 / self.area_at(i + 1, 0)
-                    + (0.5 * g / self.reach.width) * self.area_at(i + 1, 0) ** 2
+                    + self.flow_at(i + 1, 0) ** 2 / self.area_at(i + 1, 0)
+                    + (0.5 * g) * self.area_at(i + 1, 0) ** 2 / self.width_at(i + 1)
                     - self.flow_at(i, 0) ** 2 / self.area_at(i, 0)
-                    - (0.5 * g / self.reach.width) * self.area_at(i, 0) ** 2
-                )
+                    - (0.5 * g) * self.area_at(i, 0) ** 2 / self.width_at(i)
+                    )
                 + self.spatial_step * (1 - self.theta) * g * (
-                    self.area_at(i + 1, 0) * (self.reach.bed_slope - self.Sf_at(i + 1, 0))
-                    + self.area_at(i, 0) * (self.reach.bed_slope - self.Sf_at(i, 0))
+                    + self.area_at(i + 1, 0) * (self.bed_slope_at(i + 1) - self.Sf_at(i + 1, 0))
+                    + self.area_at(i, 0) * (self.bed_slope_at(i + 1) - self.Sf_at(i, 0))
+                    )
                 )
             )
-        )
 
         return residual
 
@@ -359,13 +362,16 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(-1, 1)
         h = self.depth_at(-1, 1)
-        n = self.reach.get_n(A)
+        B = self.width_at(-1)
+        n = self.reach.get_n(A=A, B=B)
+        S_0 = self.bed_slope_at(-1)
+        Q = self.flow_at(-1, 1)
         
         residual = self.reach.downstream_boundary.condition_residual(time=time,
                                                                      depth=h,
-                                                                     width=self.reach.width,
-                                                                     flow_rate=self.flow_at(-1, 1),
-                                                                     bed_slope=self.reach.bed_slope,
+                                                                     width=B,
+                                                                     flow_rate=Q,
+                                                                     bed_slope=S_0,
                                                                      roughness=n)
         
         return residual
@@ -380,7 +386,7 @@ class PreissmannSolver(Solver):
         
         return residual
     
-    def dU_dA(self, time, reg = False) -> int:
+    def dU_dA(self, reg = False) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow area.
 
@@ -391,15 +397,17 @@ class PreissmannSolver(Solver):
 
         """
         A = self.area_at(0, 1)
-        h = self.depth_at(-1, 1)
-        n = self.reach.get_n(A=A)
+        h = self.depth_at(0, 1)
+        B = self.width_at(0)
+        n = self.reach.get_n(A=A, B=B)
+        S_0 = self.bed_slope_at(0)
                     
-        dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=self.reach.width, bed_slope=self.reach.bed_slope, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A)
+        dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
+        dn_dA = self.reach.dn_dA(A=A, B=B)
         
         dU = self.reach.upstream_boundary.df_dA(area=A,
-                                                width=self.reach.width,
-                                                bed_slope=self.reach.bed_slope,
+                                                width=B,
+                                                bed_slope=S_0,
                                                 roughness=n) + dU_dn * dn_dA
         
         if not self.enforce_physicality:
@@ -571,15 +579,16 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i + 1, 1)
         Q = self.flow_at(i + 1, 1)
+        B = self.width_at(i + 1)
         
-        Sf = self.reach.Sf(A=A, Q=Q)
-        dSf_dA = self.reach.dSf_dA(A=A, Q=Q)
+        Sf = self.Sf_at(i + 1, 1)
+        S_0 = self.bed_slope_at(i + 1)
+        dSf_dA = self.reach.dSf_dA(A=A, Q=Q, B=B)
         
         dM = (
-            2 * g * self.theta / self.reach.width * A
-            - self.spatial_step * g * self.theta * self.reach.bed_slope
+            + 2 * g * self.theta * A / B
             - 2 * self.theta * (Q / A) ** 2
-            + self.theta * g * self.spatial_step * (Sf + A * dSf_dA)
+            + self.theta * g * self.spatial_step * (Sf - S_0 + A * dSf_dA)
             )
                 
         if not self.enforce_physicality:
@@ -613,15 +622,16 @@ class PreissmannSolver(Solver):
         
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
+        B = self.width_at(i)
         
-        Sf = self.reach.Sf(A, Q)
-        dSf_dA = self.reach.dSf_dA(A, Q)
+        Sf = self.Sf_at(i, 1)
+        S_0 = self.bed_slope_at(i)
+        dSf_dA = self.reach.dSf_dA(A, Q, B)
         
         dM = (
-            - 2 * g * self.theta / self.reach.width * A
-            - self.spatial_step * g * self.theta * self.reach.bed_slope
+            - 2 * g * self.theta * A / B
             + 2 * self.theta * (Q / A) ** 2
-            + self.theta * g * self.spatial_step * (Sf + A * dSf_dA)
+            + self.theta * g * self.spatial_step * (Sf - S_0 + A * dSf_dA)
             )
         
         if not self.enforce_physicality:
@@ -652,7 +662,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.reach.dSf_dQ(self.area_at(i + 1, 1), self.flow_at(i + 1, 1))
+        dSf_dQ = self.reach.dSf_dQ(self.area_at(i + 1, 1), self.flow_at(i + 1, 1), self.width_at(i + 1))
         
         dM = (
             self.num_celerity
@@ -685,7 +695,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.reach.dSf_dQ(self.area_at(i, 1), self.flow_at(i, 1))
+        dSf_dQ = self.reach.dSf_dQ(self.area_at(i, 1), self.flow_at(i, 1), self.width_at(i))
         
         dM = (
             self.num_celerity
@@ -707,7 +717,7 @@ class PreissmannSolver(Solver):
         else:
             return derivative
 
-    def dD_dA(self, time, reg = False) -> float:
+    def dD_dA(self, reg = False) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -720,14 +730,16 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(-1, 1)
         h = self.depth_at(-1, 1)
-        n = self.reach.get_n(A=A)
+        B = self.width_at(-1)
+        n = self.reach.get_n(A=A, B=B)
+        S_0 = self.bed_slope_at(-1)
                 
-        dD_dn = self.reach.downstream_boundary.df_dn(depth=h, width=self.reach.width, bed_slope=self.reach.bed_slope, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A)
+        dD_dn = self.reach.downstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
+        dn_dA = self.reach.dn_dA(A=A, B=B)
         
         dD = self.reach.downstream_boundary.df_dA(area=A,
-                                                  width=self.reach.width,
-                                                  bed_slope=self.reach.bed_slope,
+                                                  width=B,
+                                                  bed_slope=S_0,
                                                   roughness=n) + dD_dn * dn_dA
         
         if not self.enforce_physicality:
@@ -826,9 +838,9 @@ class PreissmannSolver(Solver):
             output_file.write(f'Theta = {self.theta}\n')
             
             output_file.write(f'Channel length = {self.reach.total_length}\n')
-            output_file.write(f'Channel width = {self.reach.width}\n')
+            output_file.write(f'Channel width = {self.reach.width[0]}\n')
             output_file.write(f'Manning\'s coefficient = {self.reach.channel_roughness}\n')
-            output_file.write(f'Bed slope = {self.reach.bed_slope}\n')
+            output_file.write(f'Bed slope = {self.reach.bed_slope[0]}\n')
             
             output_file.write('\n##############################################################\n\n')
             
@@ -864,7 +876,7 @@ class PreissmannSolver(Solver):
             
         """
         h_min = 1e-4
-        A_min = self.reach.width * h_min
+        A_min = self.width_at(i) * h_min
         A = self.area_at(i, 1, False)
         
         return 0.5 * (
@@ -892,7 +904,7 @@ class PreissmannSolver(Solver):
         """
         h_min = 1e-4
         
-        A_min = self.reach.width * h_min
+        A_min = self.width_at(i) * h_min
         A_reg = self.area_at(i, 1, True)
         Q = self.flow_at(i, 1, False)
         
@@ -915,7 +927,7 @@ class PreissmannSolver(Solver):
         """
         h_min = 1e-4
         
-        A_min = self.reach.width * h_min
+        A_min = self.width_at(i) * h_min
         A_reg = self.area_at(i, True, True)
         
         chi = A_reg / (A_reg + A_min)

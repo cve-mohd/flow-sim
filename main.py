@@ -1,32 +1,40 @@
 from reach import Reach
 from boundary import Boundary
 from settings import trapzoid_hydrograph
+from utility import Hydrograph
+
+hyd = Hydrograph(trapzoid_hydrograph)
 
 us = Boundary(initial_depth=3,
               condition='flow_hydrograph',
               bed_level=495,
-              flow_hydrograph_function=trapzoid_hydrograph)
+              chainage=0,
+              hydrograph=hyd)
 
 ds = Boundary(initial_depth=3,
               condition='normal_depth',
-              bed_level=482.5)
+              bed_level=495,
+              chainage=26000)
 
-example_channel = Reach(length = 15000,
-                          width = 250,
-                          initial_flow_rate = 1562.5,
-                          manning_co = 0.029,
-                          upstream_boundary = us,
-                          downstream_boundary = ds)
+example_channel = Reach(width = 250,
+                        initial_flow_rate = 1562.5,
+                        channel_roughness = 0.029,
+                        upstream_boundary = us,
+                        downstream_boundary = ds)
+
+example_channel.set_intermediate_bed_levels([510], [8000])
+example_channel.set_intermediate_widths([300], [26000])
 
 from preissmann import PreissmannSolver
 
-p_model = PreissmannSolver(reach=example_channel,
-                           theta=0.8,
-                           time_step=3600,
-                           spatial_step=1000)
+solver = PreissmannSolver(reach=example_channel,
+                          theta=0.8,
+                          time_step=3600,
+                          spatial_step=1000,
+                          enforce_physicality=False)
 
-p_model.run(duration=3600*72, verbose=3)
-p_model.save_results()
+solver.run(duration=3600*24, verbose=1)
+solver.save_results()
 
 """
 from lax import LaxSolver

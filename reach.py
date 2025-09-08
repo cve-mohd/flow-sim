@@ -44,9 +44,12 @@ class Reach:
 
         """
         self.width = width
+        self.conditions_initialized = False
         self.fixed_width = True
+        self.fixed_bed_slope = True
         self.initial_flow_rate = initial_flow_rate
         self.channel_roughness = channel_roughness
+        self.bed_levels = None
         
         self.bankful_depth = bankful_depth
         self.floodplain_roughness = floodplain_roughness
@@ -56,16 +59,16 @@ class Reach:
         
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         
-        y1 = self.upstream_boundary.bed_level
-        y2 = self.downstream_boundary.bed_level
-        self.bed_slope = float(y1 - y2) / self.length
+        z1 = self.upstream_boundary.bed_level
+        z2 = self.downstream_boundary.bed_level
+        self.bed_slope = float(z1 - z2) / self.length
         
         if interpolation_method in ['linear', 'GVF_equation']:
             self.interpolation_method = interpolation_method
         
         self.initial_conditions = []
 
-    def Sf(self, A: float, Q: float) -> float:
+    def Sf(self, A: float, Q: float, B: float) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -82,34 +85,34 @@ class Reach:
             The computed friction slope.
             
         """       
-        n = self.get_n(A=A)
-        return Hydraulics.Sf(A=A, Q=Q, n=n, B=self.width)
+        n = self.get_n(A=A, B=B)
+        return Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
     
-    def dSf_dA(self, A: float, Q: float) -> float:
-        n = self.get_n(A=A)
+    def dSf_dA(self, A: float, Q: float, B: float) -> float:
+        n = self.get_n(A=A, B=B)
         
-        d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=self.width)
-        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=self.width) * Hydraulics.dn_dh(depth=A/self.width,
-                                                                               steepness=0.15,
-                                                                               channel_roughness=self.channel_roughness,
-                                                                               floodplain_roughness=self.floodplain_roughness,
-                                                                               bankful_depth=self.bankful_depth) * 1./self.width
+        d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B)
+        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * Hydraulics.dn_dh(depth=A/B,
+                                                                      steepness=0.15,
+                                                                      channel_roughness=self.channel_roughness,
+                                                                      floodplain_roughness=self.floodplain_roughness,
+                                                                      bankful_depth=self.bankful_depth) * 1./B
         
         return d1 + d2
     
-    def dSf_dQ(self, A: float, Q: float) -> float:
-        n = self.get_n(A=A)
-        return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=self.width)
+    def dSf_dQ(self, A: float, Q: float, B: float) -> float:
+        n = self.get_n(A=A, B=B)
+        return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
 
-    def normal_flow(self, A):
-        n = self.get_n(A=A)
-        return Hydraulics.normal_flow(A=A, S=self.bed_slope, n=n, B=self.width)
+    def normal_flow(self, A: float, B: float, S_0: float):
+        n = self.get_n(A=A, B=B)
+        return Hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
-    def normal_area(self, Q):
-        A_guess = self.downstream_boundary.initial_depth * self.width
-        n = self.get_n(A=A_guess)
+    def normal_area(self, Q: float, B: float, S_0: float):
+        A_guess = self.downstream_boundary.initial_depth * B
+        n = self.get_n(A=A_guess, B=B)
         
-        return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=self.bed_slope, n=n, B=self.width)
+        return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
             
     def initialize_conditions(self, n_nodes: int) -> None:
         """
@@ -127,6 +130,9 @@ class Reach:
         None.
 
         """
+        self.initialize_bed_slopes(n_nodes=n_nodes)
+        self.initialize_widths(n_nodes=n_nodes)
+        
         if self.interpolation_method == 'linear':
             y_0 = self.upstream_boundary.initial_depth
             y_n = self.downstream_boundary.initial_depth
@@ -136,7 +142,7 @@ class Reach:
                 
                 y = y_0 + (y_n - y_0) * distance / self.length
                 
-                A, Q = y * self.width, self.initial_flow_rate
+                A, Q = y * self.width[i], self.initial_flow_rate
                 self.initial_conditions.append((A, Q))
                 
         elif self.interpolation_method == 'GVF_equation':
@@ -148,15 +154,15 @@ class Reach:
             for i in reversed(range(n_nodes)):
                 distance = i * dx
     
-                A, Q = self.width * h, self.initial_flow_rate
-                Sf = self.Sf(A, Q)
-                Fr2 = Q ** 2 / (g * A ** 3 / self.width)
+                A, Q = self.width[i] * h, self.initial_flow_rate
+                Sf = self.Sf(A, Q, self.width[i])
+                Fr2 = Q ** 2 / (g * A ** 3 / self.width[i])
 
                 denominator = 1 - Fr2
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
                 else:
-                    dhdx = (self.bed_slope - Sf) / denominator
+                    dhdx = (self.bed_slope[i] - Sf) / denominator
 
                 if i < n_nodes - 1:
                     h -= dhdx * dx
@@ -164,28 +170,94 @@ class Reach:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = h * self.width
+                A = h * self.width[i]
                     
                 self.initial_conditions.insert(0, (A, Q))
                 
         else:
             raise ValueError("Invalid flow type.")
+        
+        self.conditions_initialized = True
     
-    def get_n(self, A, steepness = 0.15):
-        h = A/self.width
+    def get_n(self, A: float, B: float, steepness = 0.15):
+        h = A/B
         return Hydraulics.effective_roughness(depth=h,
                                               steepness=steepness,
                                               channel_roughness=self.channel_roughness,
                                               floodplain_roughness=self.floodplain_roughness,
                                               bankful_depth=self.bankful_depth)
       
-    def dn_dA(self, A, steepness = 0.15):
-        h = A/self.width
+    def dn_dA(self, A: float, B: float, steepness = 0.15):
+        h = A/B
         dn_dh = Hydraulics.dn_dh(depth=h,
                                  steepness=steepness,
                                  channel_roughness=self.channel_roughness,
                                  floodplain_roughness=self.floodplain_roughness,
                                  bankful_depth=self.bankful_depth)
-        dh_dA = 1. / self.width
+        dh_dA = 1./B
         return dn_dh * dh_dA
+    
+    def set_intermediate_widths(self, widths: list, chainages: list):
+        if len(widths) != len(chainages):
+            raise ValueError("")
         
+        self.inter_widths = [self.width] + widths
+        self.width_chainages = [0] + chainages
+        self.fixed_width = False
+
+    def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
+        if len(bed_levels) != len(chainages):
+            raise ValueError("")
+        
+        self.inter_bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
+        self.level_chainages = [self.upstream_boundary.chainage] + chainages + [self.downstream_boundary.chainage]
+        self.fixed_bed_slope = False
+
+    def initialize_widths(self, n_nodes):
+        interp_widths = []
+        for i in range(n_nodes):
+            x = self.length * float(i) / float(n_nodes-1)
+            interp_widths.append(self.calc_B(x))
+            
+        self.width = interp_widths
+        
+    def initialize_bed_slopes(self, n_nodes):
+        if self.fixed_bed_slope:
+            interp_bed_slopes = [self.bed_slope] * n_nodes
+        else:
+            from numpy import array, gradient
+            
+            ch, self.bed_levels = self.build_bed_levels(n_nodes)
+            levels = array(self.bed_levels, dtype=float)
+
+            interp_bed_slopes = -gradient(levels, ch)
+            
+        self.bed_slope = interp_bed_slopes
+        
+    def calc_B(self, x):
+        if self.fixed_width:
+            return self.width
+                        
+        if x >= self.width_chainages[-1]:
+            return self.inter_widths[-1]
+                        
+        from numpy import interp        
+        return float(interp(x, self.width_chainages, self.inter_widths))
+    
+    def calc_S0(self, x):
+        if self.fixed_bed_slope:
+            return self.bed_slope
+        
+        from numpy import array, gradient, interp
+        chainages = array(self.level_chainages, dtype=float)
+        levels = array(self.inter_bed_levels, dtype=float)
+
+        slopes = gradient(levels, chainages)
+        return -float(interp(x, chainages, slopes))
+    
+    def build_bed_levels(self, n_nodes):
+        from numpy import linspace, interp
+        chainages = linspace(0, self.length, n_nodes)
+        bed_levels = [float(i) for i in list(interp(chainages, self.level_chainages, self.inter_bed_levels))]
+        
+        return chainages, bed_levels
