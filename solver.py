@@ -102,23 +102,23 @@ class Solver:
             self.results['flow_rate'].append(self.Q_current.tolist())
                     
         if self.peak_amplitude_profile is None:
-            self.depth_0 = np.array(self.results['area'][0]) / self.reach.width
+            self.depth_0 = np.array(self.results['area'][0]) / np.array(self.reach.width)
             self.peak_amplitude_profile = self.depth_0 - self.depth_0
         else:
-            peak_amplitudes = np.array(self.A_current) / self.reach.width - self.depth_0
+            peak_amplitudes = np.array(self.A_current) / np.array(self.reach.width) - self.depth_0
             self.peak_amplitude_profile = [float(max(i, j)) for i,j in zip(peak_amplitudes, self.peak_amplitude_profile)]
         
     def prepare_results(self) -> None:
-        # Compute velocities
         self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
         self.results['velocity'] = self.results['velocity'].tolist()
                 
-        # Compute depths and levels
-        self.results['depth'] = np.array(self.results['area']) / self.reach.width
+        self.results['depth'] = np.array(self.results['area']) / np.array(self.reach.width)
         self.results['depth'] = self.results['depth'].tolist()
         
-        for sublist in self.results['depth']:
-            self.results['level'].append([sublist[i] + self.reach.upstream_boundary.bed_level - self.reach.bed_slope * self.spatial_step * i for i in range(len(sublist))])
+        for depths in self.results['depth']:
+            self.results['level'].append([
+                depths[i] + self.reach.bed_levels[i] for i in range(self.number_of_nodes)
+            ])
             
         # Wave celerity
         for i in range(len(self.results['velocity'])):
@@ -332,7 +332,7 @@ class Solver:
         
         if regularization:
             h_min = 1e-4
-            A_min = self.reach.width * h_min
+            A_min = self.width_at(i) * h_min
             A = self.A_reg(A, A_min)
         
         return A
@@ -344,26 +344,33 @@ class Solver:
             Q = self.Q_previous[i]
             
         if chi_scaling is None:
-            chi_scaling = 0 #self.enforce_physicality
+            chi_scaling = self.enforce_physicality
             
         if chi_scaling:
             A_reg = self.area_at(i, current_time_level, 1)
             h_min = 1e-4
-            A_min = self.reach.width * h_min
+            A_min = self.width_at(i) * h_min
             
             chi = A_reg / (A_reg + A_min)
             Q = Q * chi
             
         return Q
     
+    def width_at(self, i):
+        return self.reach.width[i]
+    
+    def bed_slope_at(self, i):
+        return self.reach.bed_slope[i]
+    
     def depth_at(self, i, current_time_level: bool, regularization: bool = None):
-        return self.area_at(i, current_time_level, regularization) / self.reach.width
+        return self.area_at(i, current_time_level, regularization) / self.width_at(i)
     
     def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
         A = self.area_at(i, current_time_level, regularization)
         Q = self.flow_at(i, current_time_level, chi_scaling)
+        B = self.width_at(i)
         
-        return self.reach.Sf(A, Q)
+        return self.reach.Sf(A, Q, B)
     
     def A_reg(self, A, eps=1e-4):
         """
@@ -383,7 +390,7 @@ class Solver:
             
         """
         h_min = 1e-4
-        A_min = self.reach.width * h_min
+        A_min = self.width_at(0) * h_min
         
         return A_min + 0.5 * (
             (A - A_min) + np.sqrt(
@@ -393,7 +400,7 @@ class Solver:
         
     def Q_eff(self, Q, A_reg):
         h_min = 1e-4
-        A_min = self.reach.width * h_min
+        A_min = self.width_at(0) * h_min
         
         chi = A_reg / (A_reg + A_min)
         return Q * chi

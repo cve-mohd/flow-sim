@@ -57,8 +57,7 @@ class Boundary:
             if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            normal_flow = Hydraulics.normal_flow(A=width*depth, S=bed_slope, n=roughness, B=width)
-                        
+            normal_flow = Hydraulics.normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
             residual = flow_rate - normal_flow
         
         elif self.condition == 'rating_curve':
@@ -130,15 +129,7 @@ class Boundary:
     
     def df_dn(self, depth, width, bed_slope, roughness):
         if self.condition == 'normal_depth':
-            P = width + 2 * depth
-            A = width * depth
-            Q = - A ** (5./3) * abs(bed_slope) ** 0.5 / (roughness ** 2 * P ** (2./3))
-            
-            if bed_slope < 0:
-                Q = -Q
-            
-            df_dn = - Q
-        
+            df_dn = Hydraulics.dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
         else:
             df_dn = 0
         

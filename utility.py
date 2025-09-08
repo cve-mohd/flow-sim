@@ -1,8 +1,8 @@
 import os
 from numpy import sum, abs, square
-from numpy import min, polyfit, array, log, exp
+from numpy import polyfit, array, log, exp
 from numpy.polynomial.polynomial import Polynomial
-import numpy as np
+from math import sqrt, pow
 
 
 class Utility:
@@ -39,7 +39,6 @@ class Utility:
         
         return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
-        
 class RatingCurve:
     def __init__(self):
         self.function = None
@@ -47,7 +46,6 @@ class RatingCurve:
         
         self.defined = False
         self.type = None    
-    
     
     def set(self, type, a, b, c=None, stage_shift=None):
         if stage_shift is None:
@@ -70,7 +68,6 @@ class RatingCurve:
         self.defined = True
         self.type = type
         
-    
     def discharge(self, stage):
         """
         Computes the discharge for a given stage using
@@ -104,7 +101,6 @@ class RatingCurve:
                     
             return float(discharge)
     
-    
     def stage(self, discharge: float, trial_stage: float = None, tolerance: float = 1e-2, rate=1) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
@@ -117,15 +113,12 @@ class RatingCurve:
         while abs(q - discharge) > tolerance:
             func = q - discharge
             deriv = self.derivative_wrt_stage(stage=trial_stage)
-            delta = - rate * func / deriv
-                        
-            trial_stage += delta
-            #print(trial_stage)
             
+            delta = - rate * func / deriv
+            trial_stage += delta
             q = self.discharge(stage=trial_stage)
         
         return trial_stage
-    
     
     def fit(self, discharges: list, stages: list, stage_shift: float=0, type: str='polynomial', scale=True, degree: int=2):
         self.type = type
@@ -176,7 +169,6 @@ class RatingCurve:
         
         self.defined = True
         
-        
     def derivative_wrt_stage(self, stage):
         Y_ = stage + self.stage_shift
         
@@ -193,7 +185,6 @@ class RatingCurve:
             d = self.a * self.b * Y_ ** (self.b - 1)
             
         return d
-    
     
     def tostring(self):
         if not self.defined:
@@ -247,13 +238,13 @@ class Hydrograph:
         self.used_function = func
     
 class Hydraulics:
-    def normal_flow(A, S, n, B):
+    def normal_flow(A, S_0, n, B):
         R = Hydraulics.R(A, B)
         
-        Q = A * R ** (2./3) * abs(S) ** 0.5 / n
-        if S < 0:
+        Q = A * R ** (2./3) * abs(S_0) ** 0.5 / n
+        if S_0 < 0:
             Q = -Q
-            
+                        
         return Q
         
     def normal_area(Q, A_guess, S_0, n, B, tolerance = 1e-3):
@@ -382,4 +373,14 @@ class Hydraulics:
             dQn_dA = -dQn_dA
             
         return dQn_dA
+    
+    def dQn_dn(A, S_0, n, B):
+        R = Hydraulics.R(A, B)
+        
+        dQn_dn = -1 * A * R ** (2./3) * abs(S_0) ** 0.5 * n ** -2
+        
+        if S_0 < 0:
+            dQn_dn = -dQn_dn
+            
+        return dQn_dn
     
