@@ -184,7 +184,9 @@ class Solver:
             'flow_depth': depths,
             'flow_velocity': velocities,
             'water_surface_level': levels,
-            'analytical_wave_celerity': celerities
+            'analytical_wave_celerity': celerities,
+            'bed_profile': [self.reach.bed_levels],
+            'widths': [self.reach.width]
         }
         
         # Create header with time column first, then spatial coordinates

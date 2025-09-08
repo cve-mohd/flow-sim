@@ -132,7 +132,6 @@ class Reach:
         """
         self.initialize_bed_slopes(n_nodes=n_nodes)
         self.initialize_widths(n_nodes=n_nodes)
-        self.initialize_bed_level(n_nodes=n_nodes)
         
         if self.interpolation_method == 'linear':
             y_0 = self.upstream_boundary.initial_depth
@@ -211,7 +210,7 @@ class Reach:
             raise ValueError("")
         
         self.inter_bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
-        self.level_chainages = [0] + chainages + [self.downstream_boundary.chainage]
+        self.level_chainages = [self.upstream_boundary.chainage] + chainages + [self.downstream_boundary.chainage]
         self.fixed_bed_slope = False
 
     def initialize_widths(self, n_nodes):
@@ -223,10 +222,15 @@ class Reach:
         self.width = interp_widths
         
     def initialize_bed_slopes(self, n_nodes):
-        interp_bed_slopes = []
-        for i in range(n_nodes):
-            x = self.length * float(i) / float(n_nodes-1)
-            interp_bed_slopes.append(self.calc_S0(x))
+        if self.fixed_bed_slope:
+            interp_bed_slopes = [self.bed_slope] * n_nodes
+        else:
+            from numpy import array, gradient
+            
+            ch, self.bed_levels = self.build_bed_levels(n_nodes)
+            levels = array(self.bed_levels, dtype=float)
+
+            interp_bed_slopes = -gradient(levels, ch)
             
         self.bed_slope = interp_bed_slopes
         
@@ -251,9 +255,9 @@ class Reach:
         slopes = gradient(levels, chainages)
         return -float(interp(x, chainages, slopes))
     
-    def initialize_bed_level(self, n_nodes):
-        dx = self.length / (n_nodes - 1)
-        self.bed_levels = [
-            self.upstream_boundary.bed_level - sum(self.bed_slope[j] * dx for j in range(i)) for i in range(n_nodes)
-        ]
+    def build_bed_levels(self, n_nodes):
+        from numpy import linspace, interp
+        chainages = linspace(0, self.length, n_nodes)
+        bed_levels = [float(i) for i in list(interp(chainages, self.level_chainages, self.inter_bed_levels))]
         
+        return chainages, bed_levels
