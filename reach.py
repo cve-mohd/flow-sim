@@ -49,7 +49,7 @@ class Reach:
         self.fixed_bed_slope = True
         self.initial_flow_rate = initial_flow_rate
         self.channel_roughness = channel_roughness
-        self.bed_levels = None
+        self.bed_levels = [upstream_boundary.bed_level, downstream_boundary.bed_level]
         
         self.bankful_depth = bankful_depth
         self.floodplain_roughness = floodplain_roughness
@@ -67,6 +67,12 @@ class Reach:
             self.interpolation_method = interpolation_method
         
         self.initial_conditions = []
+        
+        self.inter_bed_levels = [self.upstream_boundary.bed_level, self.downstream_boundary.bed_level]
+        self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
+        
+        self.inter_widths = [self.width]
+        self.width_chainages = [self.upstream_boundary.chainage]
 
     def Sf(self, A: float, Q: float, B: float) -> float:
         """
@@ -202,7 +208,7 @@ class Reach:
             raise ValueError("")
         
         self.inter_widths = [self.width] + widths
-        self.width_chainages = [0] + chainages
+        self.width_chainages = [self.upstream_boundary.chainage] + chainages
         self.fixed_width = False
 
     def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
@@ -214,22 +220,26 @@ class Reach:
         self.fixed_bed_slope = False
 
     def initialize_widths(self, n_nodes):
-        interp_widths = []
-        for i in range(n_nodes):
-            x = self.length * float(i) / float(n_nodes-1)
-            interp_widths.append(self.calc_B(x))
-            
+        if self.fixed_width:
+            interp_widths = [self.width] * n_nodes
+        else:
+            from numpy import interp, linspace
+
+            chainages = linspace(start=self.upstream_boundary.chainage, stop=self.downstream_boundary.chainage, num=n_nodes)
+            interp_widths = list(interp(chainages, self.width_chainages, self.inter_widths))
+            interp_widths = [float(i) for i in interp_widths]
+                    
         self.width = interp_widths
         
     def initialize_bed_slopes(self, n_nodes):
+        ch, self.bed_levels = self.build_bed_levels(n_nodes)
+        
         if self.fixed_bed_slope:
             interp_bed_slopes = [self.bed_slope] * n_nodes
         else:
             from numpy import array, gradient
             
-            ch, self.bed_levels = self.build_bed_levels(n_nodes)
             levels = array(self.bed_levels, dtype=float)
-
             interp_bed_slopes = -gradient(levels, ch)
             
         self.bed_slope = interp_bed_slopes
@@ -244,20 +254,10 @@ class Reach:
         from numpy import interp        
         return float(interp(x, self.width_chainages, self.inter_widths))
     
-    def calc_S0(self, x):
-        if self.fixed_bed_slope:
-            return self.bed_slope
-        
-        from numpy import array, gradient, interp
-        chainages = array(self.level_chainages, dtype=float)
-        levels = array(self.inter_bed_levels, dtype=float)
-
-        slopes = gradient(levels, chainages)
-        return -float(interp(x, chainages, slopes))
-    
     def build_bed_levels(self, n_nodes):
         from numpy import linspace, interp
-        chainages = linspace(0, self.length, n_nodes)
-        bed_levels = [float(i) for i in list(interp(chainages, self.level_chainages, self.inter_bed_levels))]
+        chainages = linspace(start=self.upstream_boundary.chainage, stop=self.downstream_boundary.chainage, num=n_nodes)
+        bed_levels = list(interp(chainages, self.level_chainages, self.inter_bed_levels))
+        bed_levels = [float(i) for i in bed_levels]
         
         return chainages, bed_levels

@@ -3,29 +3,36 @@ from boundary import Boundary
 from utility import Hydrograph
 import pandas as pd
 from case_study_settings import used_roseires_rc, storage_area
+import pandas as pd
 
 def import_geometry(path):
     # Skip first two rows: header + units
     df = pd.read_excel(path, skiprows=2)
 
-    # Extract columns
-    chainages = df.iloc[:, 1].astype(float).tolist()
-    widths    = df.iloc[:, 2].astype(float).tolist()
-    levels    = df.iloc[:, 3]  # may contain NaNs
+    chainages = df.iloc[:, 1]
+    widths    = df.iloc[:, 2]
+    levels    = df.iloc[:, 3]
 
-    # Width data: all rows
-    width_ch  = chainages
-    widths    = widths
+    # Widths
+    width_df = pd.DataFrame({
+        "chainage": chainages,
+        "width": widths
+    }).dropna()
+    width_df = width_df.astype(float).sort_values(by="chainage")
 
-    # Level data: drop NaNs
-    level_ch  = df.iloc[:, 1][~levels.isna()].astype(float).tolist()
-    levels    = levels.dropna().astype(float).tolist()
+    # Levels
+    level_df = pd.DataFrame({
+        "chainage": chainages,
+        "level": levels
+    }).dropna()
+    level_df = level_df.astype(float).sort_values(by="chainage")
+
+    width_ch  = width_df["chainage"].tolist()
+    widths    = width_df["width"].tolist()
+    level_ch  = level_df["chainage"].tolist()
+    levels    = level_df["level"].tolist()
 
     return widths, levels, width_ch, level_ch
-
-# Example usage
-# widths, levels, width_ch, level_ch = import_geometry("geometry.xlsx")
-
 
 hyd = Hydrograph()
 hyd.load_csv('hydrograph.csv')
