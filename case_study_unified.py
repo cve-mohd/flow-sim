@@ -4,6 +4,7 @@ from utility import Hydrograph
 import pandas as pd
 from case_study_settings import used_roseires_rc, storage_area
 import pandas as pd
+from settings import trapzoid_hydrograph
 
 def import_geometry(path):
     # Skip first two rows: header + units
@@ -34,6 +35,8 @@ def import_geometry(path):
 
     return widths, levels, width_ch, level_ch
 
+hyd_const = Hydrograph(function=trapzoid_hydrograph)
+
 hyd = Hydrograph()
 hyd.load_csv('hydrograph.csv')
 
@@ -52,11 +55,11 @@ Roseires.set_storage(storage_area, used_roseires_rc)
 
 GERD_Roseires_system = Reach(width = 250,
                              initial_flow_rate = 1562.5,
-                             channel_roughness = 0.029,
+                             channel_roughness = 0.027,
                              upstream_boundary = GERD,
                              downstream_boundary = Roseires)
 
-widths, levels, width_ch, level_ch = import_geometry("geometry.xlsx")
+widths, levels, width_ch, level_ch = import_geometry("geometry - original.xlsx")
 
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
