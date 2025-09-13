@@ -43,10 +43,8 @@ class Reach:
             The length of the channel.
 
         """
-        self.width = width
         self.conditions_initialized = False
-        self.fixed_width = True
-        self.fixed_bed_slope = True
+        self.widths = [width, width]
         self.initial_flow_rate = initial_flow_rate
         self.channel_roughness = channel_roughness
         self.bed_levels = [upstream_boundary.bed_level, downstream_boundary.bed_level]
@@ -58,21 +56,14 @@ class Reach:
         self.downstream_boundary = downstream_boundary
         
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
-        
-        z1 = self.upstream_boundary.bed_level
-        z2 = self.downstream_boundary.bed_level
-        self.bed_slope = float(z1 - z2) / self.length
-        
+                
         if interpolation_method in ['linear', 'GVF_equation']:
             self.interpolation_method = interpolation_method
         
         self.initial_conditions = []
         
-        self.inter_bed_levels = [self.upstream_boundary.bed_level, self.downstream_boundary.bed_level]
         self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
-        
-        self.inter_widths = [self.width]
-        self.width_chainages = [self.upstream_boundary.chainage]
+        self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
 
     def Sf(self, A: float, Q: float, B: float) -> float:
         """
@@ -136,8 +127,7 @@ class Reach:
         None.
 
         """
-        self.initialize_bed_slopes(n_nodes=n_nodes)
-        self.initialize_widths(n_nodes=n_nodes)
+        self.initialize_geometry(n_nodes=n_nodes)
         
         if self.interpolation_method == 'linear':
             y_0 = self.upstream_boundary.initial_depth
@@ -148,7 +138,7 @@ class Reach:
                 
                 y = y_0 + (y_n - y_0) * distance / self.length
                 
-                A, Q = y * self.width[i], self.initial_flow_rate
+                A, Q = y * self.widths[i], self.initial_flow_rate
                 self.initial_conditions.append((A, Q))
                 
         elif self.interpolation_method == 'GVF_equation':
@@ -160,15 +150,15 @@ class Reach:
             for i in reversed(range(n_nodes)):
                 distance = i * dx
     
-                A, Q = self.width[i] * h, self.initial_flow_rate
-                Sf = self.Sf(A, Q, self.width[i])
-                Fr2 = Q ** 2 / (g * A ** 3 / self.width[i])
+                A, Q, B = self.widths[i] * h, self.initial_flow_rate, self.widths[i]
+                Sf = self.Sf(A, Q, B)
+                Fr2 = Q ** 2 / (g * A ** 3 / B)
 
                 denominator = 1 - Fr2
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
                 else:
-                    dhdx = (self.bed_slope[i] - Sf) / denominator
+                    dhdx = (self.bed_slopes[i] - Sf) / denominator
 
                 if i < n_nodes - 1:
                     h -= dhdx * dx
@@ -176,7 +166,7 @@ class Reach:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = h * self.width[i]
+                A = h * B
                     
                 self.initial_conditions.insert(0, (A, Q))
                 
@@ -207,57 +197,25 @@ class Reach:
         if len(widths) != len(chainages):
             raise ValueError("")
         
-        self.inter_widths = [self.width] + widths
+        self.widths = [self.widths[0]] + widths
         self.width_chainages = [self.upstream_boundary.chainage] + chainages
-        self.fixed_width = False
 
     def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
         if len(bed_levels) != len(chainages):
             raise ValueError("")
         
-        self.inter_bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
+        self.bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
         self.level_chainages = [self.upstream_boundary.chainage] + chainages + [self.downstream_boundary.chainage]
-        self.fixed_bed_slope = False
 
-    def initialize_widths(self, n_nodes):
-        if self.fixed_width:
-            interp_widths = [self.width] * n_nodes
-        else:
-            from numpy import interp, linspace
+    def initialize_geometry(self, n_nodes):
+        from numpy import interp, linspace, gradient, array
 
-            chainages = linspace(start=self.upstream_boundary.chainage, stop=self.downstream_boundary.chainage, num=n_nodes)
-            interp_widths = list(interp(chainages, self.width_chainages, self.inter_widths))
-            interp_widths = [float(i) for i in interp_widths]
-                    
-        self.width = interp_widths
-        
-    def initialize_bed_slopes(self, n_nodes):
-        ch, self.bed_levels = self.build_bed_levels(n_nodes)
-        
-        if self.fixed_bed_slope:
-            interp_bed_slopes = [self.bed_slope] * n_nodes
-        else:
-            from numpy import array, gradient
-            
-            levels = array(self.bed_levels, dtype=float)
-            interp_bed_slopes = -gradient(levels, ch)
-            
-        self.bed_slope = interp_bed_slopes
-        
-    def calc_B(self, x):
-        if self.fixed_width:
-            return self.width
-                        
-        if x >= self.width_chainages[-1]:
-            return self.inter_widths[-1]
-                        
-        from numpy import interp        
-        return float(interp(x, self.width_chainages, self.inter_widths))
-    
-    def build_bed_levels(self, n_nodes):
-        from numpy import linspace, interp
         chainages = linspace(start=self.upstream_boundary.chainage, stop=self.downstream_boundary.chainage, num=n_nodes)
-        bed_levels = list(interp(chainages, self.level_chainages, self.inter_bed_levels))
-        bed_levels = [float(i) for i in bed_levels]
         
-        return chainages, bed_levels
+        widths = interp(chainages, array(self.width_chainages, dtype=float), array(self.widths, dtype=float))
+        bed_levels = interp(chainages, array(self.level_chainages, dtype=float), array(self.bed_levels, dtype=float))
+        
+        self.widths = [float(i) for i in widths.tolist()]
+        self.bed_levels = [float(i) for i in bed_levels.tolist()]
+        self.bed_slopes = -gradient(bed_levels, chainages)    
+            

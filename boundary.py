@@ -58,6 +58,7 @@ class Boundary:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             normal_flow = Hydraulics.normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            #print(f'Normal = {normal_flow}, current = {flow_rate}')
             residual = flow_rate - normal_flow
         
         elif self.condition == 'rating_curve':

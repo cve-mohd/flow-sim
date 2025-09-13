@@ -177,7 +177,7 @@ class PreissmannSolver(Solver):
                 break
             
             if verbose >= 1:
-                print('\n---------- Time = ' + str(time) + 's ----------\n')
+                print('---------- Time = ' + str(time) + 's ----------')
 
             iteration = 0
             converged = False
@@ -297,16 +297,17 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """        
-        residual = (
-            self.num_celerity * (self.area_at(i, 1) + self.area_at(i + 1, 1))
-            + 2 * self.theta * (self.flow_at(i + 1, 1) - self.flow_at(i, 1))
-            - (
-                self.num_celerity * (self.area_at(i + 1, 0) + self.area_at(i, 0))
-                - 2 * (1 - self.theta) * (self.flow_at(i + 1, 0) - self.flow_at(i, 0))
+        return self.time_diff(
+            k0_i0 = self.area_at(i, 0),
+            k0_i1 = self.area_at(i+1, 0),
+            k1_i0 = self.area_at(i, 1),
+            k1_i1 = self.area_at(i+1, 1)
+            ) + self.spatial_diff(
+                k0_i0 = self.flow_at(i, 0),
+                k0_i1 = self.flow_at(i+1, 0),
+                k1_i0 = self.flow_at(i, 1),
+                k1_i1 = self.flow_at(i+1, 1)
             )
-        )
-
-        return residual
 
     def momentum_residual(self, i) -> float:
         """
@@ -323,33 +324,35 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """     
-        residual = (
-            + (g * self.theta) * (self.area_at(i + 1, 1) ** 2 / self.width_at(i + 1) - self.area_at(i, 1) ** 2 / self.width_at(i))
-            + self.spatial_step * g * self.theta * (
-                + (self.Sf_at(i + 1, 1) - self.bed_slope_at(i + 1)) * self.area_at(i + 1, 1)
-                + (self.Sf_at(i, 1) - self.bed_slope_at(i)) * self.area_at(i, 1)
-                )
-            + self.num_celerity * (self.flow_at(i + 1, 1) + self.flow_at(i, 1))
-            + 2 * self.theta * (
-                self.flow_at(i + 1, 1) ** 2 / self.area_at(i + 1, 1) - self.flow_at(i, 1) ** 2 / self.area_at(i, 1)
-                )
-            - (
-                + self.num_celerity * (self.flow_at(i + 1, 0) + self.flow_at(i, 0))
-                - 2 * (1 - self.theta) * (
-                    + self.flow_at(i + 1, 0) ** 2 / self.area_at(i + 1, 0)
-                    + (0.5 * g) * self.area_at(i + 1, 0) ** 2 / self.width_at(i + 1)
-                    - self.flow_at(i, 0) ** 2 / self.area_at(i, 0)
-                    - (0.5 * g) * self.area_at(i, 0) ** 2 / self.width_at(i)
-                    )
-                + self.spatial_step * (1 - self.theta) * g * (
-                    + self.area_at(i + 1, 0) * (self.bed_slope_at(i + 1) - self.Sf_at(i + 1, 0))
-                    + self.area_at(i, 0) * (self.bed_slope_at(i + 1) - self.Sf_at(i, 0))
-                    )
+        return self.time_diff(
+            k0_i0 = self.flow_at(i, 0),
+            k0_i1 = self.flow_at(i+1, 0),
+            k1_i0 = self.flow_at(i, 1),
+            k1_i1 = self.flow_at(i+1, 1)
+            ) + self.spatial_diff(
+                k0_i0 = self.flow_at(i, 0) ** 2 / self.area_at(i, 0),
+                k0_i1 = self.flow_at(i+1, 0) ** 2 / self.area_at(i+1, 0),
+                k1_i0 = self.flow_at(i, 1) ** 2 / self.area_at(i, 1),
+                k1_i1 = self.flow_at(i+1, 1) ** 2 / self.area_at(i+1, 1)
+            ) + g * self.cell_avg(
+                k0_i0=self.area_at(i, 0),
+                k0_i1=self.area_at(i+1, 0),
+                k1_i0=self.area_at(i, 1),
+                k1_i1=self.area_at(i+1, 1)
+            ) * (
+                self.spatial_diff(
+                    k0_i0=self.water_level_at(i, 0),
+                    k0_i1=self.water_level_at(i+1, 0),
+                    k1_i0=self.water_level_at(i, 1),
+                    k1_i1=self.water_level_at(i+1, 1)
+                ) + self.cell_avg(
+                    k0_i0=self.Sf_at(i, 0),
+                    k0_i1=self.Sf_at(i+1, 0),
+                    k1_i0=self.Sf_at(i, 1),
+                    k1_i1=self.Sf_at(i+1, 1)
                 )
             )
-
-        return residual
-
+    
     def downstream_residual(self, time) -> float:
         """
         Computes the residual of the downstream boundary condition equation.
@@ -463,7 +466,7 @@ class PreissmannSolver(Solver):
             dC/dA_(i+1)
 
         """
-        dC = self.num_celerity
+        dC = 0.5 / self.time_step
         
         if not self.enforce_physicality:
             derivative = dC
@@ -493,7 +496,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = self.num_celerity
+        dC = 0.5 / self.time_step
         
         if not self.enforce_physicality:
             derivative = dC
@@ -523,7 +526,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = 2 * self.theta
+        dC = self.theta / self.spatial_step
         
         if not self.enforce_physicality:
             derivative = dC
@@ -550,7 +553,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = -2 * self.theta
+        dC = - self.theta / self.spatial_step
         
         if not self.enforce_physicality:
             derivative = dC
@@ -577,36 +580,42 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i + 1, 1)
-        Q = self.flow_at(i + 1, 1)
-        B = self.width_at(i + 1)
+        A = self.area_at(i+1, 1)
+        Q = self.flow_at(i+1, 1)
+        B = self.width_at(i+1)
+        dSf_dA = self.reach.dSf_dA(A, Q, B)
         
-        Sf = self.Sf_at(i + 1, 1)
-        S_0 = self.bed_slope_at(i + 1)
-        dSf_dA = self.reach.dSf_dA(A=A, Q=Q, B=B)
+        avg_A = self.cell_avg(
+            k0_i0=self.area_at(i, 0),
+            k0_i1=self.area_at(i+1, 0),
+            k1_i0=self.area_at(i, 1),
+            k1_i1=self.area_at(i+1, 1)
+        )
+        avg_Sf = self.cell_avg(
+            k0_i0=self.Sf_at(i, 0),
+            k0_i1=self.Sf_at(i+1, 0),
+            k1_i0=self.Sf_at(i, 1),
+            k1_i1=self.Sf_at(i+1, 1)
+        )
+        dY_dx = self.spatial_diff(
+            k0_i0=self.water_level_at(i, 0),
+            k0_i1=self.water_level_at(i+1, 0),
+            k1_i0=self.water_level_at(i, 1),
+            k1_i1=self.water_level_at(i+1, 1)
+        )
         
-        dM = (
-            + 2 * g * self.theta * A / B
-            - 2 * self.theta * (Q / A) ** 2
-            + self.theta * g * self.spatial_step * (Sf - S_0 + A * dSf_dA)
-            )
+        # -----------------
+        
+        dM_dA = (
+            - self.theta / self.spatial_step * (Q/A) ** 2
+            + 0.5 * g * self.theta * (dY_dx + avg_Sf)
+            + g * self.theta * avg_A * (1. / (self.spatial_step * B) + 0.5 * dSf_dA)
+        )
                 
-        if not self.enforce_physicality:
-            derivative = dM
-            
+        if not self.enforce_physicality or reg:
+            return dM_dA
         else:
-            dM_dAreg = dM           
-            dAreg_dA = self.dAreg_dA(i + 1)
-            
-            dM_dQe = self.dM_dQiplus1(i, eff = True)
-            dQe_dA = self.dQe_dA(i + 1)
-            
-            derivative = dM_dAreg * dAreg_dA + dM_dQe * dQe_dA
-        
-        if reg:
-            return dM_dAreg
-        else:
-            return derivative
+            return dM_dA * self.dAreg_dA(i+1) + self.dM_dQi(i+1, eff=True) * self.dQe_dA(i+1)
 
     def dM_dAi(self, i, reg = False) -> float:
         """
@@ -619,37 +628,42 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
         B = self.width_at(i)
-        
-        Sf = self.Sf_at(i, 1)
-        S_0 = self.bed_slope_at(i)
         dSf_dA = self.reach.dSf_dA(A, Q, B)
         
-        dM = (
-            - 2 * g * self.theta * A / B
-            + 2 * self.theta * (Q / A) ** 2
-            + self.theta * g * self.spatial_step * (Sf - S_0 + A * dSf_dA)
-            )
+        avg_A = self.cell_avg(
+            k0_i0=self.area_at(i, 0),
+            k0_i1=self.area_at(i+1, 0),
+            k1_i0=self.area_at(i, 1),
+            k1_i1=self.area_at(i+1, 1)
+        )
+        avg_Sf = self.cell_avg(
+            k0_i0=self.Sf_at(i, 0),
+            k0_i1=self.Sf_at(i+1, 0),
+            k1_i0=self.Sf_at(i, 1),
+            k1_i1=self.Sf_at(i+1, 1)
+        )
+        dY_dx = self.spatial_diff(
+            k0_i0=self.water_level_at(i, 0),
+            k0_i1=self.water_level_at(i+1, 0),
+            k1_i0=self.water_level_at(i, 1),
+            k1_i1=self.water_level_at(i+1, 1)
+        )
         
-        if not self.enforce_physicality:
-            dM_dA = dM
-            
-        else:
-            dM_dAreg = dM            
-            dAreg_dA = self.dAreg_dA(i)
-            
-            dM_dQe = self.dM_dQi(i, eff = True)
-            dQe_dA = self.dQe_dA(i)
-            
-            dM_dA = dM_dAreg * dAreg_dA + dM_dQe * dQe_dA
+        # -----------------
         
-        if reg:
-            return dM_dAreg
-        else:
+        dM_dA = (
+            + self.theta / self.spatial_step * (Q/A) ** 2
+            + 0.5 * g * self.theta * (dY_dx + avg_Sf)
+            + g * self.theta * avg_A * (-1. / (self.spatial_step * B) + 0.5 * dSf_dA)
+        )
+        
+        if not self.enforce_physicality or reg:
             return dM_dA
+        else:
+            return dM_dA * self.dAreg_dA(i) + self.dM_dQi(i, eff=True) * self.dQe_dA(i)
 
     def dM_dQiplus1(self, i, eff = False) -> float:
         """
@@ -662,27 +676,30 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.reach.dSf_dQ(self.area_at(i + 1, 1), self.flow_at(i + 1, 1), self.width_at(i + 1))
+        A = self.area_at(i+1, 1)
+        Q = self.flow_at(i+1, 1)
+        B = self.width_at(i+1)
+        dSf_dQ = self.reach.dSf_dQ(A, Q, B)
         
-        dM = (
-            self.num_celerity
-            + 4 * self.theta * self.flow_at(i + 1, 1) / self.area_at(i + 1, 1)
-            + self.theta * g * self.spatial_step * self.area_at(i + 1, 1) * dSf_dQ
-            )
+        avg_A = self.cell_avg(
+            k0_i0=self.area_at(i, 0),
+            k0_i1=self.area_at(i+1, 0),
+            k1_i0=self.area_at(i, 1),
+            k1_i1=self.area_at(i+1, 1)
+        )
         
-        if not self.enforce_physicality:
-            derivative = dM
-            
+        # -----------------
+        
+        dM_dQ = (
+            + 0.5 / self.time_step
+            + 2 * self.theta / self.spatial_step * Q / A
+            + 0.5 * self.theta * g * avg_A * dSf_dQ
+        )
+        
+        if not self.enforce_physicality or eff:
+            return dM_dQ
         else:
-            dM_dQe = dM            
-            dQe_dQ = self.dQe_dQ(i + 1)
-            
-            derivative = dM_dQe * dQe_dQ
-    
-        if eff:
-            return dM_dQe
-        else:
-            return derivative
+            return dM_dQ * self.dQe_dQ(i+1)
 
     def dM_dQi(self, i, eff = False) -> float:
         """
@@ -695,27 +712,30 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dSf_dQ = self.reach.dSf_dQ(self.area_at(i, 1), self.flow_at(i, 1), self.width_at(i))
+        A = self.area_at(i, 1)
+        Q = self.flow_at(i, 1)
+        B = self.width_at(i)
+        dSf_dQ = self.reach.dSf_dQ(A, Q, B)
         
-        dM = (
-            self.num_celerity
-            - 4 * self.theta * self.flow_at(i, 1) / self.area_at(i, 1)
-            + self.theta * g * self.spatial_step * self.area_at(i, 1) * dSf_dQ
-            )
+        avg_A = self.cell_avg(
+            k0_i0=self.area_at(i, 0),
+            k0_i1=self.area_at(i+1, 0),
+            k1_i0=self.area_at(i, 1),
+            k1_i1=self.area_at(i+1, 1)
+        )
         
-        if not self.enforce_physicality:
-            derivative = dM
-            
+        # -----------------
+        
+        dM_dQ = (
+            + 0.5 / self.time_step
+            - 2 * self.theta / self.spatial_step * Q / A
+            + 0.5 * self.theta * g * avg_A * dSf_dQ
+        )
+        
+        if not self.enforce_physicality or eff:
+            return dM_dQ
         else:
-            dM_dQe = dM            
-            dQe_dQ = self.dQe_dQ(i)
-            
-            derivative = dM_dQe * dQe_dQ
-    
-        if eff:
-            return dM_dQe
-        else:
-            return derivative
+            return dM_dQ * self.dQe_dQ(i)
 
     def dD_dA(self, reg = False) -> float:
         """
@@ -838,7 +858,7 @@ class PreissmannSolver(Solver):
             output_file.write(f'Theta = {self.theta}\n')
             
             output_file.write(f'Channel length = {self.reach.total_length}\n')
-            output_file.write(f'Channel width = {self.reach.width[0]}\n')
+            output_file.write(f'Channel width = {self.reach.widths[0]}\n')
             output_file.write(f'Manning\'s coefficient = {self.reach.channel_roughness}\n')
             output_file.write(f'Bed slope = {self.reach.bed_slope[0]}\n')
             
@@ -933,4 +953,19 @@ class PreissmannSolver(Solver):
         chi = A_reg / (A_reg + A_min)
         
         return chi
+
+    def time_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
+        return (k1_i1 + k1_i0 - k0_i1 - k0_i0) / (2. * self.time_step)
+    
+    def spatial_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
+        dx_k1 = (k1_i1 - k1_i0) / self.spatial_step
+        dx_k0 = (k0_i1 - k0_i0) / self.spatial_step
+        
+        return self.theta * dx_k1 + (1 - self.theta) * dx_k0
+        
+    def cell_avg(self, k1_i1, k1_i0, k0_i1, k0_i0):
+        k1 = (k1_i1 + k1_i0) * self.theta / 2.
+        k2 = (k0_i1 + k0_i0) * (1 - self.theta) / 2.
+        
+        return k1 + k2
     

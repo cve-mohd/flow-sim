@@ -102,17 +102,17 @@ class Solver:
             self.results['flow_rate'].append(self.Q_current.tolist())
                     
         if self.peak_amplitude_profile is None:
-            self.depth_0 = np.array(self.results['area'][0]) / np.array(self.reach.width)
+            self.depth_0 = np.array(self.results['area'][0]) / np.array(self.reach.widths)
             self.peak_amplitude_profile = self.depth_0 - self.depth_0
         else:
-            peak_amplitudes = np.array(self.A_current) / np.array(self.reach.width) - self.depth_0
+            peak_amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.depth_0
             self.peak_amplitude_profile = [float(max(i, j)) for i,j in zip(peak_amplitudes, self.peak_amplitude_profile)]
         
     def prepare_results(self) -> None:
         self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
         self.results['velocity'] = self.results['velocity'].tolist()
                 
-        self.results['depth'] = np.array(self.results['area']) / np.array(self.reach.width)
+        self.results['depth'] = np.array(self.results['area']) / np.array(self.reach.widths)
         self.results['depth'] = self.results['depth'].tolist()
         
         for depths in self.results['depth']:
@@ -186,7 +186,7 @@ class Solver:
             'water_surface_level': levels,
             'analytical_wave_celerity': celerities,
             'bed_profile': [self.reach.bed_levels],
-            'widths': [self.reach.width]
+            'widths': [self.reach.widths]
         }
         
         # Create header with time column first, then spatial coordinates
@@ -359,13 +359,16 @@ class Solver:
         return Q
     
     def width_at(self, i):
-        return self.reach.width[i]
+        return self.reach.widths[i]
     
     def bed_slope_at(self, i):
-        return self.reach.bed_slope[i]
+        return self.reach.bed_slopes[i]
     
     def depth_at(self, i, current_time_level: bool, regularization: bool = None):
         return self.area_at(i, current_time_level, regularization) / self.width_at(i)
+    
+    def water_level_at(self, i, current_time_level: bool, regularization: bool = None):
+        return self.reach.bed_levels[i] + self.depth_at(i, current_time_level, regularization)
     
     def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
         A = self.area_at(i, current_time_level, regularization)

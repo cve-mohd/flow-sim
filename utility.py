@@ -304,7 +304,6 @@ class Hydraulics:
             float: dSf/dA
         """
         R = Hydraulics.R(A, B)
-        
         dSf_dA = -2 * n ** 2 * A ** -3 * R ** (-4. / 3) * Q * abs(Q)
         dSf_dR = (-4./3) * n ** 2 * A ** -2 * R ** (-4./3 - 1) * Q * abs(Q)
 

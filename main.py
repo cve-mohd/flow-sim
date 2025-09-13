@@ -11,8 +11,8 @@ us = Boundary(initial_depth=3,
               chainage=0,
               hydrograph=hyd)
 
-ds = Boundary(initial_depth=3,
-              condition='normal_depth',
+ds = Boundary(initial_depth=5,
+              condition='fixed_depth',
               bed_level=495,
               chainage=26000)
 
@@ -23,7 +23,7 @@ example_channel = Reach(width = 250,
                         downstream_boundary = ds)
 
 example_channel.set_intermediate_bed_levels([510], [8000])
-example_channel.set_intermediate_widths([300], [26000])
+example_channel.set_intermediate_widths([400], [26000])
 
 from preissmann import PreissmannSolver
 
@@ -33,7 +33,7 @@ solver = PreissmannSolver(reach=example_channel,
                           spatial_step=1000,
                           enforce_physicality=False)
 
-solver.run(duration=3600*24, verbose=1)
+solver.run(duration=3600*24, verbose=0)
 solver.save_results()
 
 """
