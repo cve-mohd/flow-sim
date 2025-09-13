@@ -72,6 +72,8 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           spatial_step=1000,
                           enforce_physicality=False)
 
+solver.reach.downstream_boundary.storage_area = 440e6 - GERD_Roseires_system.surface_area
+
 solver.run(duration=3600*96, verbose=0)
 solver.save_results()
 

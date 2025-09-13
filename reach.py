@@ -146,22 +146,26 @@ class Reach:
 
             dx = self.length / (n_nodes - 1)
             h = self.downstream_boundary.initial_depth
+            
+            # Add last node
+            self.initial_conditions = [(h*self.widths[-1], self.initial_flow_rate)]
 
-            for i in reversed(range(n_nodes)):
+            for i in reversed(range(n_nodes-1)):
                 distance = i * dx
     
                 A, Q, B = self.widths[i] * h, self.initial_flow_rate, self.widths[i]
                 Sf = self.Sf(A, Q, B)
-                Fr2 = Q ** 2 / (g * A ** 3 / B)
-
+                
+                Fr2 = Q**2 * B / (g * A**3)
                 denominator = 1 - Fr2
+                
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
                 else:
-                    dhdx = (self.bed_slopes[i] - Sf) / denominator
+                    S0 = -(self.bed_levels[i+1]-self.bed_levels[i])/dx
+                    dhdx = (S0 - Sf) / denominator
 
-                if i < n_nodes - 1:
-                    h -= dhdx * dx
+                h -= dhdx * dx
 
                 if h < 0:
                     raise ValueError("GVF failed.")
@@ -208,14 +212,28 @@ class Reach:
         self.level_chainages = [self.upstream_boundary.chainage] + chainages + [self.downstream_boundary.chainage]
 
     def initialize_geometry(self, n_nodes):
-        from numpy import interp, linspace, gradient, array
+        from numpy import interp, linspace, gradient, array, trapezoid
 
-        chainages = linspace(start=self.upstream_boundary.chainage, stop=self.downstream_boundary.chainage, num=n_nodes)
-        
-        widths = interp(chainages, array(self.width_chainages, dtype=float), array(self.widths, dtype=float))
-        bed_levels = interp(chainages, array(self.level_chainages, dtype=float), array(self.bed_levels, dtype=float))
-        
-        self.widths = [float(i) for i in widths.tolist()]
-        self.bed_levels = [float(i) for i in bed_levels.tolist()]
-        self.bed_slopes = -gradient(bed_levels, chainages)    
-            
+        chainages = linspace(
+            start=self.upstream_boundary.chainage,
+            stop=self.downstream_boundary.chainage,
+            num=n_nodes
+        )
+
+        widths = interp(
+            chainages,
+            array(self.width_chainages, dtype=float),
+            array(self.widths, dtype=float)
+        )
+        bed_levels = interp(
+            chainages,
+            array(self.level_chainages, dtype=float),
+            array(self.bed_levels, dtype=float)
+        )
+
+        self.widths = widths.astype(float).tolist()
+        self.bed_levels = bed_levels.astype(float).tolist()
+        self.bed_slopes = -gradient(bed_levels, chainages)
+
+        surface_area = trapezoid(widths, chainages)
+        self.surface_area = float(surface_area)
