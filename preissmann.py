@@ -271,7 +271,8 @@ class PreissmannSolver(Solver):
         B = self.width_at(0)
         Q = self.flow_at(i=0, current_time_level=1)
         S_0 = self.bed_slope_at(0)
-        n = self.reach.get_n(A=A, B=B)
+        wet_h = self.wet_depth_at(0)
+        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
                 
         residual = self.reach.upstream_boundary.condition_residual(time=time,
                                                                    depth=h,
@@ -366,7 +367,8 @@ class PreissmannSolver(Solver):
         A = self.area_at(-1, 1)
         h = self.depth_at(-1, 1)
         B = self.width_at(-1)
-        n = self.reach.get_n(A=A, B=B)
+        wet_h = self.wet_depth_at(-1)
+        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
         S_0 = self.bed_slope_at(-1)
         Q = self.flow_at(-1, 1)
         
@@ -402,11 +404,12 @@ class PreissmannSolver(Solver):
         A = self.area_at(0, 1)
         h = self.depth_at(0, 1)
         B = self.width_at(0)
-        n = self.reach.get_n(A=A, B=B)
+        wet_h = self.wet_depth_at(0)
+        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
         S_0 = self.bed_slope_at(0)
                     
         dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, B=B)
+        dn_dA = self.reach.dn_dA(A=A, B=B, wet_depth=wet_h)
         
         dU = self.reach.upstream_boundary.df_dA(area=A,
                                                 width=B,
@@ -583,7 +586,8 @@ class PreissmannSolver(Solver):
         A = self.area_at(i+1, 1)
         Q = self.flow_at(i+1, 1)
         B = self.width_at(i+1)
-        dSf_dA = self.reach.dSf_dA(A, Q, B)
+        wet_h = self.wet_depth_at(i+1)
+        dSf_dA = self.reach.dSf_dA(A, Q, B, wet_depth=wet_h)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -631,7 +635,8 @@ class PreissmannSolver(Solver):
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
         B = self.width_at(i)
-        dSf_dA = self.reach.dSf_dA(A, Q, B)
+        wet_h = self.wet_depth_at(i)
+        dSf_dA = self.reach.dSf_dA(A, Q, B, wet_depth=wet_h)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -679,7 +684,8 @@ class PreissmannSolver(Solver):
         A = self.area_at(i+1, 1)
         Q = self.flow_at(i+1, 1)
         B = self.width_at(i+1)
-        dSf_dQ = self.reach.dSf_dQ(A, Q, B)
+        wet_h = self.wet_depth_at(i+1)
+        dSf_dQ = self.reach.dSf_dQ(A, Q, B, wet_depth=wet_h)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -715,7 +721,8 @@ class PreissmannSolver(Solver):
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
         B = self.width_at(i)
-        dSf_dQ = self.reach.dSf_dQ(A, Q, B)
+        wet_h = self.wet_depth_at(i)
+        dSf_dQ = self.reach.dSf_dQ(A, Q, B, wet_depth=wet_h)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -751,11 +758,12 @@ class PreissmannSolver(Solver):
         A = self.area_at(-1, 1)
         h = self.depth_at(-1, 1)
         B = self.width_at(-1)
-        n = self.reach.get_n(A=A, B=B)
+        wet_h = self.wet_depth_at(-1)
+        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
         S_0 = self.bed_slope_at(-1)
                 
         dD_dn = self.reach.downstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, B=B)
+        dn_dA = self.reach.dn_dA(A=A, B=B, wet_depth=wet_h)
         
         dD = self.reach.downstream_boundary.df_dA(area=A,
                                                   width=B,
@@ -859,7 +867,7 @@ class PreissmannSolver(Solver):
             
             output_file.write(f'Channel length = {self.reach.total_length}\n')
             output_file.write(f'Channel width = {self.reach.widths[0]}\n')
-            output_file.write(f'Manning\'s coefficient = {self.reach.channel_roughness}\n')
+            output_file.write(f'Manning\'s coefficient = {self.reach.roughness}\n')
             output_file.write(f'Bed slope = {self.reach.bed_slope[0]}\n')
             
             output_file.write('\n##############################################################\n\n')

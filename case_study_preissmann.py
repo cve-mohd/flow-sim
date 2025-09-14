@@ -21,7 +21,7 @@ def run(roseires_level_, n_epochs = epochs):
         ds = Boundary(initial_depth=downstream_depth, condition='flow_hydrograph' , bed_level=reach['ds_bed_level'], chainage=reach['chainage']+reach['length'])
         
         reach_instance = Reach(width=reach['width'], initial_flow_rate=initial_flow,
-                                channel_roughness=wet_roughness, upstream_boundary=us, downstream_boundary=ds)
+                                roughness=wet_roughness, upstream_boundary=us, downstream_boundary=ds)
         reach_instance.initialize_conditions(20)
         
         upstream_depth, _ = reach_instance.initial_conditions[0]
@@ -64,8 +64,8 @@ def run(roseires_level_, n_epochs = epochs):
                         downstream_boundary = ds,
                         width = reach['width'],
                         initial_flow_rate = initial_flow,
-                        channel_roughness = wet_roughness,
-                        floodplain_roughness = dry_roughness,
+                        roughness = wet_roughness,
+                        dry_roughness = dry_roughness,
                         bankful_depth = ds_depth)
 
         solver = PreissmannSolver(channel, theta, preissmann_time_step,
@@ -119,8 +119,8 @@ def run(roseires_level_, n_epochs = epochs):
                             downstream_boundary = ds,
                             width = reach['width'],
                             initial_flow_rate = initial_flow,
-                            channel_roughness = wet_roughness,
-                            floodplain_roughness = dry_roughness,
+                            roughness = wet_roughness,
+                            dry_roughness = dry_roughness,
                             bankful_depth = ds_depth)
 
             solver = PreissmannSolver(channel, theta, preissmann_time_step,
