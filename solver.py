@@ -370,12 +370,15 @@ class Solver:
     def water_level_at(self, i, current_time_level: bool, regularization: bool = None):
         return self.reach.bed_levels[i] + self.depth_at(i, current_time_level, regularization)
     
+    def wet_depth_at(self, i):
+        return self.reach.initial_conditions[i][0] / self.width_at(i)
+    
     def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
         A = self.area_at(i, current_time_level, regularization)
         Q = self.flow_at(i, current_time_level, chi_scaling)
         B = self.width_at(i)
         
-        return self.reach.Sf(A, Q, B)
+        return self.reach.Sf(A, Q, B, wet_depth=self.wet_depth_at(i))
     
     def A_reg(self, A, eps=1e-4):
         """

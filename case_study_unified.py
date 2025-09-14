@@ -55,7 +55,8 @@ Roseires.set_storage(storage_area, used_roseires_rc)
 
 GERD_Roseires_system = Reach(width = 250,
                              initial_flow_rate = 1562.5,
-                             channel_roughness = 0.027,
+                             roughness = 0.027,
+                             dry_roughness=0.030,
                              upstream_boundary = GERD,
                              downstream_boundary = Roseires)
 

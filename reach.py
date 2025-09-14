@@ -26,9 +26,8 @@ class Reach:
                  downstream_boundary: Boundary,
                  width: float,
                  initial_flow_rate: float,
-                 channel_roughness: float,
-                 floodplain_roughness: float = None,
-                 bankful_depth: float = None,
+                 roughness: float,
+                 dry_roughness: float = None,
                  interpolation_method: str = 'GVF_equation'):
         """
         Initialized an instance.
@@ -46,11 +45,10 @@ class Reach:
         self.conditions_initialized = False
         self.widths = [width, width]
         self.initial_flow_rate = initial_flow_rate
-        self.channel_roughness = channel_roughness
+        self.roughness = roughness
         self.bed_levels = [upstream_boundary.bed_level, downstream_boundary.bed_level]
         
-        self.bankful_depth = bankful_depth
-        self.floodplain_roughness = floodplain_roughness
+        self.dry_roughness = dry_roughness
         
         self.upstream_boundary = upstream_boundary
         self.downstream_boundary = downstream_boundary
@@ -65,7 +63,7 @@ class Reach:
         self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
         self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
 
-    def Sf(self, A: float, Q: float, B: float) -> float:
+    def Sf(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -82,32 +80,28 @@ class Reach:
             The computed friction slope.
             
         """       
-        n = self.get_n(A=A, B=B)
+        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
         return Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
     
-    def dSf_dA(self, A: float, Q: float, B: float) -> float:
-        n = self.get_n(A=A, B=B)
+    def dSf_dA(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
+        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
         
         d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B)
-        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * Hydraulics.dn_dh(depth=A/B,
-                                                                      steepness=0.15,
-                                                                      channel_roughness=self.channel_roughness,
-                                                                      floodplain_roughness=self.floodplain_roughness,
-                                                                      bankful_depth=self.bankful_depth) * 1./B
+        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, B, wet_depth=wet_depth)
         
         return d1 + d2
     
-    def dSf_dQ(self, A: float, Q: float, B: float) -> float:
-        n = self.get_n(A=A, B=B)
+    def dSf_dQ(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
+        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
         return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
 
-    def normal_flow(self, A: float, B: float, S_0: float):
-        n = self.get_n(A=A, B=B)
+    def normal_flow(self, A: float, B: float, S_0: float, wet_depth: float = None):
+        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
         return Hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
-    def normal_area(self, Q: float, B: float, S_0: float):
+    def normal_area(self, Q: float, B: float, S_0: float, wet_depth: float = None):
         A_guess = self.downstream_boundary.initial_depth * B
-        n = self.get_n(A=A_guess, B=B)
+        n = self.get_n(A=A_guess, B=B, wet_depth=wet_depth)
         
         return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
             
@@ -154,7 +148,7 @@ class Reach:
                 distance = i * dx
     
                 A, Q, B = self.widths[i] * h, self.initial_flow_rate, self.widths[i]
-                Sf = self.Sf(A, Q, B)
+                Sf = self.Sf(A, Q, B, wet_depth=A/B)
                 
                 Fr2 = Q**2 * B / (g * A**3)
                 denominator = 1 - Fr2
@@ -179,23 +173,30 @@ class Reach:
         
         self.conditions_initialized = True
     
-    def get_n(self, A: float, B: float, steepness = 0.15):
+    def get_n(self, A: float, B: float, wet_depth: float = None, steepness = 0.15):
+        if self.dry_roughness is None:
+            return self.roughness
+        
+        if wet_depth is None:
+            raise ValueError("Wet depth was not provided.")
+        
         h = A/B
-        return Hydraulics.effective_roughness(depth=h,
-                                              steepness=steepness,
-                                              channel_roughness=self.channel_roughness,
-                                              floodplain_roughness=self.floodplain_roughness,
-                                              bankful_depth=self.bankful_depth)
+        return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_depth, steepness=steepness)
       
-    def dn_dA(self, A: float, B: float, steepness = 0.15):
-        h = A/B
-        dn_dh = Hydraulics.dn_dh(depth=h,
+    def dn_dA(self, A: float, B: float, wet_depth: float = None, steepness = 0.15):
+        if self.dry_roughness is None:
+            return 0
+        
+        if wet_depth is None:
+            raise ValueError("Wet depth was not provided.")
+        
+        dn_dh = Hydraulics.dn_dh(depth=A/B,
                                  steepness=steepness,
-                                 channel_roughness=self.channel_roughness,
-                                 floodplain_roughness=self.floodplain_roughness,
-                                 bankful_depth=self.bankful_depth)
-        dh_dA = 1./B
-        return dn_dh * dh_dA
+                                 roughness=self.roughness,
+                                 dry_roughness=self.dry_roughness,
+                                 wet_depth=wet_depth)
+        # dn/dA = dn/dh * dh/dA, dh/dA = 1/B
+        return dn_dh * 1./B
     
     def set_intermediate_widths(self, widths: list, chainages: list):
         if len(widths) != len(chainages):

@@ -257,18 +257,15 @@ class Hydraulics:
             
         return A_guess
     
-    def effective_roughness(depth: float, steepness, channel_roughness, floodplain_roughness, bankful_depth):
-        if floodplain_roughness is None or bankful_depth is None:
-            return channel_roughness
+    def effective_roughness(depth: float, steepness, roughness, dry_roughness, wet_depth):
+        transition_depth = steepness * wet_depth
         
-        transition_depth = steepness * bankful_depth
-        
-        if depth <= bankful_depth:
-            return channel_roughness
-        if transition_depth == 0 or depth - bankful_depth > transition_depth:
-            return floodplain_roughness
+        if depth <= wet_depth:
+            return roughness
+        if transition_depth == 0 or depth - wet_depth > transition_depth:
+            return dry_roughness
         else:
-            return channel_roughness + (floodplain_roughness - channel_roughness) * (depth - bankful_depth) / transition_depth
+            return roughness + (dry_roughness - roughness) * (depth - wet_depth) / transition_depth
         
     def Sf(A: float, Q: float, n: float, B: float, approx_R = False) -> float:
         """
@@ -352,16 +349,13 @@ class Hydraulics:
         R = Hydraulics.R(A, B)
         return 2 * n * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
     
-    def dn_dh(depth: float, steepness, channel_roughness, floodplain_roughness, bankful_depth):
-        if floodplain_roughness is None or bankful_depth is None:
-            return 0
+    def dn_dh(depth: float, steepness: float, roughness: float, dry_roughness: float, wet_depth: float):
+        transition_depth = steepness * wet_depth
         
-        transition_depth = steepness * bankful_depth
-        
-        if depth <= bankful_depth or depth - bankful_depth > transition_depth:
+        if depth <= wet_depth or depth - wet_depth > transition_depth:
             return 0
         else:
-            return (floodplain_roughness - channel_roughness) / transition_depth
+            return (dry_roughness - roughness) / transition_depth
         
     def dQn_dA(A, S, n, B):
         R = Hydraulics.R(A, B)

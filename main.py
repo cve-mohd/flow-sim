@@ -18,7 +18,7 @@ ds = Boundary(initial_depth=5,
 
 example_channel = Reach(width = 250,
                         initial_flow_rate = 1562.5,
-                        channel_roughness = 0.029,
+                        roughness = 0.029,
                         upstream_boundary = us,
                         downstream_boundary = ds)
 
