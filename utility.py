@@ -3,41 +3,53 @@ from numpy import sum, abs, square
 from numpy import polyfit, array, log, exp
 from numpy.polynomial.polynomial import Polynomial
 from math import sqrt, pow
-
-
-class Utility:
-    def __init__():
-        pass
     
-    def create_directory_if_not_exists(directory):
-        """
-        Checks if a directory exists and creates it if it doesn't.
+def create_directory_if_not_exists(directory):
+    """
+    Checks if a directory exists and creates it if it doesn't.
 
-        Attributes
-        ----------
-        directory : str
-            The path to the directory to check.
-        """
-        
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            
-    def manhattan_norm(vector):
-        return sum(abs(vector))
+    Attributes
+    ----------
+    directory : str
+        The path to the directory to check.
+    """
     
-    def euclidean_norm(vector):
-        return sum(square(vector)) ** 0.5
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        
+def manhattan_norm(vector):
+    return sum(abs(vector))
+
+def euclidean_norm(vector):
+    return sum(square(vector)) ** 0.5
+
+def seconds_to_hms(seconds):
+    if seconds < 0:
+        return "0:00:00"
     
-    def seconds_to_hms(seconds):
-        if seconds < 0:
-            return "0:00:00"
-        
-        total_seconds = int(seconds)
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        remaining_seconds = total_seconds % 60
-        
-        return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
+    total_seconds = int(seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remaining_seconds = total_seconds % 60
+    
+    return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
+
+def compute_curvature(x_coords, y_coords):
+    from numpy import hypot, insert, gradient, diff, cumsum, isnan
+    # Arc length parameterization
+    ds = hypot(diff(x_coords), diff(y_coords))
+    s = insert(cumsum(ds), 0, 0.0)
+
+    dx = gradient(x_coords, s)
+    dy = gradient(y_coords, s)
+    ddx = gradient(dx, s)
+    ddy = gradient(dy, s)
+
+    # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
+    kappa = abs(dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
+    kappa[isnan(kappa)] = 0.0
+    
+    return kappa
 
 class RatingCurve:
     def __init__(self):

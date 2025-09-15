@@ -1,7 +1,6 @@
 from reach import Reach
 import numpy as np
 from scipy.constants import g
-from utility import Utility
 from math import sqrt
 
 
@@ -56,20 +55,15 @@ class Solver:
             Spatial step for the simulation in meters.
             
         """
-        self.type = None
-        self.solved = False
-        self.enforce_physicality = enforce_physicality
-        
         self.reach = reach
+        self.reach.initialize_conditions(n_nodes = self.number_of_nodes)
         self.active_storage = self.reach.downstream_boundary.active_storage
                 
         self.time_step, self.spatial_step = time_step, spatial_step
 
+        self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
         if fit_spatial_step:
-            self.number_of_nodes = int(round(self.reach.length / self.spatial_step) + 1)
-            self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
-        else:
-            self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
+            self.fit_spatial_step()
             
         self.num_celerity = self.spatial_step / float(self.time_step)
 
@@ -88,25 +82,31 @@ class Solver:
             'wave_celerity': [],
         }
         
-        self.peak_amplitude_profile = None
-        self.depth_0 = 0
+        self.peak_amplitudes = None
+        self.initial_depths = None
+        self.type = None
+        self.solved = False
         self.total_sim_duration = 0
+        self.enforce_physicality = enforce_physicality
+
+    def fit_spatial_step(self):
+        self.number_of_nodes = round(self.reach.length / self.spatial_step) + 1
+        self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
 
     def append_result(self):
         if isinstance(self.A_current, list):
             self.results['area'].append([float(i) for i in self.A_current])
             self.results['flow_rate'].append([float(i) for i in self.Q_current])
-        
         else:
             self.results['area'].append(self.A_current.tolist())
             self.results['flow_rate'].append(self.Q_current.tolist())
                     
-        if self.peak_amplitude_profile is None:
-            self.depth_0 = np.array(self.results['area'][0]) / np.array(self.reach.widths)
-            self.peak_amplitude_profile = self.depth_0 - self.depth_0
+        if self.initial_depths is None:
+            self.initial_depths = np.array(self.results['area'][0]) / np.array(self.reach.widths)
+            self.peak_amplitudes = [0] * self.number_of_nodes
         else:
-            peak_amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.depth_0
-            self.peak_amplitude_profile = [float(max(i, j)) for i,j in zip(peak_amplitudes, self.peak_amplitude_profile)]
+            amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.initial_depths
+            self.peak_amplitudes = [float(max(i, j)) for i,j in zip(amplitudes, self.peak_amplitudes)]
         
     def prepare_results(self) -> None:
         self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
@@ -148,7 +148,8 @@ class Solver:
         None.
 
         """
-        Utility.create_directory_if_not_exists(path)
+        from utility import create_directory_if_not_exists
+        create_directory_if_not_exists(path)
         
         # Calculate steps
         t_step = x_step = 1
@@ -216,7 +217,7 @@ class Solver:
                 output_file.write(value_str)
         
         # Save peak amplitude profile
-        value_str = str([0] + self.peak_amplitude_profile)
+        value_str = str([0] + self.peak_amplitudes)
         for c in "[]' ":
             value_str = value_str.replace(c, '')
                 
@@ -237,7 +238,8 @@ class Solver:
                 output_file.write(f'Theta = {self.theta}\n')
             
             # Simulation duration
-            output_file.write(f'Simulation duration = {Utility.seconds_to_hms(self.total_sim_duration)}\n')
+            from utility import seconds_to_hms
+            output_file.write(f'Simulation duration = {seconds_to_hms(self.total_sim_duration)}\n')
             
             # Mass imbalance
             x = np.array(self.results['flow_rate'])
@@ -268,9 +270,9 @@ class Solver:
                     median_vol_arrival_time = i * self.time_step
                     break
                 
-            output_file.write(f'Median volume entry time = {Utility.seconds_to_hms(median_vol_entry_time)}\n')
-            output_file.write(f'Median volume arrival time = {Utility.seconds_to_hms(median_vol_arrival_time)}\n')
-            output_file.write(f'Median volume travel time = {Utility.seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
+            output_file.write(f'Median volume entry time = {seconds_to_hms(median_vol_entry_time)}\n')
+            output_file.write(f'Median volume arrival time = {seconds_to_hms(median_vol_arrival_time)}\n')
+            output_file.write(f'Median volume travel time = {seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
             
             
                 
