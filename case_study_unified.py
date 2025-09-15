@@ -7,33 +7,41 @@ import pandas as pd
 from settings import trapzoid_hydrograph
 
 def import_geometry(path):
-    # Skip first two rows: header + units
-    df = pd.read_excel(path, skiprows=2)
+    df = pd.read_excel(path, skiprows=1)
 
-    chainages = df.iloc[:, 1]
-    widths    = df.iloc[:, 2]
-    levels    = df.iloc[:, 3]
+    chainages    = df.iloc[:, 1]
+    widths       = df.iloc[:, 2]
+    levels       = df.iloc[:, 3]
+    eastings     = df.iloc[:, 4]
+    northings    = df.iloc[:, 5]
 
-    # Widths
     width_df = pd.DataFrame({
         "chainage": chainages,
         "width": widths
     }).dropna()
     width_df = width_df.astype(float).sort_values(by="chainage")
 
-    # Levels
     level_df = pd.DataFrame({
         "chainage": chainages,
         "level": levels
     }).dropna()
     level_df = level_df.astype(float).sort_values(by="chainage")
+    
+    coords_df = pd.DataFrame({
+        "chainage": chainages,
+        "eastings": eastings,
+        "northings": northings
+    }).dropna()
+    coords_df = coords_df.astype(float).sort_values(by="chainage")
 
-    width_ch  = width_df["chainage"].tolist()
-    widths    = width_df["width"].tolist()
-    level_ch  = level_df["chainage"].tolist()
-    levels    = level_df["level"].tolist()
+    width_ch     = width_df["chainage"].tolist()
+    widths       = width_df["width"].tolist()
+    level_ch     = level_df["chainage"].tolist()
+    levels       = level_df["level"].tolist()
+    coords_ch    = coords_df["chainage"].tolist()
+    coords       = zip(coords_df["eastings"].tolist(), coords_df["northings"].tolist())
 
-    return widths, levels, width_ch, level_ch
+    return widths, width_ch, levels, level_ch, coords, coords_ch
 
 hyd_const = Hydrograph(function=trapzoid_hydrograph)
 
@@ -60,10 +68,11 @@ GERD_Roseires_system = Reach(width = 250,
                              upstream_boundary = GERD,
                              downstream_boundary = Roseires)
 
-widths, levels, width_ch, level_ch = import_geometry("geometry - original.xlsx")
+widths, width_ch, levels, level_ch, coords, coords_ch = import_geometry("geometry.xlsx")
 
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
+GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
 
 from preissmann import PreissmannSolver
 
@@ -73,9 +82,9 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           spatial_step=1000,
                           enforce_physicality=False)
 
-solver.reach.downstream_boundary.storage_area = 440e6 - GERD_Roseires_system.surface_area
+GERD_Roseires_system.downstream_boundary.storage_area = 440e6 - GERD_Roseires_system.surface_area
 
-solver.run(duration=3600*96, verbose=0)
-solver.save_results()
+#solver.run(duration=3600*96, verbose=0)
+#solver.save_results()
 
 print('Success.')

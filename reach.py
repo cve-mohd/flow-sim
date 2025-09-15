@@ -1,5 +1,4 @@
 from boundary import Boundary
-from math import sqrt
 from utility import Hydraulics
 
 class Reach:
@@ -62,6 +61,7 @@ class Reach:
         
         self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
         self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
+        self.coordinated = False
 
     def Sf(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
         """
@@ -214,12 +214,20 @@ class Reach:
 
     def initialize_geometry(self, n_nodes):
         from numpy import interp, linspace, gradient, array, trapezoid
-
+        from utility import compute_curvature
+        
         chainages = linspace(
             start=self.upstream_boundary.chainage,
             stop=self.downstream_boundary.chainage,
             num=n_nodes
         )
+
+        if self.coordinated:
+            x_coords = interp(chainages, self.coords_chainages, self.x_coords)
+            y_coords = interp(chainages, self.coords_chainages, self.y_coords)
+            
+            kappa = compute_curvature(x_coords=x_coords, y_coords=y_coords)
+            self.curvature = kappa.tolist()
 
         widths = interp(
             chainages,
@@ -238,3 +246,14 @@ class Reach:
 
         surface_area = trapezoid(widths, chainages)
         self.surface_area = float(surface_area)
+
+    def set_coords(self, coords, chainages):
+        from numpy import asarray
+        
+        self.coords_chainages = asarray(chainages, dtype=float)
+        x, y = zip(*coords)
+        self.x_coords, self.y_coords = list(x), list(y)
+        
+        self.upstream_boundary.chainage = self.coords_chainages[0]
+        self.downstream_boundary.chainage = self.coords_chainages[-1]
+        self.coordinated = True
