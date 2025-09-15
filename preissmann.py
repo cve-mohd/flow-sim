@@ -267,8 +267,7 @@ class PreissmannSolver(Solver):
         B = self.width_at(0)
         Q = self.flow_at(i=0, current_time_level=1)
         S_0 = self.bed_slope_at(0)
-        wet_h = self.wet_depth_at(0)
-        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
+        n = self.reach.get_n(A=A, i=0)
                 
         residual = self.reach.upstream_boundary.condition_residual(time=time,
                                                                    depth=h,
@@ -343,10 +342,10 @@ class PreissmannSolver(Solver):
                     k1_i0=self.water_level_at(i, 1),
                     k1_i1=self.water_level_at(i+1, 1)
                 ) + self.cell_avg(
-                    k0_i0=self.Sf_at(i, 0),
-                    k0_i1=self.Sf_at(i+1, 0),
-                    k1_i0=self.Sf_at(i, 1),
-                    k1_i1=self.Sf_at(i+1, 1)
+                    k0_i0=self.Se_at(i, 0),
+                    k0_i1=self.Se_at(i+1, 0),
+                    k1_i0=self.Se_at(i, 1),
+                    k1_i1=self.Se_at(i+1, 1)
                 )
             )
     
@@ -363,8 +362,7 @@ class PreissmannSolver(Solver):
         A = self.area_at(-1, 1)
         h = self.depth_at(-1, 1)
         B = self.width_at(-1)
-        wet_h = self.wet_depth_at(-1)
-        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
+        n = self.reach.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(-1)
         Q = self.flow_at(-1, 1)
         
@@ -400,12 +398,11 @@ class PreissmannSolver(Solver):
         A = self.area_at(0, 1)
         h = self.depth_at(0, 1)
         B = self.width_at(0)
-        wet_h = self.wet_depth_at(0)
-        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
+        n = self.reach.get_n(A=A, i=0)
         S_0 = self.bed_slope_at(0)
                     
         dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, B=B, wet_depth=wet_h)
+        dn_dA = self.reach.dn_dA(A=A, i=0)
         
         dU = self.reach.upstream_boundary.df_dA(area=A,
                                                 width=B,
@@ -582,8 +579,7 @@ class PreissmannSolver(Solver):
         A = self.area_at(i+1, 1)
         Q = self.flow_at(i+1, 1)
         B = self.width_at(i+1)
-        wet_h = self.wet_depth_at(i+1)
-        dSf_dA = self.reach.dSf_dA(A, Q, B, wet_depth=wet_h)
+        dSe_dA = self.reach.dSe_dA(A, Q, i+1)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -591,11 +587,11 @@ class PreissmannSolver(Solver):
             k1_i0=self.area_at(i, 1),
             k1_i1=self.area_at(i+1, 1)
         )
-        avg_Sf = self.cell_avg(
-            k0_i0=self.Sf_at(i, 0),
-            k0_i1=self.Sf_at(i+1, 0),
-            k1_i0=self.Sf_at(i, 1),
-            k1_i1=self.Sf_at(i+1, 1)
+        avg_Se = self.cell_avg(
+            k0_i0=self.Se_at(i, 0),
+            k0_i1=self.Se_at(i+1, 0),
+            k1_i0=self.Se_at(i, 1),
+            k1_i1=self.Se_at(i+1, 1)
         )
         dY_dx = self.spatial_diff(
             k0_i0=self.water_level_at(i, 0),
@@ -608,8 +604,8 @@ class PreissmannSolver(Solver):
         
         dM_dA = (
             - self.theta / self.spatial_step * (Q/A) ** 2
-            + 0.5 * g * self.theta * (dY_dx + avg_Sf)
-            + g * self.theta * avg_A * (1. / (self.spatial_step * B) + 0.5 * dSf_dA)
+            + 0.5 * g * self.theta * (dY_dx + avg_Se)
+            + g * self.theta * avg_A * (1. / (self.spatial_step * B) + 0.5 * dSe_dA)
         )
                 
         if not self.enforce_physicality or reg:
@@ -631,8 +627,7 @@ class PreissmannSolver(Solver):
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
         B = self.width_at(i)
-        wet_h = self.wet_depth_at(i)
-        dSf_dA = self.reach.dSf_dA(A, Q, B, wet_depth=wet_h)
+        dSe_dA = self.reach.dSe_dA(A, Q, i)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -640,11 +635,11 @@ class PreissmannSolver(Solver):
             k1_i0=self.area_at(i, 1),
             k1_i1=self.area_at(i+1, 1)
         )
-        avg_Sf = self.cell_avg(
-            k0_i0=self.Sf_at(i, 0),
-            k0_i1=self.Sf_at(i+1, 0),
-            k1_i0=self.Sf_at(i, 1),
-            k1_i1=self.Sf_at(i+1, 1)
+        avg_Se = self.cell_avg(
+            k0_i0=self.Se_at(i, 0),
+            k0_i1=self.Se_at(i+1, 0),
+            k1_i0=self.Se_at(i, 1),
+            k1_i1=self.Se_at(i+1, 1)
         )
         dY_dx = self.spatial_diff(
             k0_i0=self.water_level_at(i, 0),
@@ -657,8 +652,8 @@ class PreissmannSolver(Solver):
         
         dM_dA = (
             + self.theta / self.spatial_step * (Q/A) ** 2
-            + 0.5 * g * self.theta * (dY_dx + avg_Sf)
-            + g * self.theta * avg_A * (-1. / (self.spatial_step * B) + 0.5 * dSf_dA)
+            + 0.5 * g * self.theta * (dY_dx + avg_Se)
+            + g * self.theta * avg_A * (-1. / (self.spatial_step * B) + 0.5 * dSe_dA)
         )
         
         if not self.enforce_physicality or reg:
@@ -679,9 +674,7 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i+1, 1)
         Q = self.flow_at(i+1, 1)
-        B = self.width_at(i+1)
-        wet_h = self.wet_depth_at(i+1)
-        dSf_dQ = self.reach.dSf_dQ(A, Q, B, wet_depth=wet_h)
+        dSe_dQ = self.reach.dSe_dQ(A, Q, i+1)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -695,7 +688,7 @@ class PreissmannSolver(Solver):
         dM_dQ = (
             + 0.5 / self.time_step
             + 2 * self.theta / self.spatial_step * Q / A
-            + 0.5 * self.theta * g * avg_A * dSf_dQ
+            + 0.5 * self.theta * g * avg_A * dSe_dQ
         )
         
         if not self.enforce_physicality or eff:
@@ -716,9 +709,7 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i, 1)
         Q = self.flow_at(i, 1)
-        B = self.width_at(i)
-        wet_h = self.wet_depth_at(i)
-        dSf_dQ = self.reach.dSf_dQ(A, Q, B, wet_depth=wet_h)
+        dSe_dQ = self.reach.dSe_dQ(A, Q, i)
         
         avg_A = self.cell_avg(
             k0_i0=self.area_at(i, 0),
@@ -732,7 +723,7 @@ class PreissmannSolver(Solver):
         dM_dQ = (
             + 0.5 / self.time_step
             - 2 * self.theta / self.spatial_step * Q / A
-            + 0.5 * self.theta * g * avg_A * dSf_dQ
+            + 0.5 * self.theta * g * avg_A * dSe_dQ
         )
         
         if not self.enforce_physicality or eff:
@@ -755,11 +746,11 @@ class PreissmannSolver(Solver):
         h = self.depth_at(-1, 1)
         B = self.width_at(-1)
         wet_h = self.wet_depth_at(-1)
-        n = self.reach.get_n(A=A, B=B, wet_depth=wet_h)
+        n = self.reach.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(-1)
                 
         dD_dn = self.reach.downstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, B=B, wet_depth=wet_h)
+        dn_dA = self.reach.dn_dA(A=A, i=-1)
         
         dD = self.reach.downstream_boundary.df_dA(area=A,
                                                   width=B,

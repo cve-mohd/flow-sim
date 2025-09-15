@@ -63,7 +63,7 @@ class Reach:
         self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
         self.coordinated = False
 
-    def Sf(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
+    def Se(self, A: float, Q: float, i: int) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -80,28 +80,60 @@ class Reach:
             The computed friction slope.
             
         """       
-        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
+        n = self.get_n(A=A, i=i)
+        B = self.widths[i]
+        rc = 1. / self.radii_curv[i]
+        
+        return Hydraulics.Sf(A=A, Q=Q, n=n, B=B) + Hydraulics.Sc(A, Q, n, B, rc)
+    
+    def Se(self, A: float, Q: float, i: int) -> float:
+        """
+        Computes the friction slope using Manning's equation.
+        
+        Parameters
+        ----------
+        A : float
+            The cross-sectional flow area.
+        Q : float
+            The discharge.
+            
+        Returns
+        -------
+        float
+            The computed friction slope.
+            
+        """       
+        n = self.get_n(A=A, i=i)
+        B = self.widths[i]
         return Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
     
-    def dSf_dA(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
-        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
+    def dSe_dA(self, A: float, Q: float, i: int) -> float:
+        n = self.get_n(A=A, i=i)
+        B = self.widths[i]
         
         d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B)
-        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, B, wet_depth=wet_depth)
+        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
         
         return d1 + d2
     
-    def dSf_dQ(self, A: float, Q: float, B: float, wet_depth: float = None) -> float:
-        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
+    def dSe_dQ(self, A: float, Q: float, i: int) -> float:
+        n = self.get_n(A=A, i=i)
+        B = self.widths[i]
+        
         return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
 
-    def normal_flow(self, A: float, B: float, S_0: float, wet_depth: float = None):
-        n = self.get_n(A=A, B=B, wet_depth=wet_depth)
+    def normal_flow(self, A: float, i: int):
+        n = self.get_n(A=A, i=i)
+        B = self.widths[i]
+        S_0 = self.bed_slopes[i]
+        
         return Hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
-    def normal_area(self, Q: float, B: float, S_0: float, wet_depth: float = None):
+    def normal_area(self, Q: float, i: int):
+        B = self.widths[i]
         A_guess = self.downstream_boundary.initial_depth * B
-        n = self.get_n(A=A_guess, B=B, wet_depth=wet_depth)
+        n = self.get_n(A=A_guess, i=i)
+        S_0 = self.bed_slopes[i]
         
         return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
             
@@ -136,8 +168,6 @@ class Reach:
                 self.initial_conditions.append((A, Q))
                 
         elif self.interpolation_method == 'GVF_equation':
-            from scipy.constants import g
-
             dx = self.length / (n_nodes - 1)
             h = self.downstream_boundary.initial_depth
             
@@ -148,10 +178,10 @@ class Reach:
                 distance = i * dx
     
                 A, Q, B = self.widths[i] * h, self.initial_flow_rate, self.widths[i]
-                Sf = self.Sf(A, Q, B, wet_depth=A/B)
+                Sf = self.Se(A, Q, i)
                 
-                Fr2 = Q**2 * B / (g * A**3)
-                denominator = 1 - Fr2
+                Fr = Hydraulics.froude_num(A, Q, B)
+                denominator = 1 - Fr**2
                 
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
@@ -173,28 +203,27 @@ class Reach:
         
         self.conditions_initialized = True
     
-    def get_n(self, A: float, B: float, wet_depth: float = None, steepness = 0.15):
-        if self.dry_roughness is None:
+    def get_n(self, A: float, i: int, steepness = 0.15):
+        if self.dry_roughness is None or not self.conditions_initialized:
             return self.roughness
         
-        if wet_depth is None:
-            raise ValueError("Wet depth was not provided.")
+        wet_h = self.wet_depth(i)
+        h = A/self.widths[i]
         
-        h = A/B
-        return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_depth, steepness=steepness)
-      
-    def dn_dA(self, A: float, B: float, wet_depth: float = None, steepness = 0.15):
+        return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
+              
+    def dn_dA(self, A: float, i: int, steepness = 0.15):
         if self.dry_roughness is None:
             return 0
         
-        if wet_depth is None:
-            raise ValueError("Wet depth was not provided.")
+        B = self.widths[i]
+        wet_h = self.wet_depth(i)
         
         dn_dh = Hydraulics.dn_dh(depth=A/B,
                                  steepness=steepness,
                                  roughness=self.roughness,
                                  dry_roughness=self.dry_roughness,
-                                 wet_depth=wet_depth)
+                                 wet_depth=wet_h)
         # dn/dA = dn/dh * dh/dA, dh/dA = 1/B
         return dn_dh * 1./B
     
@@ -214,7 +243,7 @@ class Reach:
 
     def initialize_geometry(self, n_nodes):
         from numpy import interp, linspace, gradient, array, trapezoid
-        from utility import compute_curvature
+        from utility import compute_radii_curv
         
         chainages = linspace(
             start=self.upstream_boundary.chainage,
@@ -226,8 +255,8 @@ class Reach:
             x_coords = interp(chainages, self.coords_chainages, self.x_coords)
             y_coords = interp(chainages, self.coords_chainages, self.y_coords)
             
-            kappa = compute_curvature(x_coords=x_coords, y_coords=y_coords)
-            self.curvature = kappa.tolist()
+            rc = compute_radii_curv(x_coords=x_coords, y_coords=y_coords)
+            self.radii_curv = rc.tolist()
 
         widths = interp(
             chainages,
@@ -258,3 +287,7 @@ class Reach:
         self.downstream_boundary.chainage = self.coords_chainages[-1]
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
+    
+    def wet_depth(self, i):
+        return self.initial_conditions[i][0] / self.widths[i]
+    

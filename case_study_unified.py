@@ -72,7 +72,7 @@ widths, width_ch, levels, level_ch, coords, coords_ch = import_geometry("geometr
 
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
-GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
+#GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
 
 from preissmann import PreissmannSolver
 
@@ -84,7 +84,7 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
 
 GERD_Roseires_system.downstream_boundary.storage_area = 440e6 - GERD_Roseires_system.surface_area
 
-#solver.run(duration=3600*96, verbose=0)
-#solver.save_results()
+solver.run(duration=3600*24, verbose=0)
+solver.save_results()
 
 print('Success.')

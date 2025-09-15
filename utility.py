@@ -2,7 +2,8 @@ import os
 from numpy import sum, abs, square
 from numpy import polyfit, array, log, exp
 from numpy.polynomial.polynomial import Polynomial
-from math import sqrt, pow
+from math import sqrt
+from scipy.constants import g
     
 def create_directory_if_not_exists(directory):
     """
@@ -34,8 +35,8 @@ def seconds_to_hms(seconds):
     
     return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
-def compute_curvature(x_coords, y_coords):
-    from numpy import hypot, insert, gradient, diff, cumsum, isnan
+def compute_radii_curv(x_coords, y_coords):
+    from numpy import hypot, insert, gradient, diff, cumsum, isnan, where, inf
     # Arc length parameterization
     ds = hypot(diff(x_coords), diff(y_coords))
     s = insert(cumsum(ds), 0, 0.0)
@@ -47,9 +48,9 @@ def compute_curvature(x_coords, y_coords):
 
     # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
     kappa = abs(dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
-    kappa[isnan(kappa)] = 0.0
+    radii = where(kappa != 0, 1./kappa, inf)
     
-    return kappa
+    return radii
 
 class RatingCurve:
     def __init__(self):
@@ -290,7 +291,7 @@ class Hydraulics:
         Q : float
             The discharge.
             
-        Returns
+        Returnsr
         -------
         float
             The computed friction slope.
@@ -298,6 +299,99 @@ class Hydraulics:
         """
         R = Hydraulics.R(A, B)
         return n ** 2 * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
+    
+    def Sc(A: float, Q: float, n: float, B: float, rc: float) -> float:
+        """
+        Computes the energy gradient due to transverse circulation.
+        
+        Parameters
+        ----------
+        A : float
+            The cross-sectional flow area.
+        Q : float
+            The discharge.
+            
+        Returns
+        -------
+        float
+            The computed friction slope.
+            
+        """
+        h = A/B
+        Fr = Hydraulics.froude_num(A, Q, B)
+        R = Hydraulics.R(A, B)
+        C = R**(1./6) / n
+        f = 8 * g / C**2
+        
+        numerator = (2.86 * sqrt(f) + 2.07 * f) * h**2 * Fr**2
+        denominator = (0.565 + sqrt(f)) * rc**2
+        Sc = numerator/denominator
+        return Sc
+    
+    def dSc_dA(A, Q, n, B, rc):
+        h = A / B
+        Fr = Hydraulics.froude_num(A, Q, B)
+        R = Hydraulics.R(A, B)
+        dR_dA = Hydraulics.dR_dA(A, B)
+        C = R**(1./6) / n
+        f = 8 * g / C**2
+        
+        # derivatives of pieces
+        dh_dA = 1.0 / B
+        dFr_dA = -1.5 * Fr / A
+        df_dA = -(8.0/3.0) * g * n**2 * R**(-4.0/3.0) * dR_dA
+        
+        sqrtf = sqrt(f)
+        num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
+        den = (0.565 + sqrtf) * rc**2
+        
+        dnum_dA = (2.86/(2*sqrtf)*df_dA + 2.07*df_dA) * h**2 * Fr**2 \
+                + (2.86*sqrtf + 2.07*f) * (2*h*dh_dA * Fr**2 + h**2 * 2*Fr*dFr_dA)
+        dden_dA = (1.0/(2*sqrtf) * df_dA) * rc**2
+        
+        return (dnum_dA*den - num*dden_dA) / (den**2)
+
+    def dSc_dQ(A, Q, n, B, rc):
+        h = A / B
+        Fr = Hydraulics.froude_num(A, Q, B)
+        R = Hydraulics.R(A, B)
+        C = R**(1./6) / n
+        f = 8 * g / C**2
+        
+        dFr_dQ = Fr / Q
+        
+        sqrtf = sqrt(f)
+        num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
+        den = (0.565 + sqrtf) * rc**2
+        
+        dnum_dQ = (2.86*sqrtf + 2.07*f) * h**2 * 2*Fr*dFr_dQ
+        dden_dQ = 0.0
+        
+        return (dnum_dQ*den - num*dden_dQ) / (den**2)
+
+    def dSc_dn(A, Q, n, B, rc):
+        h = A / B
+        Fr = Hydraulics.froude_num(A, Q, B)
+        R = Hydraulics.R(A, B)
+        C = R**(1./6) / n
+        f = 8 * g / C**2
+        
+        df_dn = 16.0 * g * n / R**(1./3)
+        
+        sqrtf = sqrt(f)
+        num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
+        den = (0.565 + sqrtf) * rc**2
+        
+        dnum_dn = (2.86/(2*sqrtf)*df_dn + 2.07*df_dn) * h**2 * Fr**2
+        dden_dn = (1.0/(2*sqrtf) * df_dn) * rc**2
+        
+        return (dnum_dn*den - num*dden_dn) / (den**2)
+    
+    def froude_num(A: float, Q: float, B: float):
+        V = Q / A
+        h = A / B
+
+        return V / sqrt(g*h)
     
     def dSf_dA(A: float, Q: float, n: float, B: float) -> float:
         """Computes the partial derivative of Sf w.r.t. A.
