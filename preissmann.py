@@ -2,7 +2,6 @@ from solver import Solver
 from reach import Reach
 import numpy as np
 from scipy.constants import g
-from utility import Utility
 
 
 class PreissmannSolver(Solver):
@@ -46,9 +45,7 @@ class PreissmannSolver(Solver):
         self.theta = theta
         self.unknowns = []
         self.type = 'preissmann'
-        
         self.initialize_t0()
-
 
     def initialize_t0(self) -> None:
         """
@@ -60,8 +57,6 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.reach.initialize_conditions(n_nodes = self.number_of_nodes)
-
         for A, Q in self.reach.initial_conditions:                
             self.unknowns += [A, Q]
             self.A_previous.append(A)
@@ -166,6 +161,7 @@ class PreissmannSolver(Solver):
         None.
 
         """
+        from utility import euclidean_norm
         time = 0
         running = True
         
@@ -203,7 +199,7 @@ class PreissmannSolver(Solver):
                 delta = np.linalg.solve(J, -R)
                 self.unknowns += delta
 
-                error = Utility.euclidean_norm(vector = delta)                
+                error = euclidean_norm(vector = delta)                
                 if verbose >= 3:
                     print("Error = " + str(error))
                     
@@ -858,7 +854,8 @@ class PreissmannSolver(Solver):
         return derivative
     
     def log_status(self):
-        Utility.create_directory_if_not_exists('error_log')
+        from utility import create_directory_if_not_exists
+        create_directory_if_not_exists('error_log')
         
         with open('error_log//status.txt', 'w') as output_file:
             output_file.write(f'Spatial step = {self.spatial_step} m\n')
