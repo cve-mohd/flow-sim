@@ -62,29 +62,6 @@ class Reach:
         self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
         self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
         self.coordinated = False
-
-    def Se(self, A: float, Q: float, i: int) -> float:
-        """
-        Computes the friction slope using Manning's equation.
-        
-        Parameters
-        ----------
-        A : float
-            The cross-sectional flow area.
-        Q : float
-            The discharge.
-            
-        Returns
-        -------
-        float
-            The computed friction slope.
-            
-        """       
-        n = self.get_n(A=A, i=i)
-        B = self.widths[i]
-        rc = 1. / self.radii_curv[i]
-        
-        return Hydraulics.Sf(A=A, Q=Q, n=n, B=B) + Hydraulics.Sc(A, Q, n, B, rc)
     
     def Se(self, A: float, Q: float, i: int) -> float:
         """
@@ -105,22 +82,44 @@ class Reach:
         """       
         n = self.get_n(A=A, i=i)
         B = self.widths[i]
-        return Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
+        
+        Sf = Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
+        
+        if self.coordinated:
+            rc = self.radii_curv[i]
+            Sc = Hydraulics.Sc(A=A, Q=Q, n=n, B=B, rc=rc)
+        else:
+            Sc = 0
+            
+        return Sf + Sc
     
     def dSe_dA(self, A: float, Q: float, i: int) -> float:
         n = self.get_n(A=A, i=i)
         B = self.widths[i]
         
-        d1 = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B)
-        d2 = Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
+        dSf_dA = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B) + Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
         
-        return d1 + d2
+        if self.coordinated:
+            rc = self.radii_curv[i]
+            dSc_dA = Hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + Hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+        else:
+            dSc_dA = 0
+        
+        return dSf_dA + dSc_dA
     
     def dSe_dQ(self, A: float, Q: float, i: int) -> float:
         n = self.get_n(A=A, i=i)
         B = self.widths[i]
         
-        return Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
+        dSf_dQ = Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
+        
+        if self.coordinated:
+            rc = self.radii_curv[i]
+            dSc_dQ = Hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + Hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+        else:
+            dSc_dQ = 0
+                
+        return dSf_dQ + dSc_dQ
 
     def normal_flow(self, A: float, i: int):
         n = self.get_n(A=A, i=i)
@@ -283,8 +282,8 @@ class Reach:
         x, y = zip(*coords)
         self.x_coords, self.y_coords = list(x), list(y)
         
-        self.upstream_boundary.chainage = self.coords_chainages[0]
-        self.downstream_boundary.chainage = self.coords_chainages[-1]
+        self.upstream_boundary.chainage = float(self.coords_chainages[0])
+        self.downstream_boundary.chainage = float(self.coords_chainages[-1])
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
     
