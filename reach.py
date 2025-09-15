@@ -256,4 +256,5 @@ class Reach:
         
         self.upstream_boundary.chainage = self.coords_chainages[0]
         self.downstream_boundary.chainage = self.coords_chainages[-1]
+        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
