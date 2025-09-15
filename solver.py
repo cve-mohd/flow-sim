@@ -56,15 +56,15 @@ class Solver:
             
         """
         self.reach = reach
-        self.reach.initialize_conditions(n_nodes = self.number_of_nodes)
         self.active_storage = self.reach.downstream_boundary.active_storage
                 
         self.time_step, self.spatial_step = time_step, spatial_step
-
         self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
+        
         if fit_spatial_step:
             self.fit_spatial_step()
             
+        self.reach.initialize_conditions(n_nodes=self.number_of_nodes)
         self.num_celerity = self.spatial_step / float(self.time_step)
 
         self.A_previous = []
@@ -375,12 +375,11 @@ class Solver:
     def wet_depth_at(self, i):
         return self.reach.initial_conditions[i][0] / self.width_at(i)
     
-    def Sf_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
+    def Se_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
         A = self.area_at(i, current_time_level, regularization)
         Q = self.flow_at(i, current_time_level, chi_scaling)
-        B = self.width_at(i)
         
-        return self.reach.Sf(A, Q, B, wet_depth=self.wet_depth_at(i))
+        return self.reach.Se(A, Q, i)
     
     def A_reg(self, A, eps=1e-4):
         """
