@@ -244,35 +244,35 @@ class Reach:
         from numpy import interp, linspace, gradient, array, trapezoid
         from utility import compute_radii_curv
         
-        chainages = linspace(
+        self.chainages = linspace(
             start=self.upstream_boundary.chainage,
             stop=self.downstream_boundary.chainage,
             num=n_nodes
         )
 
         if self.coordinated:
-            x_coords = interp(chainages, self.coords_chainages, self.x_coords)
-            y_coords = interp(chainages, self.coords_chainages, self.y_coords)
+            x_coords = interp(self.chainages, self.coords_chainages, self.x_coords)
+            y_coords = interp(self.chainages, self.coords_chainages, self.y_coords)
             
-            rc = compute_radii_curv(x_coords=x_coords, y_coords=y_coords)
+            self.curv, rc = compute_radii_curv(x_coords=x_coords, y_coords=y_coords)
             self.radii_curv = rc.tolist()
 
         widths = interp(
-            chainages,
+            self.chainages,
             array(self.width_chainages, dtype=float),
             array(self.widths, dtype=float)
         )
         bed_levels = interp(
-            chainages,
+            self.chainages,
             array(self.level_chainages, dtype=float),
             array(self.bed_levels, dtype=float)
         )
 
         self.widths = widths.astype(float).tolist()
         self.bed_levels = bed_levels.astype(float).tolist()
-        self.bed_slopes = -gradient(bed_levels, chainages)
+        self.bed_slopes = -gradient(bed_levels, self.chainages)
 
-        surface_area = trapezoid(widths, chainages)
+        surface_area = trapezoid(widths, self.chainages)
         self.surface_area = float(surface_area)
 
     def set_coords(self, coords, chainages):
