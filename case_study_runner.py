@@ -1,7 +1,7 @@
 from reach import Reach
 from boundary import Boundary
 from utility import Hydrograph
-from case_study_settings import used_roseires_rc
+from case_study_settings import *
 from settings import trapzoid_hydrograph
 from custom_functions import import_geometry
 
@@ -16,19 +16,19 @@ GERD = Boundary(initial_depth=0,
                 chainage=0,
                 hydrograph=hyd)
 
-Roseires = Boundary(initial_depth=490-470.54,
+Roseires = Boundary(initial_depth=roseires_level-470.54,
                     condition='fixed_depth',
                     bed_level=470.54,
                     chainage=120000)
 
 Roseires.set_storage(0, used_roseires_rc)
 
-GERD_Roseires_system = Reach(width = 250,
-                             initial_flow_rate = 1562.5,
-                             roughness = 0.027,
-                             dry_roughness=0.030,
-                             upstream_boundary = GERD,
-                             downstream_boundary = Roseires)
+GERD_Roseires_system = Reach(width=250,
+                             initial_flow_rate=1562.5,
+                             roughness=wet_n,
+                             dry_roughness=dry_n,
+                             upstream_boundary=GERD,
+                             downstream_boundary=Roseires)
 
 widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("geometry.xlsx")
 
@@ -39,14 +39,14 @@ GERD_Roseires_system.set_coords(coords=zip(x, y), chainages=coords_ch)
 from preissmann import PreissmannSolver
 
 solver = PreissmannSolver(reach=GERD_Roseires_system,
-                          theta=0.8,
-                          time_step=3600,
-                          spatial_step=1000,
-                          enforce_physicality=False)
+                          theta=theta,
+                          time_step=preissmann_dt,
+                          spatial_step=dx,
+                          enforce_physicality=enforce_physicality)
 
-GERD_Roseires_system.downstream_boundary.storage_area = 440e6 - GERD_Roseires_system.surface_area
+GERD_Roseires_system.downstream_boundary.storage_area = total_channel_area - GERD_Roseires_system.surface_area
 
-solver.run(duration=3600*94, verbose=0); solver.save_results()
+solver.run(duration=sim_duration, verbose=0); solver.save_results()
 print('Success.')
 """
 from numpy import arctan, pi
