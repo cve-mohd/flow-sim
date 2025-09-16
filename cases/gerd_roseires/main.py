@@ -1,14 +1,11 @@
-from reach import Reach
-from boundary import Boundary
-from utility import Hydrograph
-from case_study_settings import *
-from settings import trapzoid_hydrograph
-from custom_functions import import_geometry
+from src.reach import Reach
+from src.boundary import Boundary
+from src.utility import Hydrograph
+from cases.gerd_roseires.settings import *
+from cases.gerd_roseires.custom_functions import import_geometry
 
-hyd_const = Hydrograph(function=trapzoid_hydrograph)
 hyd = Hydrograph()
-
-hyd.load_csv('hydrograph.csv')
+hyd.load_csv('cases\\gerd_roseires\\input_data\\hydrograph.csv')
 
 GERD = Boundary(initial_depth=0,
                 condition='flow_hydrograph',
@@ -30,13 +27,13 @@ GERD_Roseires_system = Reach(width=250,
                              upstream_boundary=GERD,
                              downstream_boundary=Roseires)
 
-widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("geometry.xlsx")
+widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("cases\\gerd_roseires\\input_data\\geometry.xlsx")
 
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
 GERD_Roseires_system.set_coords(coords=zip(x, y), chainages=coords_ch)
 
-from preissmann import PreissmannSolver
+from src.preissmann import PreissmannSolver
 
 solver = PreissmannSolver(reach=GERD_Roseires_system,
                           theta=theta,
@@ -46,7 +43,9 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
 
 GERD_Roseires_system.downstream_boundary.storage_area = total_channel_area - GERD_Roseires_system.surface_area
 
-solver.run(duration=sim_duration, verbose=0); solver.save_results()
+solver.run(duration=sim_duration, verbose=0);
+solver.save_results(path='cases\\gerd_roseires\\results')
+
 print('Success.')
 """
 from numpy import arctan, pi
