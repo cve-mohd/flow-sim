@@ -47,10 +47,10 @@ def compute_radii_curv(x_coords, y_coords):
     ddy = gradient(dy, s)
 
     # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
-    kappa = abs(dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
+    kappa = (dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
     radii = where(kappa != 0, 1./kappa, inf)
     
-    return radii
+    return kappa, radii
 
 class RatingCurve:
     def __init__(self):
@@ -336,7 +336,6 @@ class Hydraulics:
         C = R**(1./6) / n
         f = 8 * g / C**2
         
-        # derivatives of pieces
         dh_dA = 1.0 / B
         dFr_dA = -1.5 * Fr / A
         df_dA = -(8.0/3.0) * g * n**2 * R**(-4.0/3.0) * dR_dA
