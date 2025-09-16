@@ -1,38 +1,24 @@
 ############                Channel Geometry                    ############
 
-wet_roughness = 0.027
-dry_roughness = 0.030
-
-lengths        = [16000, 32000, 37000, 8000, 27000]
-widths         = [250  , 650  , 1500 , 3000, 6000]
-
-storage_area = 440e6 - sum([w*l for w, l in zip(widths, lengths)][1:])
-
-us_bed_levels  = [495.0, 482.5, 479.6, 476.3, 475.5]
-ds_bed_levels  = [482.5, 479.6, 476.3, 475.5, 473.1]
-
-chainages      = [sum(lengths[:i]) for i in range(len(lengths))]
+wet_n = 0.027
+dry_n = 0.030
 
 ############                Simulation Parameters               ############
 
 enforce_physicality = False
 sim_duration = 3600 * 96
-epochs = 3
+dx = 1000
 
-preissmann_time_step = 3600
+preissmann_dt = 3600
 theta = 0.8
 tolerance = 1e-6
 
 lax_time_step = 10
 lax_secondary_bc = ('constant', 'constant')
 
-spatial_resolution = 0.05
-
-results_size = (-1, -1) # (t, x)
-
 ############                Hydrologic Parameters               ############
 
-roseires_level = 485
+roseires_level = 490
 
 initial_flow = 1562.5
 peak_flow = 25000
@@ -72,13 +58,4 @@ roseires_total_rating_curve.fit(discharges=total_discharges, stages=rs_stages)
 
 used_roseires_rc = roseires_total_rating_curve
 
-reaches = [
-    {
-        'id': i,
-        'length': lengths[i],
-        'width': widths[i],
-        'us_bed_level': us_bed_levels[i],
-        'ds_bed_level': ds_bed_levels[i],
-        'chainage': chainages[i]
-    }
-    for i in range(len(lengths))]
+total_channel_area = 440e6
