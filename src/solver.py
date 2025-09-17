@@ -56,7 +56,7 @@ class Solver:
             
         """
         self.reach = reach
-        self.active_storage = self.reach.downstream_boundary.active_storage
+        self.active_storage = (self.reach.downstream_boundary.lumped_storage is not None)
                 
         self.time_step, self.spatial_step = time_step, spatial_step
         self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)

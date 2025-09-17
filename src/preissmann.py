@@ -63,7 +63,7 @@ class PreissmannSolver(Solver):
             self.Q_previous.append(Q)
 
         if self.active_storage:
-            self.unknowns.append(self.reach.downstream_boundary.storage_stage)
+            self.unknowns.append(self.reach.downstream_boundary.lumped_storage.stage)
             
         self.unknowns = np.array(self.unknowns)
 
@@ -134,10 +134,10 @@ class PreissmannSolver(Solver):
         if self.active_storage:        
             jacobian_matrix[-2, -3] = self.dD_dA()
             jacobian_matrix[-2, -2] = self.dD_dQ()
-            jacobian_matrix[-2, -1] = self.dD_dhs()
+            jacobian_matrix[-2, -1] = self.dD_dYN()
             
             jacobian_matrix[-1, -2] = self.dSr_dQ()
-            jacobian_matrix[-1, -1] = self.dSr_dhs()
+            jacobian_matrix[-1, -1] = self.dSr_dYN()
         else:
             jacobian_matrix[-1, -2] = self.dD_dA()
             jacobian_matrix[-1, -1] = self.dD_dQ()
@@ -242,7 +242,7 @@ class PreissmannSolver(Solver):
         if self.active_storage:
             self.A_current = self.unknowns[:-1:2]
             self.Q_current = self.unknowns[1:-1:2]
-            self.reach.downstream_boundary.storage_stage = self.unknowns[-1]
+            self.reach.downstream_boundary.lumped_storage.stage = self.unknowns[-1]
         else:
             self.A_current = self.unknowns[::2]
             self.Q_current = self.unknowns[1::2]
@@ -377,11 +377,12 @@ class PreissmannSolver(Solver):
 
     def storage_residual(self):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.storage_stage + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
+                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
         
-        new_storage_stage = self.reach.downstream_boundary.mass_balance(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        new_storage_stage = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=average_inflow, stage=average_stage)
         
-        residual = self.reach.downstream_boundary.storage_stage - new_storage_stage
+        residual = self.reach.downstream_boundary.lumped_storage.stage - new_storage_stage
         
         return residual
     
@@ -789,11 +790,9 @@ class PreissmannSolver(Solver):
         
         if not self.enforce_physicality:
             derivative = dD
-            
         else:
             dD_dQe = dD            
             dQe_dQ = self.dQe_dQ(-1)
-            
             derivative = dD_dQe * dQe_dQ
     
         if eff:
@@ -801,7 +800,7 @@ class PreissmannSolver(Solver):
         else:
             return derivative
     
-    def dD_dhs(self) -> float:
+    def dD_dYN(self) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the storage depth.
@@ -812,67 +811,33 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        derivative = self.reach.downstream_boundary.condition_derivative_wrt_res_h()
-
+        derivative = self.reach.downstream_boundary.df_dYN()
         return derivative
             
     def dSr_dQ(self, eff = False):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.storage_stage + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
+                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
         
-        dhs = 0 - 0.5 * self.reach.downstream_boundary.mass_balance_deriv_wrt_Q(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        dSr = 0 - 0.5*self.reach.downstream_boundary.lumped_storage.df_dQ(duration=self.time_step, inflow=average_inflow, stage=average_stage)
         
         if not self.enforce_physicality:
-            derivative = dhs
-            
+            return dSr
         else:
-            dhs_dQe = dhs
+            dSr_dQe = dSr
+            if eff:
+                return dSr_dQe
             dQe_dQ = self.dQe_dQ(-1)
             
-            derivative = dhs_dQe * dQe_dQ
-    
-        if eff:
-            return dhs_dQe
-        else:
-            return derivative
-    
-    def dSr_dhs(self):
+            return dSr_dQe * dQe_dQ
+        
+    def dSr_dYN(self):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.storage_stage + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
+                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
         
-        derivative = 1 - 0.5 * self.reach.downstream_boundary.mass_balance_deriv_wrt_stage(duration=self.time_step, inflow=average_inflow, stage=average_stage)
-        
+        derivative = 1 - 0.5*self.reach.downstream_boundary.lumped_storage.df_dY(duration=self.time_step, inflow=average_inflow, stage=average_stage)
         return derivative
-    
-    def log_status(self):
-        from utility import create_directory_if_not_exists
-        create_directory_if_not_exists('error_log')
-        
-        with open('error_log//status.txt', 'w') as output_file:
-            output_file.write(f'Spatial step = {self.spatial_step} m\n')
-            output_file.write(f'Time step = {self.time_step} s\n')
-            output_file.write(f'Theta = {self.theta}\n')
-            
-            output_file.write(f'Channel length = {self.reach.total_length}\n')
-            output_file.write(f'Channel width = {self.reach.widths[0]}\n')
-            output_file.write(f'Manning\'s coefficient = {self.reach.roughness}\n')
-            output_file.write(f'Bed slope = {self.reach.bed_slope[0]}\n')
-            
-            output_file.write('\n##############################################################\n\n')
-            
-            output_file.write(f'Upstream boundary:\n{self.reach.upstream_boundary.status()}\n')
-            
-            output_file.write('\n##############################################################\n\n')
-            
-            output_file.write(f'Downstream boundary:\n{self.reach.downstream_boundary.status()}\n')
-            
-            output_file.write('\n##############################################################\n\n')
-            
-            output_file.write('Initial conditions:\n')
-            for a, q in self.reach.initial_conditions:
-                output_file.write(f'A = {a:.2f}, Q = {q:.2f} m^3/s\n')
-            
-        self.save_results(path='error_log')
             
     def dAreg_dA(self, i, eps=1e-4):
         """

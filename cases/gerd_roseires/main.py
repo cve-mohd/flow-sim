@@ -1,6 +1,6 @@
 from src.reach import Reach
 from src.boundary import Boundary
-from src.utility import Hydrograph
+from src.utility import Hydrograph, LumpedStorage
 from cases.gerd_roseires.settings import *
 from cases.gerd_roseires.custom_functions import import_geometry
 
@@ -19,12 +19,14 @@ GERD = Boundary(condition='flow_hydrograph',
                 chainage=gerd_chainage,
                 hydrograph=hyd)
 
-Roseires = Boundary(initial_depth=roseires_level-roseires_bed_level,
+ds_depth = roseires_level-roseires_bed_level
+Roseires = Boundary(initial_depth=ds_depth,
                     condition='fixed_depth',
                     bed_level=roseires_bed_level,
                     chainage=roseires_chainage)
 
-Roseires.set_storage(0, used_roseires_rc)
+roseires_storage = LumpedStorage(roseires_area, roseires_level, used_roseires_rc)
+Roseires.set_lumped_storage(roseires_storage)
 
 GERD_Roseires_system = Reach(width=widths[0],
                              initial_flow_rate=hyd.get_at(0),
@@ -45,7 +47,7 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           spatial_step=dx,
                           enforce_physicality=enforce_physicality)
 
-GERD_Roseires_system.downstream_boundary.storage_area = total_channel_area - GERD_Roseires_system.surface_area
+GERD_Roseires_system.downstream_boundary.lumped_storage.surface_area = roseires_area - GERD_Roseires_system.surface_area
 
 solver.run(duration=sim_duration, verbose=0)
 solver.save_results(path='cases\\gerd_roseires\\results')
