@@ -6,22 +6,25 @@ class Boundary:
                  condition: str,
                  bed_level: float,
                  chainage: int | float,
-                 initial_depth: float,
+                 initial_depth: float = None,
                  rating_curve: RatingCurve = None,
                  hydrograph: Hydrograph = None):
         
-        self.initial_depth = initial_depth
-        
+        self.condition = condition
         self.bed_level = bed_level
-        self.initial_stage = bed_level + initial_depth
-        self.storage_stage = self.initial_stage
-        self.chainage = chainage
-                
-        if condition in ['flow_hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve', 'stage_hydrograph']:
-            self.condition = condition
-        else:
-            raise ValueError("Invalid boundary condition.")
         
+        if self.condition not in ['flow_hydrograph', 'fixed_depth', 'normal_depth', 'rating_curve', 'stage_hydrograph']:
+            raise ValueError("Invalid boundary condition.")
+                
+        if initial_depth is None:
+            self.initial_depth = self.initial_stage = self.storage_stage = None
+        else:
+            self.initial_depth = initial_depth
+            self.initial_stage = bed_level + initial_depth
+            self.storage_stage = self.initial_stage
+        
+        self.chainage = chainage
+                        
         self.rating_curve = rating_curve
         self.hydrograph = hydrograph
         

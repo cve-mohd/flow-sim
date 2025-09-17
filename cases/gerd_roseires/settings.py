@@ -6,7 +6,7 @@ dry_n = 0.030
 ############                Simulation Parameters               ############
 
 enforce_physicality = False
-sim_duration = 3600 * 9
+sim_duration = 3600 * 96
 dx = 1000
 
 preissmann_dt = 3600

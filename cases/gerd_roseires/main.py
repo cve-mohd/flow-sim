@@ -6,32 +6,36 @@ from cases.gerd_roseires.custom_functions import import_geometry
 
 hyd = Hydrograph()
 hyd.load_csv('cases\\gerd_roseires\\input_data\\hydrograph.csv')
+widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("cases\\gerd_roseires\\input_data\\geometry.xlsx")
 
-GERD = Boundary(initial_depth=0,
-                condition='flow_hydrograph',
-                bed_level=495,
-                chainage=0,
+gerd_bed_level = levels[0]
+gerd_chainage = min(width_ch+level_ch+coords_ch)
+
+roseires_bed_level = levels[-1]
+roseires_chainage = max(width_ch+level_ch+coords_ch)
+
+GERD = Boundary(condition='flow_hydrograph',
+                bed_level=gerd_bed_level,
+                chainage=gerd_chainage,
                 hydrograph=hyd)
 
-Roseires = Boundary(initial_depth=roseires_level-470.54,
+Roseires = Boundary(initial_depth=roseires_level-roseires_bed_level,
                     condition='fixed_depth',
-                    bed_level=470.54,
-                    chainage=120000)
+                    bed_level=roseires_bed_level,
+                    chainage=roseires_chainage)
 
 Roseires.set_storage(0, used_roseires_rc)
 
-GERD_Roseires_system = Reach(width=250,
-                             initial_flow_rate=1562.5,
+GERD_Roseires_system = Reach(width=widths[0],
+                             initial_flow_rate=hyd.get_at(0),
                              roughness=wet_n,
                              dry_roughness=dry_n,
                              upstream_boundary=GERD,
                              downstream_boundary=Roseires)
 
-widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("cases\\gerd_roseires\\input_data\\geometry.xlsx")
-
+GERD_Roseires_system.set_coords(coords=zip(x, y), chainages=coords_ch)
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
-GERD_Roseires_system.set_coords(coords=zip(x, y), chainages=coords_ch)
 
 from src.preissmann import PreissmannSolver
 
