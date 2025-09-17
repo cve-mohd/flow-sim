@@ -20,6 +20,8 @@ lax_secondary_bc = ('constant', 'constant')
 
 roseires_level = 490
 
+############                Inflow Hydrograph Functions         ############
+
 initial_flow = 1562.5
 peak_flow = 25000
 
@@ -27,8 +29,6 @@ lag_time = 0
 time_to_peak = 12 * 3600.
 peak_time = 28 * 3600.
 recession_time = 8 * 3600.
-
-############                Inflow Hydrograph Functions         ############
 
 def trapzoid_hydrograph(t):
     if t <= lag_time:
@@ -58,4 +58,4 @@ roseires_total_rating_curve.fit(discharges=total_discharges, stages=rs_stages)
 
 used_roseires_rc = roseires_total_rating_curve
 
-total_channel_area = 440e6
+roseires_area = 440e6

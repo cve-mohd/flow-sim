@@ -482,3 +482,58 @@ class Hydraulics:
             
         return dQn_dn
     
+class LumpedStorage:
+    def __init__(self, surface_area: float, min_stage: float, rating_curve: RatingCurve = None):
+        self.rating_curve = rating_curve
+        self.surface_area = surface_area
+        self.min_stage = min_stage
+        self.stage = None
+    
+    def new_stage(self, duration, inflow, stage) -> float:
+        """
+        Computes the new storage stage using a mass-balance equation.
+
+        Parameters
+        ----------
+        inflow : float
+            The rate of flow entering the storage.
+        duration : float
+            The time during which the inflow occurs. Normally, this is the models time step.
+
+        """
+        if self.rating_curve is None:
+            outflow = 0
+        else:
+            outflow = self.rating_curve.discharge(stage)
+        
+        added_volume = (inflow - outflow) * duration
+        added_depth = added_volume / float(self.surface_area)
+                
+        new_stage = stage + added_depth
+        
+        if new_stage < self.min_stage:
+            new_stage = self.min_stage
+                
+        return new_stage
+       
+    def df_dQ(self, duration, inflow, stage) -> float:
+        derivative = duration / float(self.surface_area)
+        
+        if self.new_stage(duration, inflow, stage) <= self.min_stage:
+            derivative = 0
+        
+        return derivative
+    
+    def df_dY(self, duration, inflow, stage) -> float:        
+        if self.rating_curve is None:
+            der_outflow = 0
+        else:        
+            der_outflow = self.rating_curve.derivative(stage)
+        
+        derivative = 1 - der_outflow * duration / float(self.surface_area)
+        
+        if self.new_stage(duration, inflow, stage) <= self.min_stage:
+            derivative = 0
+        
+        return derivative
+    

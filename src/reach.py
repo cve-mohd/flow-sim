@@ -243,11 +243,11 @@ class Reach:
             raise ValueError("")
                 
         if chainages[0] > self.upstream_boundary.chainage:
-            self.widths = [self.widths[0]] + widths
-            self.width_chainages = [self.upstream_boundary.chainage] + chainages
-        else:    
-            self.widths = widths
-            self.width_chainages = chainages
+            widths.insert(0, self.widths[0])
+            self.width_chainages.insert(0, self.upstream_boundary.chainage)
+        
+        self.widths = widths
+        self.width_chainages = chainages
 
     def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
         if len(bed_levels) != len(chainages):
@@ -259,10 +259,14 @@ class Reach:
         if chainages[0] > self.upstream_boundary.chainage:
             self.bed_levels.insert(0, self.upstream_boundary.bed_level)
             self.level_chainages.insert(0, self.upstream_boundary.chainage)
+        else:
+            self.upstream_boundary.bed_level = bed_levels[0]
         
         if chainages[-1] < self.downstream_boundary.chainage:
             self.bed_levels.append(self.downstream_boundary.bed_level)
             self.level_chainages.append(self.downstream_boundary.chainage)
+        else:
+            self.downstream_boundary.bed_level = bed_levels[-1]
 
     def initialize_geometry(self, n_nodes):
         from numpy import interp, linspace, gradient, array, trapezoid
