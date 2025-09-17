@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
-
-# add repo root to sys.path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
 from src.reach import Reach
 from src.boundary import Boundary
-from src.settings import trapzoid_hydrograph
+from cases.example.settings import trapzoid_hydrograph
 from src.utility import Hydrograph
 
 hyd = Hydrograph(trapzoid_hydrograph)
@@ -31,7 +25,7 @@ example_channel = Reach(width = 250,
 example_channel.set_intermediate_bed_levels([510], [8000])
 example_channel.set_intermediate_widths([400], [26000])
 
-from preissmann import PreissmannSolver
+from src.preissmann import PreissmannSolver
 
 solver = PreissmannSolver(reach=example_channel,
                           theta=0.8,
@@ -40,7 +34,7 @@ solver = PreissmannSolver(reach=example_channel,
                           enforce_physicality=False)
 
 solver.run(duration=3600*24, verbose=0)
-solver.save_results()
+solver.save_results(path='cases\\example\\results')
 
 """
 from lax import LaxSolver
