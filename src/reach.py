@@ -226,19 +226,43 @@ class Reach:
         # dn/dA = dn/dh * dh/dA, dh/dA = 1/B
         return dn_dh * 1./B
     
+    def set_coords(self, coords, chainages):
+        from numpy import asarray
+        
+        self.coords_chainages = asarray(chainages, dtype=float)
+        x, y = zip(*coords)
+        self.x_coords, self.y_coords = list(x), list(y)
+        
+        self.upstream_boundary.chainage = float(self.coords_chainages[0])
+        self.downstream_boundary.chainage = float(self.coords_chainages[-1])
+        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
+        self.coordinated = True
+        
     def set_intermediate_widths(self, widths: list, chainages: list):
         if len(widths) != len(chainages):
             raise ValueError("")
-        
-        self.widths = [self.widths[0]] + widths
-        self.width_chainages = [self.upstream_boundary.chainage] + chainages
+                
+        if chainages[0] > self.upstream_boundary.chainage:
+            self.widths = [self.widths[0]] + widths
+            self.width_chainages = [self.upstream_boundary.chainage] + chainages
+        else:    
+            self.widths = widths
+            self.width_chainages = chainages
 
     def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
         if len(bed_levels) != len(chainages):
             raise ValueError("")
         
-        self.bed_levels = [self.upstream_boundary.bed_level] + bed_levels + [self.downstream_boundary.bed_level]
-        self.level_chainages = [self.upstream_boundary.chainage] + chainages + [self.downstream_boundary.chainage]
+        self.bed_levels = bed_levels
+        self.level_chainages = chainages
+            
+        if chainages[0] > self.upstream_boundary.chainage:
+            self.bed_levels.insert(0, self.upstream_boundary.bed_level)
+            self.level_chainages.insert(0, self.upstream_boundary.chainage)
+        
+        if chainages[-1] < self.downstream_boundary.chainage:
+            self.bed_levels.append(self.downstream_boundary.bed_level)
+            self.level_chainages.append(self.downstream_boundary.chainage)
 
     def initialize_geometry(self, n_nodes):
         from numpy import interp, linspace, gradient, array, trapezoid
@@ -274,18 +298,6 @@ class Reach:
 
         surface_area = trapezoid(widths, self.chainages)
         self.surface_area = float(surface_area)
-
-    def set_coords(self, coords, chainages):
-        from numpy import asarray
-        
-        self.coords_chainages = asarray(chainages, dtype=float)
-        x, y = zip(*coords)
-        self.x_coords, self.y_coords = list(x), list(y)
-        
-        self.upstream_boundary.chainage = float(self.coords_chainages[0])
-        self.downstream_boundary.chainage = float(self.coords_chainages[-1])
-        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
-        self.coordinated = True
     
     def wet_depth(self, i):
         return self.initial_conditions[i][0] / self.widths[i]
