@@ -43,13 +43,13 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
 
 GERD_Roseires_system.downstream_boundary.storage_area = total_channel_area - GERD_Roseires_system.surface_area
 
-solver.run(duration=sim_duration, verbose=0);
+solver.run(duration=sim_duration, verbose=0)
 solver.save_results(path='cases\\gerd_roseires\\results')
 
 print('Success.')
 """
 from numpy import arctan, pi
-from custom_functions import draw, import_geometry, export_banks
+from src.custom_functions import draw, import_geometry, export_banks
 
 x1, x2 = GERD_Roseires_system.x_coords[0], GERD_Roseires_system.x_coords[1]
 y1, y2 = GERD_Roseires_system.y_coords[0], GERD_Roseires_system.y_coords[1]
