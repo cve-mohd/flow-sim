@@ -22,13 +22,15 @@ roseires_level = 490
 
 ############                Inflow Hydrograph Functions         ############
 
-initial_flow = 1562.5
-peak_flow = 25000
-
 lag_time = 0
-time_to_peak = 12 * 3600.
-peak_time = 28 * 3600.
-recession_time = 8 * 3600.
+time_to_peak = 0 * 3600.
+peak_time = 10 * 3600
+recession_time = 0 * 3600.
+
+initial_flow = 1562.5
+
+peak_flow = ((4824.0 - 3847.0) * 1e6 - initial_flow * (sim_duration - peak_time)) / peak_time
+peak_flow = 24000
 
 def trapzoid_hydrograph(t):
     if t <= lag_time:

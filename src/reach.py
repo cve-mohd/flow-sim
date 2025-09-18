@@ -269,7 +269,7 @@ class Reach:
             self.downstream_boundary.bed_level = bed_levels[-1]
 
     def initialize_geometry(self, n_nodes):
-        from numpy import interp, linspace, gradient, array, trapezoid
+        from numpy import interp, gradient, linspace, array, trapezoid
         from src.utility import compute_radii_curv
         
         self.chainages = linspace(

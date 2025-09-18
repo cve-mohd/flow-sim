@@ -133,3 +133,24 @@ def export_banks(left_x, left_y, right_x, right_y,
 
     gdf.to_file(outfile, driver="ESRI Shapefile")
     return gdf
+
+def import_area_curve(path: str) -> np.ndarray:
+    """
+    Imports stage and area data from an Excel file and returns it as a 2D NumPy array.
+
+    Args:
+        path (str): The file path to the Excel file.
+
+    Returns:
+        np.ndarray: A 2D NumPy array where the first column contains stages 
+                    and the second column contains corresponding areas.
+    """
+    from pandas import read_excel
+    
+    df = read_excel(path, skiprows=1)
+    stages = df.iloc[:, 0].to_numpy()
+    areas = df.iloc[:, 1].to_numpy()
+    
+    area_curve = np.vstack((stages, areas)).T
+    
+    return area_curve
