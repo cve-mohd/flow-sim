@@ -1,5 +1,6 @@
 import os
 from numpy import sum, abs, square
+from numpy import interp, gradient
 from numpy import polyfit, array, log, exp
 from numpy.polynomial.polynomial import Polynomial
 from math import sqrt
@@ -36,7 +37,7 @@ def seconds_to_hms(seconds):
     return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
 def compute_radii_curv(x_coords, y_coords):
-    from numpy import hypot, insert, gradient, diff, cumsum, isnan, where, inf
+    from numpy import hypot, insert, diff, cumsum, where, inf
     # Arc length parameterization
     ds = hypot(diff(x_coords), diff(y_coords))
     s = insert(cumsum(ds), 0, 0.0)
@@ -228,7 +229,6 @@ class Hydrograph:
         if time > self.times[-1]:
             return self.values[-1]
                 
-        from numpy import interp        
         return float(interp(time, self.times, self.values))
 
     def get_at(self, time):
@@ -488,6 +488,7 @@ class LumpedStorage:
         self.surface_area = surface_area
         self.min_stage = min_stage
         self.stage = None
+        self.area_curve = None
     
     def new_stage(self, duration, inflow, stage) -> float:
         """
@@ -507,7 +508,7 @@ class LumpedStorage:
             outflow = self.rating_curve.discharge(stage)
         
         added_volume = (inflow - outflow) * duration
-        added_depth = added_volume / float(self.surface_area)
+        added_depth = added_volume / self.area_at(stage)
                 
         new_stage = stage + added_depth
         
@@ -517,23 +518,46 @@ class LumpedStorage:
         return new_stage
        
     def df_dQ(self, duration, inflow, stage) -> float:
-        derivative = duration / float(self.surface_area)
-        
         if self.new_stage(duration, inflow, stage) <= self.min_stage:
-            derivative = 0
-        
-        return derivative
+            return 0
+        else:
+            return duration / self.area_at(stage)
     
     def df_dY(self, duration, inflow, stage) -> float:        
-        if self.rating_curve is None:
-            der_outflow = 0
-        else:        
-            der_outflow = self.rating_curve.derivative(stage)
-        
-        derivative = 1 - der_outflow * duration / float(self.surface_area)
-        
         if self.new_stage(duration, inflow, stage) <= self.min_stage:
-            derivative = 0
+            return 0
         
-        return derivative
+        if self.rating_curve is None:
+            Q_out = dQ_out = 0
+        else:        
+            dQ_out = self.rating_curve.derivative(stage)
+            Q_out = self.rating_curve.discharge(stage)
+        
+        num = (inflow - Q_out) * duration
+        den = self.area_at(stage)
+
+        dnum_dY = (0 - dQ_out) * duration
+        dden_dY = self.dA_dY(stage)
+        
+        dd = (dnum_dY*den - num*dden_dY) / (den**2)
+        
+        return 1 + dd        
+            
+    def set_area_curve(self, curve):
+        self.area_curve = curve
+        self.area_gradient = gradient(self.area_curve[:, 1], self.area_curve[:, 0])
     
+    def area_at(self, stage):
+        if self.area_curve is None:
+            return self.surface_area
+        else:
+            a = interp(stage, self.area_curve[:, 0], self.area_curve[:, 1])
+            #print(f'Area at {stage} is {a}')
+            return a
+
+    def dA_dY(self, stage):
+        if self.area_curve is None:
+            return 0
+        else:
+            return interp(stage, self.area_curve[:, 0], self.area_gradient)
+        
