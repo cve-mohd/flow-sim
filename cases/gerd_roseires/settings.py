@@ -6,7 +6,8 @@ dry_n = 0.030
 ############                Simulation Parameters               ############
 
 enforce_physicality = False
-sim_duration = 3600 * 96
+sim_duration = 140400
+
 dx = 1000
 
 preissmann_dt = 3600
@@ -59,5 +60,3 @@ roseires_total_rating_curve = RatingCurve()
 roseires_total_rating_curve.fit(discharges=total_discharges, stages=rs_stages)
 
 used_roseires_rc = roseires_total_rating_curve
-
-roseires_area = 440e6

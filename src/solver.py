@@ -80,6 +80,7 @@ class Solver:
             'depth': [],
             'level': [],
             'wave_celerity': [],
+            'outflow': [float(self.reach.initial_conditions[0][1])]
         }
         
         self.peak_amplitudes = None
@@ -107,6 +108,9 @@ class Solver:
         else:
             amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.initial_depths
             self.peak_amplitudes = [float(max(i, j)) for i,j in zip(amplitudes, self.peak_amplitudes)]
+            
+        if self.type == 'preissmann' and self.active_storage:
+            self.results['outflow'].append(self.Q_out)
         
     def prepare_results(self) -> None:
         self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
@@ -217,11 +221,25 @@ class Solver:
                 output_file.write(value_str)
         
         # Save peak amplitude profile
-        value_str = str([0] + self.peak_amplitudes)
+        value_str = str([''] + self.peak_amplitudes)
         for c in "[]' ":
             value_str = value_str.replace(c, '')
                 
         with open(path + '//Peak_amplitude_profile.csv', 'w') as output_file:
+                output_file.write(header_str)
+                output_file.write(value_str)
+                
+        # Save outflow hydrograph
+        header = ['Time'] + time_coords
+        header_str = str(header)
+        for c in "[]' ":
+            header_str = header_str.replace(c, '')
+        header_str += '\n'
+        value_str = str([''] + self.results['outflow'])
+        for c in "[]' ":
+            value_str = value_str.replace(c, '')
+                
+        with open(path + '//outflow.csv', 'w') as output_file:
                 output_file.write(header_str)
                 output_file.write(value_str)
                 
@@ -296,7 +314,7 @@ class Solver:
         if not self.solved:
             raise ValueError("Not solved yet.")
         
-        if parameter not in ['area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity']:
+        if parameter not in ['area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity', 'outflow']:
             raise ValueError(f"'parameter' should take one of these values: 'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'\nYou entered: {parameter}")
         
         reqursted = self.results[parameter]
