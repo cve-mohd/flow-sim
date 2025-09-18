@@ -193,7 +193,7 @@ class Reach:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = h * B
+                A = float(h * B)
                     
                 self.initial_conditions.insert(0, (A, Q))
                 

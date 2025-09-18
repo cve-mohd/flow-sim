@@ -377,10 +377,10 @@ class PreissmannSolver(Solver):
 
     def storage_residual(self):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
-                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage + self.water_level_at(-1, 0))
         
-        new_storage_stage = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        new_storage_stage, _ = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        _, self.Q_out = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=self.flow_at(-1, 1))
         
         residual = self.reach.downstream_boundary.lumped_storage.stage - new_storage_stage
         
@@ -816,10 +816,9 @@ class PreissmannSolver(Solver):
             
     def dSr_dQ(self, eff = False):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
-                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.water_level_at(-1, 0) + self.reach.downstream_boundary.lumped_storage.stage)
         
-        dSr = 0 - 0.5*self.reach.downstream_boundary.lumped_storage.df_dQ(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        dSr = 0 - 0.5 * self.reach.downstream_boundary.lumped_storage.df_dQ(duration=self.time_step, inflow=average_inflow, stage=average_stage)
         
         if not self.enforce_physicality:
             return dSr
@@ -833,10 +832,9 @@ class PreissmannSolver(Solver):
         
     def dSr_dYN(self):
         average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage
-                               + self.depth_at(-1, 0) + self.reach.downstream_boundary.bed_level)
+        average_stage = 0.5 * (self.water_level_at(-1, 0) + self.reach.downstream_boundary.lumped_storage.stage)
         
-        derivative = 1 - 0.5*self.reach.downstream_boundary.lumped_storage.df_dY(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        derivative = 1 - 0.5 * self.reach.downstream_boundary.lumped_storage.df_dY(duration=self.time_step, inflow=average_inflow, stage=average_stage)
         return derivative
             
     def dAreg_dA(self, i, eps=1e-4):

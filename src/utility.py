@@ -490,7 +490,7 @@ class LumpedStorage:
         self.stage = None
         self.area_curve = None
     
-    def new_stage(self, duration, inflow, stage) -> float:
+    def new_stage(self, duration, inflow, stage = None) -> float:
         """
         Computes the new storage stage using a mass-balance equation.
 
@@ -502,6 +502,9 @@ class LumpedStorage:
             The time during which the inflow occurs. Normally, this is the models time step.
 
         """
+        if stage is None:
+            stage = self.stage
+            
         if self.rating_curve is None:
             outflow = 0
         else:
@@ -511,20 +514,24 @@ class LumpedStorage:
         added_depth = added_volume / self.area_at(stage)
                 
         new_stage = stage + added_depth
-        
+                
         if new_stage < self.min_stage:
             new_stage = self.min_stage
+        
+        outflow = inflow - (new_stage - stage) * self.area_at(stage) / duration
                 
-        return new_stage
+        return new_stage, float(outflow)
        
     def df_dQ(self, duration, inflow, stage) -> float:
-        if self.new_stage(duration, inflow, stage) <= self.min_stage:
+        s, q = self.new_stage(duration, inflow, stage)
+        if s <= self.min_stage:
             return 0
         else:
             return duration / self.area_at(stage)
     
-    def df_dY(self, duration, inflow, stage) -> float:        
-        if self.new_stage(duration, inflow, stage) <= self.min_stage:
+    def df_dY(self, duration, inflow, stage) -> float:   
+        s, q = self.new_stage(duration, inflow, stage)     
+        if s <= self.min_stage:
             return 0
         
         if self.rating_curve is None:
@@ -543,7 +550,9 @@ class LumpedStorage:
         
         return 1 + dd        
             
-    def set_area_curve(self, curve):
+    def set_area_curve(self, curve, alpha=1, beta=0):
+        self.alpha = alpha
+        self.beta = beta
         self.area_curve = curve
         self.area_gradient = gradient(self.area_curve[:, 1], self.area_curve[:, 0])
     
@@ -551,7 +560,7 @@ class LumpedStorage:
         if self.area_curve is None:
             return self.surface_area
         else:
-            a = interp(stage, self.area_curve[:, 0], self.area_curve[:, 1])
+            a = self.alpha * interp(stage+self.beta, self.area_curve[:, 0], self.area_curve[:, 1])
             #print(f'Area at {stage} is {a}')
             return a
 
@@ -559,5 +568,5 @@ class LumpedStorage:
         if self.area_curve is None:
             return 0
         else:
-            return interp(stage, self.area_curve[:, 0], self.area_gradient)
+            return self.alpha * interp(stage, self.area_curve[:, 0], self.area_gradient)
         

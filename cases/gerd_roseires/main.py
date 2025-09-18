@@ -26,10 +26,9 @@ Roseires = Boundary(initial_depth=ds_depth,
                     bed_level=roseires_bed_level,
                     chainage=roseires_chainage)
 
-roseires_storage = LumpedStorage(roseires_area, roseires_level, used_roseires_rc)
+roseires_storage = LumpedStorage(None, roseires_level, used_roseires_rc)
 curve = import_area_curve(path='cases\\gerd_roseires\\input_data\\roseires_geometry.xlsx')
-curve[:, 1] = 2.06*curve[:, 1]
-roseires_storage.set_area_curve(curve)
+roseires_storage.set_area_curve(curve, alpha=1.9, beta=0.5)
 Roseires.set_lumped_storage(roseires_storage)
 
 GERD_Roseires_system = Reach(width=widths[0],
@@ -53,8 +52,8 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
 
 solver.run(duration=sim_duration, verbose=0)
 solver.save_results(path='cases\\gerd_roseires\\results')
-
 print('Success.')
+
 """
 from 486 to 488 is 4824.0 - 3847.0 MCM
 from numpy import arctan, pi
@@ -75,4 +74,18 @@ left_x, left_y, right_x, right_y = draw(chainages=GERD_Roseires_system.chainages
                                         theta0=theta)
 
 export_banks(left_x, left_y, right_x, right_y)
+#
+
+from numpy import interp
+init_vol = interp(roseires_level,
+                  [480, 481, 482, 484, 486, 488, 490, 492],
+                  [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114])
+new_vol = init_vol + (solver.get_results(parameter='flow_rate', spatial_node=-1).sum() - sum(solver.results['outflow'])) * preissmann_dt * 1e-6
+correct_amp = interp(new_vol,
+                     [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114],
+                     [480, 481, 482, 484, 486, 488, 490, 492]) - roseires_level
+
+print(f'Increase = {solver.peak_amplitudes[-1]} m')
+print(f'Correct increse = {correct_amp} m')
+
 """
