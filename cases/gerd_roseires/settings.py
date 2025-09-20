@@ -6,31 +6,31 @@ dry_n = 0.030
 ############                Simulation Parameters               ############
 
 enforce_physicality = False
-sim_duration = 140400
+sim_duration = 3600 * 88
 
 dx = 1000
 
 preissmann_dt = 3600
 theta = 0.8
-tolerance = 1e-6
+tolerance = 1e-4
 
 lax_time_step = 10
 lax_secondary_bc = ('constant', 'constant')
 
 ############                Hydrologic Parameters               ############
 
-roseires_level = 490
+roseires_level = 480
+gates_open = False
 
 ############                Inflow Hydrograph Functions         ############
 
 lag_time = 0
 time_to_peak = 0 * 3600.
-peak_time = 10 * 3600
+peak_time = 1000 * 3600
 recession_time = 0 * 3600.
 
 initial_flow = 1562.5
 
-peak_flow = ((4824.0 - 3847.0) * 1e6 - initial_flow * (sim_duration - peak_time)) / peak_time
 peak_flow = 24000
 
 def trapzoid_hydrograph(t):
@@ -59,4 +59,7 @@ roseires_spillway_rating_curve.fit(discharges=spillway_discharges, stages=rs_sta
 roseires_total_rating_curve = RatingCurve()
 roseires_total_rating_curve.fit(discharges=total_discharges, stages=rs_stages)
 
-used_roseires_rc = roseires_total_rating_curve
+if gates_open:
+    used_roseires_rc = roseires_total_rating_curve
+else:
+    used_roseires_rc = None

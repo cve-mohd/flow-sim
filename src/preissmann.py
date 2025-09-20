@@ -182,7 +182,7 @@ class PreissmannSolver(Solver):
                 iteration += 1
                 if iteration - 1 >= 100:
                     raise ValueError(f'Convergence within {iteration - 1} iterations couldn\'t be achieved.')
-                if verbose >= 2:
+                if verbose >= 3:
                     print("--- Iteration #" + str(iteration) + ':')
 
                 self.update_guesses()
@@ -207,7 +207,10 @@ class PreissmannSolver(Solver):
                     converged = True
                     if iteration == 1 and auto and time >= duration:
                         running = False
-                                    
+                                
+            if verbose==2:
+                print(f'{iteration} iterations.')
+                
             self.append_result()
             self.update_parameters()
         
@@ -376,14 +379,13 @@ class PreissmannSolver(Solver):
         return residual
 
     def storage_residual(self):
-        average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.reach.downstream_boundary.lumped_storage.stage + self.water_level_at(-1, 0))
+        vol_in = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0)) * self.time_step
+        Y_old = self.water_level_at(-1, 0)
         
-        new_storage_stage, _ = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=average_inflow, stage=average_stage)
-        _, self.Q_out = self.reach.downstream_boundary.lumped_storage.new_stage(duration=self.time_step, inflow=self.flow_at(-1, 1))
+        target_Y, vol_out = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step, vol_in=vol_in, Y_old=Y_old)
+        self.Q_out = vol_out / self.time_step
         
-        residual = self.reach.downstream_boundary.lumped_storage.stage - new_storage_stage
-        
+        residual = self.reach.downstream_boundary.lumped_storage.stage - target_Y
         return residual
     
     def dU_dA(self, reg = False) -> int:
@@ -815,10 +817,13 @@ class PreissmannSolver(Solver):
         return derivative
             
     def dSr_dQ(self, eff = False):
-        average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.water_level_at(-1, 0) + self.reach.downstream_boundary.lumped_storage.stage)
+        vol_in = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0)) * self.time_step
+        Y_old = self.water_level_at(-1, 0)
+                
+        dSr_dvol = 0 - self.reach.downstream_boundary.lumped_storage.dY_new_dvol_in(self.time_step, vol_in, Y_old)
+        dvol_dQ = 0.5 * self.time_step
         
-        dSr = 0 - 0.5 * self.reach.downstream_boundary.lumped_storage.df_dQ(duration=self.time_step, inflow=average_inflow, stage=average_stage)
+        dSr = dSr_dvol * dvol_dQ
         
         if not self.enforce_physicality:
             return dSr
@@ -831,11 +836,7 @@ class PreissmannSolver(Solver):
             return dSr_dQe * dQe_dQ
         
     def dSr_dYN(self):
-        average_inflow = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0))
-        average_stage = 0.5 * (self.water_level_at(-1, 0) + self.reach.downstream_boundary.lumped_storage.stage)
-        
-        derivative = 1 - 0.5 * self.reach.downstream_boundary.lumped_storage.df_dY(duration=self.time_step, inflow=average_inflow, stage=average_stage)
-        return derivative
+        return 1
             
     def dAreg_dA(self, i, eps=1e-4):
         """
