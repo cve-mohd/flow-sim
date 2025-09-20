@@ -1,24 +1,10 @@
 from src.boundary import Boundary
 from src.utility import Hydraulics
+import numpy as np
 
 class Reach:
     """
-    Represents a channel with hydraulic and geometric attributes.
-    
-    Attributes
-    ----------
-    bed_slope : float
-        The slope of the channel bed.
-    manning_co : float
-        The channel's Manning coefficient or coefficient of roughness.
-    width : float
-        The width of the channel cross-section.
-    length : float
-        The length of the channel segment to be analyzed.
-    initial_conditions : list of tuple of float.
-        A list of tuples, where each tuple stores the initial values of the
-        flow variables (A and Q) at the spatial point corresponding to its index.
-        
+    Represents a channel with hydraulic and geometric attributes.        
     """
     def __init__(self,
                  upstream_boundary: Boundary,
@@ -30,37 +16,28 @@ class Reach:
                  interpolation_method: str = 'GVF_equation'):
         """
         Initialized an instance.
-
-        Parameters
-        ----------
-        manning_co : float
-            The channel's Manning coefficient or coefficient of roughness.
-        width : float
-            The width of the channel cross-section.
-        length : float
-            The length of the channel.
-
         """
         self.conditions_initialized = False
-        self.widths = [width, width]
         self.initial_flow_rate = initial_flow_rate
         self.roughness = roughness
-        self.bed_levels = [upstream_boundary.bed_level, downstream_boundary.bed_level]
-        
         self.dry_roughness = dry_roughness
         
-        self.upstream_boundary = upstream_boundary
-        self.downstream_boundary = downstream_boundary
+        self.widths = np.array([width, width], dtype=float)
+        self.bed_levels = np.array([upstream_boundary.bed_level,
+                                    downstream_boundary.bed_level], dtype=float)
+        self.level_chainages = np.array([upstream_boundary.chainage,
+                                         downstream_boundary.chainage], dtype=float)
+        self.width_chainages = np.array([upstream_boundary.chainage,
+                                         downstream_boundary.chainage], dtype=float)
         
-        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
+        self.length = downstream_boundary.chainage - upstream_boundary.chainage
+        self.upstream_boundary = upstream_boundary
+        self.downstream_boundary = downstream_boundary       
                 
         if interpolation_method in ['linear', 'GVF_equation']:
             self.interpolation_method = interpolation_method
         
-        self.initial_conditions = []
-        
-        self.level_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
-        self.width_chainages = [self.upstream_boundary.chainage, self.downstream_boundary.chainage]
+        self.initial_conditions = None
         self.coordinated = False
     
     def Se(self, A: float, Q: float, i: int) -> float:
@@ -153,25 +130,28 @@ class Reach:
 
         """
         self.initialize_geometry(n_nodes=n_nodes)
+        self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=float)
         
         if self.interpolation_method == 'linear':
             y_0 = self.upstream_boundary.initial_depth
             y_n = self.downstream_boundary.initial_depth
                     
             for i in range(n_nodes):
-                distance = self.length * float(i) / float(n_nodes-1)
+                distance = self.length * i / (n_nodes-1)
                 
                 y = y_0 + (y_n - y_0) * distance / self.length
-                
                 A, Q = y * self.widths[i], self.initial_flow_rate
-                self.initial_conditions.append((A, Q))
+                
+                self.initial_conditions[i, 0] = A
+                self.initial_conditions[i, 1] = Q
                 
         elif self.interpolation_method == 'GVF_equation':
             dx = self.length / (n_nodes - 1)
             h = self.downstream_boundary.initial_depth
             
             # Add last node
-            self.initial_conditions = [(h*self.widths[-1], self.initial_flow_rate)]
+            self.initial_conditions[n_nodes-1, 0] = h*self.widths[-1]
+            self.initial_conditions[n_nodes-1, 1] = self.initial_flow_rate
 
             for i in reversed(range(n_nodes-1)):
                 distance = i * dx
@@ -185,7 +165,7 @@ class Reach:
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
                 else:
-                    S0 = -(self.bed_levels[i+1]-self.bed_levels[i])/dx
+                    S0 = -(self.bed_levels[i+1]-self.bed_levels[i]) / dx
                     dhdx = (S0 - Sf) / denominator
 
                 h -= dhdx * dx
@@ -193,9 +173,10 @@ class Reach:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = float(h * B)
+                A = h * B
                     
-                self.initial_conditions.insert(0, (A, Q))
+                self.initial_conditions[i, 0] = A
+                self.initial_conditions[i, 1] = Q
                 
         else:
             raise ValueError("Invalid flow type.")
@@ -207,7 +188,7 @@ class Reach:
             return self.roughness
         
         wet_h = self.wet_depth(i)
-        h = A/self.widths[i]
+        h = A / self.widths[i]
         
         return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
               
@@ -227,46 +208,50 @@ class Reach:
         return dn_dh * 1./B
     
     def set_coords(self, coords, chainages):
-        from numpy import asarray
+        self.coords_chainages = np.asarray(chainages, dtype=float)
+        self.coords = np.asarray(coords, dtype=float)
         
-        self.coords_chainages = asarray(chainages, dtype=float)
-        x, y = zip(*coords)
-        self.x_coords, self.y_coords = list(x), list(y)
-        
-        self.upstream_boundary.chainage = float(self.coords_chainages[0])
-        self.downstream_boundary.chainage = float(self.coords_chainages[-1])
+        self.upstream_boundary.chainage = self.coords_chainages[0]
+        self.downstream_boundary.chainage = self.coords_chainages[-1]
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
         
-    def set_intermediate_widths(self, widths: list, chainages: list):
-        if len(widths) != len(chainages):
-            raise ValueError("")
-                
+    def set_intermediate_widths(self, widths, chainages):
+        widths    = np.asarray(widths,    dtype=float)
+        chainages = np.asarray(chainages, dtype=float)
+
+        if widths.shape != chainages.shape:
+            raise ValueError("Widths and chainages must have the same length.")
+
+        # prepend upstream values if needed
         if chainages[0] > self.upstream_boundary.chainage:
-            widths.insert(0, self.widths[0])
-            self.width_chainages.insert(0, self.upstream_boundary.chainage)
-        
+            widths    = np.insert(widths,    0, self.widths[0])
+            chainages = np.insert(chainages, 0, self.upstream_boundary.chainage)
+
         self.widths = widths
         self.width_chainages = chainages
 
-    def set_intermediate_bed_levels(self, bed_levels: list, chainages: list):
-        if len(bed_levels) != len(chainages):
-            raise ValueError("")
-        
-        self.bed_levels = bed_levels
-        self.level_chainages = chainages
-            
+    def set_intermediate_bed_levels(self, bed_levels, chainages):
+        bed_levels = np.asarray(bed_levels, dtype=float)
+        chainages  = np.asarray(chainages,  dtype=float)
+
+        if bed_levels.shape != chainages.shape:
+            raise ValueError("Bed levels and chainages must have the same length.")
+                            
         if chainages[0] > self.upstream_boundary.chainage:
-            self.bed_levels.insert(0, self.upstream_boundary.bed_level)
-            self.level_chainages.insert(0, self.upstream_boundary.chainage)
+            bed_levels = np.insert(bed_levels, 0, self.upstream_boundary.bed_level)
+            chainages  = np.insert(chainages,  0, self.upstream_boundary.chainage)
         else:
             self.upstream_boundary.bed_level = bed_levels[0]
         
         if chainages[-1] < self.downstream_boundary.chainage:
-            self.bed_levels.append(self.downstream_boundary.bed_level)
-            self.level_chainages.append(self.downstream_boundary.chainage)
+            bed_levels = np.append(bed_levels, self.downstream_boundary.bed_level)
+            chainages = np.append(chainages, self.downstream_boundary.chainage)
         else:
             self.downstream_boundary.bed_level = bed_levels[-1]
+        
+        self.bed_levels = bed_levels
+        self.level_chainages = chainages
 
     def initialize_geometry(self, n_nodes):
         from numpy import interp, gradient, linspace, array, trapezoid
@@ -279,30 +264,23 @@ class Reach:
         )
 
         if self.coordinated:
-            x_coords = interp(self.chainages, self.coords_chainages, self.x_coords)
-            y_coords = interp(self.chainages, self.coords_chainages, self.y_coords)
-            
-            self.curv, rc = compute_radii_curv(x_coords=x_coords, y_coords=y_coords)
-            self.radii_curv = rc.tolist()
+            x = interp(self.chainages, self.coords_chainages, self.coords[:, 0])
+            y = interp(self.chainages, self.coords_chainages, self.coords[:, 1])
+            self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
 
-        widths = interp(
+        self.widths = interp(
             self.chainages,
             array(self.width_chainages, dtype=float),
             array(self.widths, dtype=float)
         )
-        bed_levels = interp(
+        self.bed_levels = interp(
             self.chainages,
             array(self.level_chainages, dtype=float),
             array(self.bed_levels, dtype=float)
         )
-
-        self.widths = widths.astype(float).tolist()
-        self.bed_levels = bed_levels.astype(float).tolist()
-        self.bed_slopes = -gradient(bed_levels, self.chainages)
-
-        surface_area = trapezoid(widths, self.chainages)
-        self.surface_area = float(surface_area)
+        self.bed_slopes = -gradient(self.bed_levels, self.chainages)
+        self.surface_area = trapezoid(self.widths, self.chainages)
     
     def wet_depth(self, i):
-        return self.initial_conditions[i][0] / self.widths[i]
+        return self.initial_conditions[i, 0] / self.widths[i]
     

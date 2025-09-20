@@ -1,9 +1,5 @@
 import os
-from numpy import sum, abs, square
-from numpy import interp, gradient
-from numpy import polyfit, array, log, exp
-from numpy.polynomial.polynomial import Polynomial
-from math import sqrt
+import numpy as np
 from scipy.constants import g
     
 def create_directory_if_not_exists(directory):
@@ -20,12 +16,14 @@ def create_directory_if_not_exists(directory):
         os.makedirs(directory)
         
 def manhattan_norm(vector):
-    return sum(abs(vector))
+    vector = np.asarray(vector, dtype=float)
+    return np.sum(np.abs(vector))
 
 def euclidean_norm(vector):
-    return sum(square(vector)) ** 0.5
+    vector = np.asarray(vector, dtype=float)
+    return np.sum(np.square(vector)) ** 0.5
 
-def seconds_to_hms(seconds):
+def seconds_to_hms(seconds: int):
     if seconds < 0:
         return "0:00:00"
     
@@ -37,19 +35,19 @@ def seconds_to_hms(seconds):
     return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
 def compute_radii_curv(x_coords, y_coords):
-    from numpy import hypot, insert, diff, cumsum, where, inf
+    x_coords, y_coords = np.asarray(x_coords, dtype=float), np.asarray(y_coords, dtype=float)
     # Arc length parameterization
-    ds = hypot(diff(x_coords), diff(y_coords))
-    s = insert(cumsum(ds), 0, 0.0)
+    ds = np.hypot(np.diff(x_coords), np.diff(y_coords))
+    s = np.insert(np.cumsum(ds), 0, 0.0)
 
-    dx = gradient(x_coords, s)
-    dy = gradient(y_coords, s)
-    ddx = gradient(dx, s)
-    ddy = gradient(dy, s)
+    dx = np.gradient(x_coords, s)
+    dy = np.gradient(y_coords, s)
+    ddx = np.gradient(dx, s)
+    ddy = np.gradient(dy, s)
 
     # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
     kappa = (dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
-    radii = where(kappa != 0, 1./kappa, inf)
+    radii = np.where(kappa != 0, 1./kappa, np.inf)
     
     return kappa, radii
 
@@ -113,8 +111,8 @@ class RatingCurve:
             else:
                 discharge = self.a * x ** self.b
                     
-            return float(discharge)
-    
+            return discharge
+
     def stage(self, discharge: float, trial_stage: float = None, tolerance: float = 1e-2, rate=1) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
@@ -136,16 +134,15 @@ class RatingCurve:
     
     def fit(self, discharges: list, stages: list, stage_shift: float=0, type: str='polynomial', scale=True, degree: int=2):
         self.type = type
+        discharges = np.asarray(discharges, dtype=float)
+        stages = np.asarray(stages, dtype=float)
         
-        if len(discharges) < 3:
+        if discharges.size < 3:
             raise ValueError("Need at least 3 points.")
         
-        if len(discharges) != len(stages):
+        if discharges.shape != stages.shape:
             raise ValueError("Q and Y lists should have the same lengths.")
         
-        discharges = array(discharges, dtype=float)
-        stages = array(stages, dtype=float)
-            
         self.stage_shift = stage_shift
         shifted_stages = stages + self.stage_shift
                 
@@ -154,26 +151,26 @@ class RatingCurve:
 
         if type == 'polynomial':
             if scale:
-                self.function = Polynomial.fit(x=shifted_stages, y=discharges, deg=degree)
+                self.function = np.polynomial.polynomial.Polynomial.fit(x=shifted_stages, y=discharges, deg=degree)
                 self.derivative = self.function.deriv()
             
             else:
                 if degree != 2:
                     print("WARNING: Polynomial degree defaults to 2 for unscaled fitting.")
                     
-                a, b, c = polyfit(shifted_stages, discharges, deg=2)
+                a, b, c = np.polyfit(shifted_stages, discharges, deg=2)
                 
                 self.a = float(a)
                 self.b = float(b)
                 self.c = float(c)
             
         elif type == 'power':
-            log_Y = log(shifted_stages)
-            log_Q = log(discharges)
+            log_Y = np.log(shifted_stages)
+            log_Q = np.log(discharges)
 
             # Fit: log(Q) = b * log(shifted_stages) + log(a)
-            b, log_a = polyfit(log_Y, log_Q, deg=1)
-            a = exp(log_a)
+            b, log_a = np.polyfit(log_Y, log_Q, deg=1)
+            a = np.exp(log_a)
 
             self.a = float(a)
             self.b = float(b)
@@ -229,13 +226,15 @@ class Hydrograph:
         if time > self.times[-1]:
             return self.values[-1]
                 
-        return float(interp(time, self.times, self.values))
+        return float(np.interp(time, self.times, self.values))
 
     def get_at(self, time):
         return self.used_function(time)
         
     def set_values(self, times, values):
-        if len(times) != len(values):
+        times  = np.asarray(times,   dtype=float)
+        values = np.asarray(values, dtype=float)
+        if times.shape != values.shape:
             raise ValueError("Times and values must have the same length.")
         
         self.times, self.values = times, values
@@ -244,8 +243,8 @@ class Hydrograph:
         import pandas as pd
         hydrograph_file = pd.read_csv(path, thousands=',')
         
-        self.times = hydrograph_file.iloc[:,0].astype(float).tolist()
-        self.values = hydrograph_file.iloc[:,1].astype(float).tolist()
+        self.times  = np.asarray(hydrograph_file.iloc[:,0], dtype=float)
+        self.values = np.asarray(hydrograph_file.iloc[:,1], dtype=float)
                     
     def set_function(self, func):
         self.used_function = func
@@ -254,7 +253,7 @@ class Hydraulics:
     def normal_flow(A, S_0, n, B):
         R = Hydraulics.R(A, B)
         
-        Q = A * R ** (2./3) * abs(S_0) ** 0.5 / n
+        Q = A * R ** (2./3) * np.abs(S_0) ** 0.5 / n
         if S_0 < 0:
             Q = -Q
                         
@@ -298,7 +297,7 @@ class Hydraulics:
             
         """
         R = Hydraulics.R(A, B)
-        return n ** 2 * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
+        return n ** 2 * A ** -2 * R ** (-4. / 3) * Q * np.abs(Q)
     
     def Sc(A: float, Q: float, n: float, B: float, rc: float) -> float:
         """
@@ -323,8 +322,8 @@ class Hydraulics:
         C = R**(1./6) / n
         f = 8 * g / C**2
         
-        numerator = (2.86 * sqrt(f) + 2.07 * f) * h**2 * Fr**2
-        denominator = (0.565 + sqrt(f)) * rc**2
+        numerator = (2.86 * np.sqrt(f) + 2.07 * f) * h**2 * Fr**2
+        denominator = (0.565 + np.sqrt(f)) * rc**2
         Sc = numerator/denominator
         return Sc
     
@@ -340,7 +339,7 @@ class Hydraulics:
         dFr_dA = -1.5 * Fr / A
         df_dA = -(8.0/3.0) * g * n**2 * R**(-4.0/3.0) * dR_dA
         
-        sqrtf = sqrt(f)
+        sqrtf = np.sqrt(f)
         num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
         den = (0.565 + sqrtf) * rc**2
         
@@ -359,7 +358,7 @@ class Hydraulics:
         
         dFr_dQ = Fr / Q
         
-        sqrtf = sqrt(f)
+        sqrtf = np.sqrt(f)
         num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
         den = (0.565 + sqrtf) * rc**2
         
@@ -377,7 +376,7 @@ class Hydraulics:
         
         df_dn = 16.0 * g * n / R**(1./3)
         
-        sqrtf = sqrt(f)
+        sqrtf = np.sqrt(f)
         num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
         den = (0.565 + sqrtf) * rc**2
         
@@ -390,7 +389,7 @@ class Hydraulics:
         V = Q / A
         h = A / B
 
-        return V / sqrt(g*h)
+        return V / np.sqrt(g*h)
     
     def dSf_dA(A: float, Q: float, n: float, B: float) -> float:
         """Computes the partial derivative of Sf w.r.t. A.
@@ -510,7 +509,7 @@ class LumpedStorage:
             Y_new = self.min_stage
 
         # update outflow based on actual storage change achieved
-        vol_out = float(vol_in - self.net_vol_change(Y_old, Y_new))
+        vol_out = vol_in - self.net_vol_change(Y_old, Y_new)
         return Y_new, vol_out
 
     def dY_new_dvol_in(self, duration, vol_in, Y_old) -> float:
@@ -526,25 +525,25 @@ class LumpedStorage:
     def set_area_curve(self, curve, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
         self.beta = beta
-        self.area_curve = curve
-        self.area_gradient = gradient(self.area_curve[:, 1], self.area_curve[:, 0])
+        self.area_curve = np.asarray(curve, dtype=float)
+        self.area_gradient = np.gradient(self.area_curve[:, 1], self.area_curve[:, 0])
         
         if update_solution_boundaries:
-            self.Y_min = self.area_curve[:, 0].min()
-            self.Y_max = self.area_curve[:, 0].max()
+            self.Y_min = np.min(self.area_curve[:, 0])
+            self.Y_max = np.max(self.area_curve[:, 0])
     
     def area_at(self, stage):
         if self.area_curve is None:
             return self.surface_area
         else:
-            a = self.alpha * interp(stage+self.beta, self.area_curve[:, 0], self.area_curve[:, 1])
+            a = self.alpha * np.interp(stage+self.beta, self.area_curve[:, 0], self.area_curve[:, 1])
             return a
 
     def dA_dY(self, stage):
         if self.area_curve is None:
             return 0
         else:
-            return self.alpha * interp(stage, self.area_curve[:, 0], self.area_gradient)
+            return self.alpha * np.interp(stage, self.area_curve[:, 0], self.area_gradient)
         
     def net_vol_change(self, Y1, Y2):
         from numpy import linspace, trapezoid, min as min__, abs as abs__
@@ -556,4 +555,4 @@ class LumpedStorage:
             areas = [self.area_at(y) for y in ys]
             return trapezoid(areas, ys)
         else:
-            return (Y2-Y1) * (self.area_at(Y2)+self.area_at(Y1)) / 2.
+            return 0.5 * (Y2-Y1) * (self.area_at(Y2)+self.area_at(Y1))

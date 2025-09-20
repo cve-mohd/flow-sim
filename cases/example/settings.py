@@ -11,7 +11,6 @@ recession_time = 8 * 3600.
 ############                Inflow Hydrograph Functions         ############
 
 def trapzoid_hydrograph(t):
-    return initial_flow
     if t <= lag_time:
         return initial_flow
     elif t - lag_time < time_to_peak:
