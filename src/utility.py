@@ -16,11 +16,11 @@ def create_directory_if_not_exists(directory):
         os.makedirs(directory)
         
 def manhattan_norm(vector):
-    vector = np.asarray(vector, dtype=float)
+    vector = np.asarray(vector, dtype=np.float64)
     return np.sum(np.abs(vector))
 
 def euclidean_norm(vector):
-    vector = np.asarray(vector, dtype=float)
+    vector = np.asarray(vector, dtype=np.float64)
     return np.sum(np.square(vector)) ** 0.5
 
 def seconds_to_hms(seconds: int):
@@ -35,7 +35,7 @@ def seconds_to_hms(seconds: int):
     return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
 def compute_radii_curv(x_coords, y_coords):
-    x_coords, y_coords = np.asarray(x_coords, dtype=float), np.asarray(y_coords, dtype=float)
+    x_coords, y_coords = np.asarray(x_coords, dtype=np.float64), np.asarray(y_coords, dtype=np.float64)
     # Arc length parameterization
     ds = np.hypot(np.diff(x_coords), np.diff(y_coords))
     s = np.insert(np.cumsum(ds), 0, 0.0)
@@ -134,8 +134,8 @@ class RatingCurve:
     
     def fit(self, discharges: list, stages: list, stage_shift: float=0, type: str='polynomial', scale=True, degree: int=2):
         self.type = type
-        discharges = np.asarray(discharges, dtype=float)
-        stages = np.asarray(stages, dtype=float)
+        discharges = np.asarray(discharges, dtype=np.float64)
+        stages = np.asarray(stages, dtype=np.float64)
         
         if discharges.size < 3:
             raise ValueError("Need at least 3 points.")
@@ -232,8 +232,8 @@ class Hydrograph:
         return self.used_function(time)
         
     def set_values(self, times, values):
-        times  = np.asarray(times,   dtype=float)
-        values = np.asarray(values, dtype=float)
+        times  = np.asarray(times,   dtype=np.float64)
+        values = np.asarray(values, dtype=np.float64)
         if times.shape != values.shape:
             raise ValueError("Times and values must have the same length.")
         
@@ -243,8 +243,8 @@ class Hydrograph:
         import pandas as pd
         hydrograph_file = pd.read_csv(path, thousands=',')
         
-        self.times  = np.asarray(hydrograph_file.iloc[:,0], dtype=float)
-        self.values = np.asarray(hydrograph_file.iloc[:,1], dtype=float)
+        self.times  = np.asarray(hydrograph_file.iloc[:,0], dtype=np.float64)
+        self.values = np.asarray(hydrograph_file.iloc[:,1], dtype=np.float64)
                     
     def set_function(self, func):
         self.used_function = func
@@ -525,7 +525,7 @@ class LumpedStorage:
     def set_area_curve(self, curve, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
         self.beta = beta
-        self.area_curve = np.asarray(curve, dtype=float)
+        self.area_curve = np.asarray(curve, dtype=np.float64)
         self.area_gradient = np.gradient(self.area_curve[:, 1], self.area_curve[:, 0])
         
         if update_solution_boundaries:

@@ -148,19 +148,6 @@ class PreissmannSolver(Solver):
     def run(self, tolerance=1e-4, verbose=3) -> None:
         """
         Run the simulation.
-
-        Parameters
-        ----------
-        duration : int
-            The simulation duration in seconds.
-        tolerance : float, optional
-            The allowed tolerance for the iterative process. The simulation iterates until the cumulative error
-            falls below this value. The default is 1e-4.
-
-        Returns
-        -------
-        None.
-
         """
         running = True
         
@@ -191,7 +178,7 @@ class PreissmannSolver(Solver):
                     raise ValueError("NaN in system assembly")
                 if np.linalg.cond(J) > 1e12:
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
-                
+                                
                 delta = np.linalg.solve(J, -R)
                 self.unknowns += delta.flatten()
                 error = euclidean_norm(delta)
@@ -360,7 +347,7 @@ class PreissmannSolver(Solver):
         residual = self.reach.downstream_boundary.lumped_storage.stage - target_Y
         return residual
     
-    def dU_dA(self, reg = False) -> int:
+    def dU_dA(self) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow area.
 
@@ -377,31 +364,20 @@ class PreissmannSolver(Solver):
         S_0 = self.bed_slope_at(0)
                     
         dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, i=0)
         
         dU = self.reach.upstream_boundary.df_dA(area=A,
                                                 width=B,
                                                 bed_slope=S_0,
-                                                roughness=n) + dU_dn * dn_dA
-        
-        if not self.enforce_physicality:
-            derivative = dU
-            
+                                                roughness=n) + dU_dn * self.reach.dn_dA(A=A, i=0)
+        if not self.regularization:
+            return dU
         else:
-            dU_dAreg = dU
-            dAreg_dA = self.dAreg_dA(i=0)
-            
+            dU_dAreg = dU            
             dU_dQe = self.reach.upstream_boundary.df_dQ()
-            dQe_dA = self.dQe_dA(i=0)
                         
-            derivative = dU_dAreg * dAreg_dA + dU_dQe * dQe_dA
-        
-        if reg:
-            return dU_dAreg
-        else:
-            return derivative
+            return dU_dAreg * self.dAreg_dA(i=0) + dU_dQe * self.dQe_dA(i=0)
     
-    def dU_dQ(self, eff = False) -> int:
+    def dU_dQ(self) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow rate.
 
@@ -413,21 +389,13 @@ class PreissmannSolver(Solver):
         """
         dU = self.reach.upstream_boundary.df_dQ()
         
-        if not self.enforce_physicality:
-            derivative = dU
-            
+        if not self.regularization:
+            return dU
         else:
-            dU_dQe = dU            
-            dQe_dQ = self.dQe_dQ(0)
-            
-            derivative = dU_dQe * dQe_dQ
-    
-        if eff:
-            return dU_dQe
-        else:
-            return derivative
+            dU_dQe = dU
+            return dU_dQe * self.dQe_dQ(0)
 
-    def dC_dAiplus1(self, i, reg = False) -> float:
+    def dC_dAiplus1(self, i) -> float:
         """
         Computes the derivative of the continuity residual w.r.t. flow area of the advanced spatial node.
 
@@ -439,24 +407,15 @@ class PreissmannSolver(Solver):
         """
         dC = 0.5 / self.time_step
         
-        if not self.enforce_physicality:
-            derivative = dC
-            
+        if not self.regularization:
+            return dC
         else:
             dC_dAreg = dC            
-            dAreg_dA = self.dAreg_dA(i + 1)
+            dC_dQe = self.dC_dQiplus1(i, eff=True)
             
-            dC_dQe = self.dC_dQiplus1(i, eff = True)
-            dQe_dA = self.dQe_dA(i + 1)
-            
-            derivative = dC_dAreg * dAreg_dA + dC_dQe * dQe_dA
-        
-        if reg:
-            return dC_dAreg
-        else:
-            return derivative
+            return dC_dAreg * self.dAreg_dA(i + 1) + dC_dQe * self.dQe_dA(i + 1)
 
-    def dC_dAi(self, i, reg = False) -> float:
+    def dC_dAi(self, i) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the current spatial point.
@@ -469,22 +428,13 @@ class PreissmannSolver(Solver):
         """
         dC = 0.5 / self.time_step
         
-        if not self.enforce_physicality:
-            derivative = dC
-            
+        if not self.regularization:
+            return dC
         else:
-            dC_dAreg = dC            
-            dAreg_dA = self.dAreg_dA(i)
+            dC_dAreg = dC
+            dC_dQe = self.dC_dQi(i, eff=True)
             
-            dC_dQe = self.dC_dQi(i, eff = True)
-            dQe_dA = self.dQe_dA(i)
-            
-            derivative = dC_dAreg * dAreg_dA + dC_dQe * dQe_dA
-        
-        if reg:
-            return dC_dAreg
-        else:
-            return derivative
+            return dC_dAreg * self.dAreg_dA(i) + dC_dQe * self.dQe_dA(i)
 
     def dC_dQiplus1(self, i, eff = False) -> float:
         """
@@ -499,20 +449,12 @@ class PreissmannSolver(Solver):
         """
         dC = self.theta / self.spatial_step
         
-        if not self.enforce_physicality:
-            derivative = dC
-            
+        if not self.regularization or eff:
+            return dC
         else:
-            dC_dQe = dC            
-            dQe_dQ = self.dQe_dQ(i + 1)
-            
-            derivative = dC_dQe * dQe_dQ
+            dC_dQe = dC                        
+            return dC_dQe * self.dQe_dQ(i + 1)
     
-        if eff:
-            return dC_dQe
-        else:
-            return derivative
-
     def dC_dQi(self, i, eff = False) -> float:
         """
         Computes the derivative of the continuity equation with respect to
@@ -526,21 +468,13 @@ class PreissmannSolver(Solver):
         """
         dC = - self.theta / self.spatial_step
         
-        if not self.enforce_physicality:
-            derivative = dC
-            
+        if not self.regularization or eff:
+            return dC
         else:
-            dC_dQe = dC            
-            dQe_dQ = self.dQe_dQ(i)
-            
-            derivative = dC_dQe * dQe_dQ
-    
-        if eff:
-            return dC_dQe
-        else:
-            return derivative
+            dC_dQe = dC
+            return dC_dQe * self.dQe_dQ(i)
 
-    def dM_dAiplus1(self, i, reg = False) -> float:
+    def dM_dAiplus1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the advanced spatial point.
@@ -583,12 +517,13 @@ class PreissmannSolver(Solver):
             + g * self.theta * avg_A * (1. / (self.spatial_step * B) + 0.5 * dSe_dA)
         )
                 
-        if not self.enforce_physicality or reg:
+        if not self.regularization:
             return dM_dA
         else:
-            return dM_dA * self.dAreg_dA(i+1) + self.dM_dQi(i+1, eff=True) * self.dQe_dA(i+1)
+            dM_dQe = self.dM_dQiplus1(i, eff=True)
+            return dM_dA * self.dAreg_dA(i+1) + dM_dQe * self.dQe_dA(i+1)
 
-    def dM_dAi(self, i, reg = False) -> float:
+    def dM_dAi(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the current spatial point.
@@ -631,12 +566,12 @@ class PreissmannSolver(Solver):
             + g * self.theta * avg_A * (-1. / (self.spatial_step * B) + 0.5 * dSe_dA)
         )
         
-        if not self.enforce_physicality or reg:
+        if not self.regularization:
             return dM_dA
         else:
             return dM_dA * self.dAreg_dA(i) + self.dM_dQi(i, eff=True) * self.dQe_dA(i)
 
-    def dM_dQiplus1(self, i, eff = False) -> float:
+    def dM_dQiplus1(self, i, eff=False) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the advanced spatial point.
@@ -666,7 +601,7 @@ class PreissmannSolver(Solver):
             + 0.5 * self.theta * g * avg_A * dSe_dQ
         )
         
-        if not self.enforce_physicality or eff:
+        if not self.regularization or eff:
             return dM_dQ
         else:
             return dM_dQ * self.dQe_dQ(i+1)
@@ -701,12 +636,12 @@ class PreissmannSolver(Solver):
             + 0.5 * self.theta * g * avg_A * dSe_dQ
         )
         
-        if not self.enforce_physicality or eff:
+        if not self.regularization or eff:
             return dM_dQ
         else:
             return dM_dQ * self.dQe_dQ(i)
 
-    def dD_dA(self, reg = False) -> float:
+    def dD_dA(self) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -720,7 +655,6 @@ class PreissmannSolver(Solver):
         A = self.area_at(-1)
         h = self.depth_at(-1)
         B = self.width_at(-1)
-        wet_h = self.wet_depth_at(-1)
         n = self.reach.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(-1)
                 
@@ -731,25 +665,16 @@ class PreissmannSolver(Solver):
                                                   width=B,
                                                   bed_slope=S_0,
                                                   roughness=n) + dD_dn * dn_dA
-        
-        if not self.enforce_physicality:
-            derivative = dD
+        if not self.regularization:
+            return dD
             
         else:
-            dD_dAreg = dD            
-            dAreg_dA = self.dAreg_dA(-1)
-            
+            dD_dAreg = dD
             dD_dQe = self.reach.downstream_boundary.df_dQ()
-            dQe_dA = self.dQe_dA(-1)
             
-            derivative = dD_dAreg * dAreg_dA + dD_dQe * dQe_dA
-        
-        if reg:
-            return dD_dAreg
-        else:
-            return derivative
+            return dD_dAreg * self.dAreg_dA(-1) + dD_dQe * self.dQe_dA(-1)
 
-    def dD_dQ(self, eff = False):
+    def dD_dQ(self):
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the discharge at the downstream node.
@@ -762,17 +687,11 @@ class PreissmannSolver(Solver):
         """
         dD = self.reach.downstream_boundary.df_dQ()
         
-        if not self.enforce_physicality:
-            derivative = dD
+        if not self.regularization:
+            return dD
         else:
             dD_dQe = dD            
-            dQe_dQ = self.dQe_dQ(-1)
-            derivative = dD_dQe * dQe_dQ
-    
-        if eff:
-            return dD_dQe
-        else:
-            return derivative
+            return dD_dQe * self.dQe_dQ(-1)
     
     def dD_dYN(self) -> float:
         """
@@ -785,10 +704,9 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        derivative = self.reach.downstream_boundary.df_dYN()
-        return derivative
+        return self.reach.downstream_boundary.df_dYN()
             
-    def dSr_dQ(self, eff = False):
+    def dSr_dQ(self):
         vol_in = 0.5 * (self.flow_at(-1) + self.flow_at(-1, -1)) * self.time_step
         Y_old = self.water_level_at(-1, -1)
                 
@@ -797,15 +715,11 @@ class PreissmannSolver(Solver):
         
         dSr = dSr_dvol * dvol_dQ
         
-        if not self.enforce_physicality:
+        if not self.regularization:
             return dSr
         else:
             dSr_dQe = dSr
-            if eff:
-                return dSr_dQe
-            dQe_dQ = self.dQe_dQ(-1)
-            
-            return dSr_dQe * dQe_dQ
+            return dSr_dQe * self.dQe_dQ(-1)
         
     def dSr_dYN(self):
         return 1
@@ -887,7 +801,7 @@ class PreissmannSolver(Solver):
         return chi
 
     def time_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
-        return (k1_i1 + k1_i0 - k0_i1 - k0_i0) / (2. * self.time_step)
+        return (k1_i1 + k1_i0 - k0_i1 - k0_i0) / (2 * self.time_step)
     
     def spatial_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
         dx_k1 = (k1_i1 - k1_i0) / self.spatial_step
@@ -896,8 +810,8 @@ class PreissmannSolver(Solver):
         return self.theta * dx_k1 + (1 - self.theta) * dx_k0
         
     def cell_avg(self, k1_i1, k1_i0, k0_i1, k0_i0):
-        k1 = (k1_i1 + k1_i0) * self.theta / 2.
-        k2 = (k0_i1 + k0_i0) * (1 - self.theta) / 2.
+        k1 = (k1_i1 + k1_i0) * self.theta / 2
+        k2 = (k0_i1 + k0_i0) * (1 - self.theta) / 2
         
         return k1 + k2
     

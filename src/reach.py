@@ -22,13 +22,13 @@ class Reach:
         self.roughness = roughness
         self.dry_roughness = dry_roughness
         
-        self.width = np.array([width, width], dtype=float)
+        self.width = np.array([width, width], dtype=np.float64)
         self.bed_level = np.array([upstream_boundary.bed_level,
-                                    downstream_boundary.bed_level], dtype=float)
+                                    downstream_boundary.bed_level], dtype=np.float64)
         self.level_chainages = np.array([upstream_boundary.chainage,
-                                         downstream_boundary.chainage], dtype=float)
+                                         downstream_boundary.chainage], dtype=np.float64)
         self.width_chainages = np.array([upstream_boundary.chainage,
-                                         downstream_boundary.chainage], dtype=float)
+                                         downstream_boundary.chainage], dtype=np.float64)
         
         self.length = downstream_boundary.chainage - upstream_boundary.chainage
         self.upstream_boundary = upstream_boundary
@@ -134,7 +134,7 @@ class Reach:
 
         """
         self.initialize_geometry(n_nodes=n_nodes)
-        self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=float)
+        self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=np.float64)
         
         if self.interpolation_method == 'linear':
             y_0 = self.upstream_boundary.initial_depth
@@ -220,8 +220,8 @@ class Reach:
         return dn_dh * 1./B
     
     def set_coords(self, coords, chainages):
-        self.coords_chainages = np.asarray(chainages, dtype=float)
-        self.coords = np.asarray(coords, dtype=float)
+        self.coords_chainages = np.asarray(chainages, dtype=np.float64)
+        self.coords = np.asarray(coords, dtype=np.float64)
         
         self.upstream_boundary.chainage = self.coords_chainages[0]
         self.downstream_boundary.chainage = self.coords_chainages[-1]
@@ -229,8 +229,8 @@ class Reach:
         self.coordinated = True
         
     def set_intermediate_widths(self, widths, chainages):
-        widths    = np.asarray(widths,    dtype=float)
-        chainages = np.asarray(chainages, dtype=float)
+        widths    = np.asarray(widths,    dtype=np.float64)
+        chainages = np.asarray(chainages, dtype=np.float64)
 
         if widths.shape != chainages.shape:
             raise ValueError("Widths and chainages must have the same length.")
@@ -244,8 +244,8 @@ class Reach:
         self.width_chainages = chainages
 
     def set_intermediate_bed_levels(self, bed_levels, chainages):
-        bed_levels = np.asarray(bed_levels, dtype=float)
-        chainages  = np.asarray(chainages,  dtype=float)
+        bed_levels = np.asarray(bed_levels, dtype=np.float64)
+        chainages  = np.asarray(chainages,  dtype=np.float64)
 
         if bed_levels.shape != chainages.shape:
             raise ValueError("Bed levels and chainages must have the same length.")
@@ -282,13 +282,13 @@ class Reach:
 
         self.width = interp(
             self.chainages,
-            array(self.width_chainages, dtype=float),
-            array(self.width, dtype=float)
+            array(self.width_chainages, dtype=np.float64),
+            array(self.width, dtype=np.float64)
         )
         self.bed_level = interp(
             self.chainages,
-            array(self.level_chainages, dtype=float),
-            array(self.bed_level, dtype=float)
+            array(self.level_chainages, dtype=np.float64),
+            array(self.bed_level, dtype=np.float64)
         )
         self.bed_slopes = -gradient(self.bed_level, self.chainages)
         self.surface_area = trapezoid(self.width, self.chainages)

@@ -10,7 +10,7 @@ class Solver:
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
-                 enforce_physicality: bool = True,
+                 regularization: bool = True,
                  fit_spatial_step = True):
         """
         Initializes the class.
@@ -39,21 +39,21 @@ class Solver:
         self.reach.initialize_conditions(n_nodes=self.number_of_nodes)
         self.num_celerity = self.spatial_step / self.time_step
 
-        self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
-        self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
         
-        self.velocity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
-        self.depth = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
-        self.level = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
-        self.wave_celerity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
-        self.outflow = np.empty(shape=(self.max_timelevels), dtype=float)
-        self.peak_amplitude = np.zeros(shape=(self.number_of_nodes), dtype=float)
+        self.velocity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.depth = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.level = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.wave_celerity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.outflow = np.empty(shape=(self.max_timelevels), dtype=np.float64)
+        self.peak_amplitude = np.zeros(shape=(self.number_of_nodes), dtype=np.float64)
         
         self.initial_depths = None
         self.type = None
         self.solved = False
         self.total_sim_duration = 0
-        self.enforce_physicality = enforce_physicality
+        self.regularization = regularization
 
     def fit_spatial_step(self):
         self.number_of_nodes = round(self.reach.length / self.spatial_step) + 1
@@ -220,7 +220,7 @@ class Solver:
         A = self.area[k, i]
             
         if regularization is None:
-            regularization = self.enforce_physicality
+            regularization = self.regularization
         
         if regularization:
             h_min = 1e-4
@@ -234,7 +234,7 @@ class Solver:
         Q = self.flow[k, i]
             
         if chi_scaling is None:
-            chi_scaling = self.enforce_physicality
+            chi_scaling = self.regularization
             
         if chi_scaling:
             A_reg = self.area_at(i, k, 1)
