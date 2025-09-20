@@ -483,85 +483,61 @@ class Hydraulics:
         return dQn_dn
     
 class LumpedStorage:
-    def __init__(self, surface_area: float, min_stage: float, rating_curve: RatingCurve = None):
+    def __init__(self, surface_area: float, min_stage: float, rating_curve: RatingCurve = None, solution_boundaries: tuple = None):
         self.rating_curve = rating_curve
         self.surface_area = surface_area
         self.min_stage = min_stage
         self.stage = None
         self.area_curve = None
+        
+        if solution_boundaries is not None:
+            self.Y_min = solution_boundaries[0]
+            self.Y_max = solution_boundaries[1]
     
-    def new_stage(self, duration, inflow, stage = None) -> float:
+    def mass_balance(self, duration, vol_in, Y_old=None):
+        from scipy.optimize import brentq
+        
+        if Y_old is None:
+            Y_old = self.stage
+
+        def f(Y_new):
+            Q_out = 0.5 * (self.rating_curve.discharge(Y_old) + self.rating_curve.discharge(Y_new)) if self.rating_curve else 0.0
+            target_vol = vol_in - Q_out * duration
+            return self.net_vol_change(Y_old, Y_new) - target_vol
+
+        Y_new = brentq(f, self.Y_min, self.Y_max)
+        if Y_new < self.min_stage:
+            Y_new = self.min_stage
+
+        # update outflow based on actual storage change achieved
+        vol_out = float(vol_in - self.net_vol_change(Y_old, Y_new))
+        return Y_new, vol_out
+
+    def dY_new_dvol_in(self, duration, vol_in, Y_old) -> float:
         """
-        Computes the new storage stage using a mass-balance equation.
-
-        Parameters
-        ----------
-        inflow : float
-            The rate of flow entering the storage.
-        duration : float
-            The time during which the inflow occurs. Normally, this is the models time step.
-
+        d(Y_new)/d(vol_in)
         """
-        if stage is None:
-            stage = self.stage
+        Y_new, _ = self.mass_balance(duration, vol_in, Y_old)
+        if Y_new <= self.min_stage:
+            return 0.0
+        
+        return 1. / self.area_at(Y_new)
             
-        if self.rating_curve is None:
-            outflow = 0
-        else:
-            outflow = self.rating_curve.discharge(stage)
-        
-        added_volume = (inflow - outflow) * duration
-        added_depth = added_volume / self.area_at(stage)
-                
-        new_stage = stage + added_depth
-                
-        if new_stage < self.min_stage:
-            new_stage = self.min_stage
-        
-        outflow = inflow - (new_stage - stage) * self.area_at(stage) / duration
-                
-        return new_stage, float(outflow)
-       
-    def df_dQ(self, duration, inflow, stage) -> float:
-        s, q = self.new_stage(duration, inflow, stage)
-        if s <= self.min_stage:
-            return 0
-        else:
-            return duration / self.area_at(stage)
-    
-    def df_dY(self, duration, inflow, stage) -> float:   
-        s, q = self.new_stage(duration, inflow, stage)     
-        if s <= self.min_stage:
-            return 0
-        
-        if self.rating_curve is None:
-            Q_out = dQ_out = 0
-        else:        
-            dQ_out = self.rating_curve.derivative(stage)
-            Q_out = self.rating_curve.discharge(stage)
-        
-        num = (inflow - Q_out) * duration
-        den = self.area_at(stage)
-
-        dnum_dY = (0 - dQ_out) * duration
-        dden_dY = self.dA_dY(stage)
-        
-        dd = (dnum_dY*den - num*dden_dY) / (den**2)
-        
-        return 1 + dd        
-            
-    def set_area_curve(self, curve, alpha=1, beta=0):
+    def set_area_curve(self, curve, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
         self.beta = beta
         self.area_curve = curve
         self.area_gradient = gradient(self.area_curve[:, 1], self.area_curve[:, 0])
+        
+        if update_solution_boundaries:
+            self.Y_min = self.area_curve[:, 0].min()
+            self.Y_max = self.area_curve[:, 0].max()
     
     def area_at(self, stage):
         if self.area_curve is None:
             return self.surface_area
         else:
             a = self.alpha * interp(stage+self.beta, self.area_curve[:, 0], self.area_curve[:, 1])
-            #print(f'Area at {stage} is {a}')
             return a
 
     def dA_dY(self, stage):
@@ -570,3 +546,14 @@ class LumpedStorage:
         else:
             return self.alpha * interp(stage, self.area_curve[:, 0], self.area_gradient)
         
+    def net_vol_change(self, Y1, Y2):
+        from numpy import linspace, trapezoid, min as min__, abs as abs__
+        
+        step =  min__(abs__(self.area_curve[1:, 0] - self.area_curve[:-1, 0]))
+        n = int(abs(Y2-Y1)/step)
+        if n > 2:
+            ys = linspace(Y1, Y2, n)
+            areas = [self.area_at(y) for y in ys]
+            return trapezoid(areas, ys)
+        else:
+            return (Y2-Y1) * (self.area_at(Y2)+self.area_at(Y1)) / 2.

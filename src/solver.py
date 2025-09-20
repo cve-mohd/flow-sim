@@ -324,7 +324,7 @@ class Solver:
         
         if spatial_node is not None:
             if temporal_node is not None:
-                return reqursted[temporal_node, spatial_node]
+                return float(reqursted[temporal_node, spatial_node])
             else:
                 return reqursted[:, spatial_node]
         
