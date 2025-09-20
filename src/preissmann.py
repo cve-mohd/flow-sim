@@ -2,6 +2,7 @@ from src.solver import Solver
 from src.reach import Reach
 import numpy as np
 from scipy.constants import g
+from src.utility import euclidean_norm
 
 
 class PreissmannSolver(Solver):
@@ -60,7 +61,7 @@ class PreissmannSolver(Solver):
         """
         self.area[0, :] = self.reach.initial_conditions[:, 0]
         self.flow[0, :] = self.reach.initial_conditions[:, 1]
-        self.unknowns = self.reach.initial_conditions.flatten().reshape(-1, 1)
+        self.unknowns = self.reach.initial_conditions.flatten()#.reshape(-1, 1)
         
         if self.active_storage:
             self.unknowns = np.append(self.unknowns, self.reach.downstream_boundary.lumped_storage.stage)
@@ -144,7 +145,7 @@ class PreissmannSolver(Solver):
 
         return jacobian_matrix
 
-    def run(self, duration: int, auto = False, tolerance=1e-4, verbose=3) -> None:
+    def run(self, tolerance=1e-4, verbose=3) -> None:
         """
         Run the simulation.
 
@@ -161,18 +162,17 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        from src.utility import euclidean_norm
         running = True
         
         while running:
             self.time_level += 1
-            if self.time_level >= self.max_timelevels and not auto:
+            if self.time_level >= self.max_timelevels:
                 running = False
                 self.time_level -= 1
                 break
             
             if verbose >= 1:
-                print(f'---------- Time level #{self.time_level}')
+                print(f'\n> Time level #{self.time_level}')
 
             iteration = 0
             converged = False
@@ -181,9 +181,7 @@ class PreissmannSolver(Solver):
                 iteration += 1
                 if iteration - 1 >= 100:
                     raise ValueError(f'Convergence within {iteration - 1} iterations couldn\'t be achieved.')
-                if verbose >= 3:
-                    print("--- Iteration #" + str(iteration) + ':')
-
+                
                 self.update_guesses()
                 
                 R = self.compute_residual_vector()
@@ -191,24 +189,20 @@ class PreissmannSolver(Solver):
                 
                 if np.isnan(R).any() or np.isnan(J).any():
                     raise ValueError("NaN in system assembly")
-
                 if np.linalg.cond(J) > 1e12:
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
                 
                 delta = np.linalg.solve(J, -R)
-                self.unknowns += delta
-
-                error = euclidean_norm(delta)                
-                if verbose >= 3:
-                    print("Error = " + str(error))
-                    
+                self.unknowns += delta.flatten()
+                error = euclidean_norm(delta)
+                
+                if verbose == 3:
+                    print(f">> Iteration #{iteration}: Error = {error}")    
                 if error < tolerance:
                     converged = True
-                    if iteration == 1 and auto and self.time_level >= duration:
-                        running = False
                                 
             if verbose==2:
-                print(f'{iteration} iterations.')
+                print(f'>> {iteration} iterations.')
                         
         super().finalize(verbose)
     
@@ -222,8 +216,8 @@ class PreissmannSolver(Solver):
 
         """
         if self.active_storage:
-            self.area[self.time_level] = self.unknowns[ :-1:2]
-            self.flow[self.time_level] = self.unknowns[1:-1:2]
+            self.area[self.time_level, :] = self.unknowns[ :-1:2]
+            self.flow[self.time_level, :] = self.unknowns[1:-1:2]
             self.reach.downstream_boundary.lumped_storage.stage = float(self.unknowns[-1])
         else:
             self.area[self.time_level] = self.unknowns[ ::2]
