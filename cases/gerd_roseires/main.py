@@ -3,19 +3,20 @@ from src.boundary import Boundary
 from src.utility import Hydrograph, LumpedStorage
 from cases.gerd_roseires.settings import *
 from cases.gerd_roseires.custom_functions import import_geometry, import_area_curve
+import numpy as np
 
 hyd = Hydrograph(trapzoid_hydrograph)
 #hyd.load_csv('cases\\gerd_roseires\\input_data\\hydrograph.csv')
 print('Loaded inflow hydrograph.')
 
-widths, width_ch, levels, level_ch, x, y, coords_ch = import_geometry("cases\\gerd_roseires\\input_data\\geometry.xlsx")
+widths, width_ch, levels, level_ch, coords, coords_ch = import_geometry("cases\\gerd_roseires\\input_data\\geometry.xlsx")
 print('Imported geometry.')
 
 gerd_bed_level = levels[0]
-gerd_chainage = min(width_ch+level_ch+coords_ch)
+gerd_chainage = min([width_ch.min(), level_ch.min(), coords_ch.min()])
 
 roseires_bed_level = levels[-1]
-roseires_chainage = max(width_ch+level_ch+coords_ch)
+roseires_chainage = max([width_ch.min(), level_ch.min(), coords_ch.min()])
 
 GERD = Boundary(condition='flow_hydrograph',
                 bed_level=gerd_bed_level,
@@ -42,7 +43,7 @@ GERD_Roseires_system = Reach(width=widths[0],
                              upstream_boundary=GERD,
                              downstream_boundary=Roseires)
 
-GERD_Roseires_system.set_coords(coords=zip(x, y), chainages=coords_ch)
+GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
 
@@ -58,18 +59,16 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
 
 print('Initialized solver.')
 
-solver.run(duration=sim_duration, verbose=2, auto=False, tolerance=tolerance)
+solver.run(duration=sim_duration, verbose=0, auto=False, tolerance=tolerance)
 print('Finished simulation.')
-solver.save_results(path='cases\\gerd_roseires\\results')
-print('Saved results.')
+#solver.save_results(path='cases\\gerd_roseires\\results')
+#print('Saved results.')
 
-from numpy import interp
-
-init_vol = interp(roseires_level,
+init_vol = np.interp(roseires_level,
                   [480, 481, 482, 484, 486, 488, 490, 492],
                   [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114])
-new_vol = init_vol + (solver.get_results(parameter='flow_rate', spatial_node=-1).sum() - sum(solver.results['outflow'])) * preissmann_dt * 1e-6
-correct_amp = interp(new_vol,
+new_vol = init_vol + (solver.get_results(parameter='flow_rate', spatial_node=-1).sum() - 0) * preissmann_dt * 1e-6
+correct_amp = np.interp(new_vol,
                      [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114],
                      [480, 481, 482, 484, 486, 488, 490, 492]) - roseires_level
 

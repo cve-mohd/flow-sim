@@ -92,15 +92,17 @@ def import_geometry(path):
     }).dropna()
     coords_df = coords_df.astype(float).sort_values(by="chainage")
 
-    width_ch     = width_df["chainage"].tolist()
-    widths       = width_df["width"].tolist()
-    level_ch     = level_df["chainage"].tolist()
-    levels       = level_df["level"].tolist()
-    coords_ch    = coords_df["chainage"].tolist()
-    coords_x     = coords_df["eastings"].tolist()
-    coords_y     = coords_df["northings"].tolist()
+    width_ch     = np.array(width_df["chainage"].array, dtype=float)
+    widths       = np.array(width_df["width"].array, dtype=float)
+    level_ch     = np.array(level_df["chainage"].array, dtype=float)
+    levels       = np.array(level_df["level"].array, dtype=float)
+    coords_ch    = np.array(coords_df["chainage"].array, dtype=float)
+    
+    coords_x     = np.asarray(coords_df["eastings"], dtype=float).reshape(-1, 1)
+    coords_y     = np.asarray(coords_df["northings"], dtype=float).reshape(-1, 1)
+    coords       = np.hstack((coords_x, coords_y))
 
-    return widths, width_ch, levels, level_ch, coords_x, coords_y, coords_ch
+    return widths, width_ch, levels, level_ch, coords, coords_ch
 
 def export_banks(left_x, left_y, right_x, right_y,
                  crs="EPSG:20136",

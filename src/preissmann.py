@@ -23,6 +23,7 @@ class PreissmannSolver(Solver):
                  theta: int | float,
                  time_step: int | float,
                  spatial_step: int | float,
+                 simulation_time: int,
                  enforce_physicality: bool = True,
                  fit_spatial_step: bool = True):
         """
@@ -40,10 +41,10 @@ class PreissmannSolver(Solver):
             Spatial step for the simulation in meters.
             
         """
-        super().__init__(reach, time_step, spatial_step, enforce_physicality, fit_spatial_step)
+        super().__init__(reach, time_step, spatial_step, simulation_time, enforce_physicality, fit_spatial_step)
         
         self.theta = theta
-        self.unknowns = []
+        self.unknowns = None
         self.type = 'preissmann'
         self.initialize_t0()
 
@@ -57,18 +58,15 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        for A, Q in self.reach.initial_conditions:                
-            self.unknowns += [A, Q]
-            self.A_previous.append(A)
-            self.Q_previous.append(Q)
+        self.unknowns = self.reach.initial_conditions.flatten().reshape(-1, 1)
+        self.A_previous = np.copy(self.reach.initial_conditions[:, 0])
+        self.Q_previous = np.copy(self.reach.initial_conditions[:, 1])
 
         if self.active_storage:
-            self.unknowns.append(self.reach.downstream_boundary.lumped_storage.stage)
+            self.unknowns = np.append(self.unknowns, self.reach.downstream_boundary.lumped_storage.stage)
             
-        self.unknowns = np.array(self.unknowns)
-
-        self.results['area'].append(self.A_previous)
-        self.results['flow_rate'].append(self.Q_previous)
+        self.results['area'] = np.copy(self.A_previous)
+        self.results['flow_rate'] = np.copy(self.Q_previous)
 
     def compute_residual_vector(self, time) -> np.ndarray:
         """
@@ -85,18 +83,19 @@ class PreissmannSolver(Solver):
             R
             
         """
-        equation_list = [self.upstream_residual(time)]
+        R = np.zeros(shape=(self.number_of_nodes*2, 1))
         
-        for i in range(self.number_of_nodes - 1):
-            equation_list.append(self.continuity_residual(i))
-            equation_list.append(self.momentum_residual(i))
-
-        equation_list.append(self.downstream_residual(time=time))
+        R[0]  = self.upstream_residual(time)
+        R[-1] = self.downstream_residual(time)
+        
+        for i in range(self.number_of_nodes-1):
+            R[1+2*i] = self.continuity_residual(i)
+            R[2+2*i] = self.momentum_residual(i)
         
         if self.active_storage:
-            equation_list.append(self.storage_residual())
+            R = np.append(R, self.storage_residual())
             
-        return np.array(equation_list)
+        return R
 
     def compute_jacobian(self) -> np.ndarray:
         """
@@ -227,11 +226,11 @@ class PreissmannSolver(Solver):
 
         """
         if self.active_storage:
-            self.A_previous = [i for i in self.unknowns[:-1:2]]
-            self.Q_previous = [i for i in self.unknowns[1:-1:2]]
+            self.A_previous[:] = self.unknowns[:-1:2].flatten()
+            self.Q_previous[:] = self.unknowns[1:-1:2].flatten()
         else:
-            self.A_previous = [i for i in self.unknowns[::2]]
-            self.Q_previous = [i for i in self.unknowns[1::2]]
+            self.A_previous[:] = self.unknowns[::2].flatten()
+            self.Q_previous[:] = self.unknowns[1::2].flatten()
 
     def update_guesses(self) -> None:
         """
@@ -243,12 +242,12 @@ class PreissmannSolver(Solver):
 
         """
         if self.active_storage:
-            self.A_current = self.unknowns[:-1:2]
-            self.Q_current = self.unknowns[1:-1:2]
-            self.reach.downstream_boundary.lumped_storage.stage = self.unknowns[-1]
+            self.A_current = np.copy(self.unknowns[:-1:2])
+            self.Q_current = np.copy(self.unknowns[1:-1:2])
+            self.reach.downstream_boundary.lumped_storage.stage = float(self.unknowns[-1])
         else:
-            self.A_current = self.unknowns[::2]
-            self.Q_current = self.unknowns[1::2]
+            self.A_current = np.copy(self.unknowns[::2])
+            self.Q_current = np.copy(self.unknowns[1::2])
         
     def upstream_residual(self, time) -> float:
         """

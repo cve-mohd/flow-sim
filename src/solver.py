@@ -5,41 +5,11 @@ from math import sqrt
 
 
 class Solver:
-    """
-    Implements the Preissmann implicit finite difference scheme to numerically
-    solve the Saint-Venant equations.
-
-    Attributes
-    ----------
-    channel : Channel
-        An instance of the 'Channel' class, representing the channel being modeled.
-    time_step : float
-        Time step for the simulation in seconds.
-    spatial_step : float
-        Spatial step for the simulation in meters.
-    num_celerity : float
-        Ratio of spatial to time step, representing the wave celerity.
-    number_of_nodes : int
-        Number of spatial nodes along the channel.
-    A_previous : list of float
-        Cross-sectional areas at the previous time step.
-    Q_previous : list of float
-        Discharges at the previous time step.
-    A_current : list of float
-        Cross-sectional areas at the current iteration of the current time step.
-    Q_current : list of float
-        Discharges at the current iteration of the current time step.
-    computed_areas : list of list of float
-        Stores the computed A values over time.
-    computed_flow_rates : list of list of float
-        Stores the computed Q values over time.
-            
-    """
-
     def __init__(self,
                  reach: Reach,
                  time_step: int | float,
                  spatial_step: int | float,
+                 simulation_time: int,
                  enforce_physicality: bool = True,
                  fit_spatial_step = True):
         """
@@ -59,28 +29,32 @@ class Solver:
         self.active_storage = (self.reach.downstream_boundary.lumped_storage is not None)
                 
         self.time_step, self.spatial_step = time_step, spatial_step
-        self.number_of_nodes = int(self.reach.length // self.spatial_step + 1)
+        self.number_of_nodes = self.reach.length // self.spatial_step + 1
+        self.max_timesteps = simulation_time // self.time_step + 1
         
         if fit_spatial_step:
             self.fit_spatial_step()
             
         self.reach.initialize_conditions(n_nodes=self.number_of_nodes)
-        self.num_celerity = self.spatial_step / float(self.time_step)
+        self.num_celerity = self.spatial_step / self.time_step
 
-        self.A_previous = []
-        self.Q_previous = []
+        self.areas = np.empty(shape=(self.max_timesteps, self.number_of_nodes), dtype=float)
+        self.flow = np.empty(shape=(self.max_timesteps, self.number_of_nodes), dtype=float)
+        
+        self.A_previous = None
+        self.Q_previous = None
 
-        self.A_current = []
-        self.Q_current = []
+        self.A_current = None
+        self.Q_current = None
 
         self.results = {
-            'area': [],
-            'flow_rate': [],
-            'velocity': [],
-            'depth': [],
-            'level': [],
-            'wave_celerity': [],
-            'outflow': [float(self.reach.initial_conditions[0][1])]
+            'area': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'flow_rate': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'velocity': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'depth': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'level': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'wave_celerity': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
+            'outflow': np.array(self.reach.initial_conditions[:, 1], dtype=float)
         }
         
         self.peak_amplitudes = None
@@ -95,44 +69,25 @@ class Solver:
         self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
 
     def append_result(self):
-        if isinstance(self.A_current, list):
-            self.results['area'].append([float(i) for i in self.A_current])
-            self.results['flow_rate'].append([float(i) for i in self.Q_current])
-        else:
-            self.results['area'].append(self.A_current.tolist())
-            self.results['flow_rate'].append(self.Q_current.tolist())
+        self.results['area'] = np.vstack((self.results['area'], self.A_current))
+        self.results['flow_rate'] = np.vstack((self.results['flow_rate'], self.Q_current))
                     
         if self.initial_depths is None:
             self.initial_depths = np.array(self.results['area'][0]) / np.array(self.reach.widths)
-            self.peak_amplitudes = [0] * self.number_of_nodes
+            self.peak_amplitudes = np.zeros(shape=(self.number_of_nodes))
         else:
             amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.initial_depths
-            self.peak_amplitudes = [float(max(i, j)) for i,j in zip(amplitudes, self.peak_amplitudes)]
+            for i in range(self.number_of_nodes):
+                self.peak_amplitudes[i] = max(amplitudes[i], self.peak_amplitudes[i])
             
         if self.type == 'preissmann' and self.active_storage:
-            self.results['outflow'].append(self.Q_out)
+            self.results['outflow'] = np.append(self.results['outflow'], self.Q_out)
         
     def prepare_results(self) -> None:
-        self.results['velocity'] = np.array(self.results['flow_rate']) / np.array(self.results['area'])
-        self.results['velocity'] = self.results['velocity'].tolist()
-                
-        self.results['depth'] = np.array(self.results['area']) / np.array(self.reach.widths)
-        self.results['depth'] = self.results['depth'].tolist()
-        
-        for depths in self.results['depth']:
-            self.results['level'].append([
-                depths[i] + self.reach.bed_levels[i] for i in range(self.number_of_nodes)
-            ])
-            
-        # Wave celerity
-        for i in range(len(self.results['velocity'])):
-            row = []
-            for j in range(len(self.results['velocity'][i])):
-                v = self.results['velocity'][i][j]
-                h = self.results['depth'][i][j]
-                celerity = v + sqrt(g * h)
-                row.append(celerity)
-            self.results['wave_celerity'].append(row)
+        self.results['velocity'] = self.results['flow_rate'] / self.results['area']
+        self.results['depth'] = self.results['area'] / self.reach.widths.reshape(1, -1)
+        self.results['level'] = self.results['depth'] + self.reach.bed_levels.reshape(1, -1)
+        self.results['wave_celerity'] = self.results['velocity'] + np.sqrt(self.results['depth'] * g)
     
     def save_results(self, size: tuple = (-1, -1), path: str = 'results') -> None:
         """
@@ -318,9 +273,6 @@ class Solver:
             raise ValueError(f"'parameter' should take one of these values: 'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'\nYou entered: {parameter}")
         
         reqursted = self.results[parameter]
-        
-        if isinstance(reqursted, list):
-            reqursted = np.array(reqursted)
         
         if spatial_node is not None:
             if temporal_node is not None:
