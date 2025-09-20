@@ -509,7 +509,7 @@ class LumpedStorage:
             Y_new = self.min_stage
 
         # update outflow based on actual storage change achieved
-        vol_out = vol_in - self.net_vol_change(Y_old, Y_new)
+        vol_out = vol_in - self.net_vol_change(Y_old, Y_new) if self.rating_curve else 0.0
         return Y_new, vol_out
 
     def dY_new_dvol_in(self, duration, vol_in, Y_old) -> float:

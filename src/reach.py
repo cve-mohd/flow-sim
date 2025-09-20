@@ -22,8 +22,8 @@ class Reach:
         self.roughness = roughness
         self.dry_roughness = dry_roughness
         
-        self.widths = np.array([width, width], dtype=float)
-        self.bed_levels = np.array([upstream_boundary.bed_level,
+        self.width = np.array([width, width], dtype=float)
+        self.bed_level = np.array([upstream_boundary.bed_level,
                                     downstream_boundary.bed_level], dtype=float)
         self.level_chainages = np.array([upstream_boundary.chainage,
                                          downstream_boundary.chainage], dtype=float)
@@ -58,7 +58,7 @@ class Reach:
             
         """       
         n = self.get_n(A=A, i=i)
-        B = self.widths[i]
+        B = self.width[i]
         
         Sf = Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
         
@@ -72,7 +72,7 @@ class Reach:
     
     def dSe_dA(self, A: float, Q: float, i: int) -> float:
         n = self.get_n(A=A, i=i)
-        B = self.widths[i]
+        B = self.width[i]
         
         dSf_dA = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B) + Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
         
@@ -86,7 +86,7 @@ class Reach:
     
     def dSe_dQ(self, A: float, Q: float, i: int) -> float:
         n = self.get_n(A=A, i=i)
-        B = self.widths[i]
+        B = self.width[i]
         
         dSf_dQ = Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
         
@@ -100,13 +100,13 @@ class Reach:
 
     def normal_flow(self, A: float, i: int):
         n = self.get_n(A=A, i=i)
-        B = self.widths[i]
+        B = self.width[i]
         S_0 = self.bed_slopes[i]
         
         return Hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
     def normal_area(self, Q: float, i: int):
-        B = self.widths[i]
+        B = self.width[i]
         A_guess = self.downstream_boundary.initial_depth * B
         n = self.get_n(A=A_guess, i=i)
         S_0 = self.bed_slopes[i]
@@ -140,7 +140,7 @@ class Reach:
                 distance = self.length * i / (n_nodes-1)
                 
                 y = y_0 + (y_n - y_0) * distance / self.length
-                A, Q = y * self.widths[i], self.initial_flow_rate
+                A, Q = y * self.width[i], self.initial_flow_rate
                 
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
@@ -150,13 +150,13 @@ class Reach:
             h = self.downstream_boundary.initial_depth
             
             # Add last node
-            self.initial_conditions[n_nodes-1, 0] = h*self.widths[-1]
+            self.initial_conditions[n_nodes-1, 0] = h*self.width[-1]
             self.initial_conditions[n_nodes-1, 1] = self.initial_flow_rate
 
             for i in reversed(range(n_nodes-1)):
                 distance = i * dx
     
-                A, Q, B = self.widths[i] * h, self.initial_flow_rate, self.widths[i]
+                A, Q, B = self.width[i] * h, self.initial_flow_rate, self.width[i]
                 Sf = self.Se(A, Q, i)
                 
                 Fr = Hydraulics.froude_num(A, Q, B)
@@ -165,7 +165,7 @@ class Reach:
                 if abs(denominator) < 1e-6:
                     dhdx = 0.0
                 else:
-                    S0 = -(self.bed_levels[i+1]-self.bed_levels[i]) / dx
+                    S0 = -(self.bed_level[i+1]-self.bed_level[i]) / dx
                     dhdx = (S0 - Sf) / denominator
 
                 h -= dhdx * dx
@@ -188,7 +188,7 @@ class Reach:
             return self.roughness
         
         wet_h = self.wet_depth(i)
-        h = A / self.widths[i]
+        h = A / self.width[i]
         
         return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
               
@@ -196,7 +196,7 @@ class Reach:
         if self.dry_roughness is None:
             return 0
         
-        B = self.widths[i]
+        B = self.width[i]
         wet_h = self.wet_depth(i)
         
         dn_dh = Hydraulics.dn_dh(depth=A/B,
@@ -225,10 +225,10 @@ class Reach:
 
         # prepend upstream values if needed
         if chainages[0] > self.upstream_boundary.chainage:
-            widths    = np.insert(widths,    0, self.widths[0])
+            widths    = np.insert(widths,    0, self.width[0])
             chainages = np.insert(chainages, 0, self.upstream_boundary.chainage)
 
-        self.widths = widths
+        self.width = widths
         self.width_chainages = chainages
 
     def set_intermediate_bed_levels(self, bed_levels, chainages):
@@ -250,7 +250,7 @@ class Reach:
         else:
             self.downstream_boundary.bed_level = bed_levels[-1]
         
-        self.bed_levels = bed_levels
+        self.bed_level = bed_levels
         self.level_chainages = chainages
 
     def initialize_geometry(self, n_nodes):
@@ -268,19 +268,19 @@ class Reach:
             y = interp(self.chainages, self.coords_chainages, self.coords[:, 1])
             self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
 
-        self.widths = interp(
+        self.width = interp(
             self.chainages,
             array(self.width_chainages, dtype=float),
-            array(self.widths, dtype=float)
+            array(self.width, dtype=float)
         )
-        self.bed_levels = interp(
+        self.bed_level = interp(
             self.chainages,
             array(self.level_chainages, dtype=float),
-            array(self.bed_levels, dtype=float)
+            array(self.bed_level, dtype=float)
         )
-        self.bed_slopes = -gradient(self.bed_levels, self.chainages)
-        self.surface_area = trapezoid(self.widths, self.chainages)
+        self.bed_slopes = -gradient(self.bed_level, self.chainages)
+        self.surface_area = trapezoid(self.width, self.chainages)
     
     def wet_depth(self, i):
-        return self.initial_conditions[i, 0] / self.widths[i]
+        return self.initial_conditions[i, 0] / self.width[i]
     

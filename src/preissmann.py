@@ -58,17 +58,17 @@ class PreissmannSolver(Solver):
         None.
 
         """
+        self.area[0, :] = self.reach.initial_conditions[:, 0]
+        self.flow[0, :] = self.reach.initial_conditions[:, 1]
         self.unknowns = self.reach.initial_conditions.flatten().reshape(-1, 1)
-        self.A_previous = np.copy(self.reach.initial_conditions[:, 0])
-        self.Q_previous = np.copy(self.reach.initial_conditions[:, 1])
-
+        
         if self.active_storage:
             self.unknowns = np.append(self.unknowns, self.reach.downstream_boundary.lumped_storage.stage)
-            
-        self.results['area'] = np.copy(self.A_previous)
-        self.results['flow_rate'] = np.copy(self.Q_previous)
+            _, self.outflow[0] = self.reach.downstream_boundary.lumped_storage.mass_balance(self.time_step,
+                                                                                         self.flow[0, -1],
+                                                                                         self.water_level_at(-1, 0))
 
-    def compute_residual_vector(self, time) -> np.ndarray:
+    def compute_residual_vector(self) -> np.ndarray:
         """
         Computes the residual vector R.
 
@@ -83,6 +83,7 @@ class PreissmannSolver(Solver):
             R
             
         """
+        time = self.time_level * self.time_step
         R = np.zeros(shape=(self.number_of_nodes*2, 1))
         
         R[0]  = self.upstream_residual(time)
@@ -161,18 +162,17 @@ class PreissmannSolver(Solver):
 
         """
         from src.utility import euclidean_norm
-        time = 0
         running = True
         
         while running:
-            time += self.time_step
-            if time > duration and not auto:
+            self.time_level += 1
+            if self.time_level >= self.max_timelevels and not auto:
                 running = False
-                time -= self.time_step
+                self.time_level -= 1
                 break
             
             if verbose >= 1:
-                print('---------- Time = ' + str(time) + 's ----------')
+                print(f'---------- Time level #{self.time_level}')
 
             iteration = 0
             converged = False
@@ -186,7 +186,7 @@ class PreissmannSolver(Solver):
 
                 self.update_guesses()
                 
-                R = self.compute_residual_vector(time = time)
+                R = self.compute_residual_vector()
                 J = self.compute_jacobian()
                 
                 if np.isnan(R).any() or np.isnan(J).any():
@@ -198,40 +198,20 @@ class PreissmannSolver(Solver):
                 delta = np.linalg.solve(J, -R)
                 self.unknowns += delta
 
-                error = euclidean_norm(vector = delta)                
+                error = euclidean_norm(delta)                
                 if verbose >= 3:
                     print("Error = " + str(error))
                     
                 if error < tolerance:
                     converged = True
-                    if iteration == 1 and auto and time >= duration:
+                    if iteration == 1 and auto and self.time_level >= duration:
                         running = False
                                 
             if verbose==2:
                 print(f'{iteration} iterations.')
-                
-            self.append_result()
-            self.update_parameters()
-        
-        super().finalize(time=time, verbose=verbose)
+                        
+        super().finalize(verbose)
     
-    def update_parameters(self) -> None:
-        """
-        Updates the values of the flow variables of the previous time step
-        to the ones last computed.
-
-        Returns
-        -------
-        None.
-
-        """
-        if self.active_storage:
-            self.A_previous[:] = self.unknowns[:-1:2].flatten()
-            self.Q_previous[:] = self.unknowns[1:-1:2].flatten()
-        else:
-            self.A_previous[:] = self.unknowns[::2].flatten()
-            self.Q_previous[:] = self.unknowns[1::2].flatten()
-
     def update_guesses(self) -> None:
         """
         Set the trial values of the unknowns to the ones last computed.
@@ -242,12 +222,12 @@ class PreissmannSolver(Solver):
 
         """
         if self.active_storage:
-            self.A_current = np.copy(self.unknowns[:-1:2])
-            self.Q_current = np.copy(self.unknowns[1:-1:2])
+            self.area[self.time_level] = self.unknowns[ :-1:2]
+            self.flow[self.time_level] = self.unknowns[1:-1:2]
             self.reach.downstream_boundary.lumped_storage.stage = float(self.unknowns[-1])
         else:
-            self.A_current = np.copy(self.unknowns[::2])
-            self.Q_current = np.copy(self.unknowns[1::2])
+            self.area[self.time_level] = self.unknowns[ ::2]
+            self.flow[self.time_level] = self.unknowns[1::2]
         
     def upstream_residual(self, time) -> float:
         """
@@ -264,10 +244,10 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        A = self.area_at(i=0, current_time_level=1)
-        h = self.depth_at(i=0, current_time_level=1)
-        B = self.width_at(0)
-        Q = self.flow_at(i=0, current_time_level=1)
+        A = self.area_at(i=0)
+        h = self.depth_at(i=0)
+        B = self.width_at(i=0)
+        Q = self.flow_at(i=0)
         S_0 = self.bed_slope_at(0)
         n = self.reach.get_n(A=A, i=0)
                 
@@ -277,7 +257,6 @@ class PreissmannSolver(Solver):
                                                                    flow_rate=Q,
                                                                    bed_slope=S_0,
                                                                    roughness=n)
-
         return residual
 
     def continuity_residual(self, i) -> float:
@@ -294,17 +273,17 @@ class PreissmannSolver(Solver):
         float
             The computed residual.
 
-        """        
+        """
         return self.time_diff(
-            k0_i0 = self.area_at(i, 0),
-            k0_i1 = self.area_at(i+1, 0),
-            k1_i0 = self.area_at(i, 1),
-            k1_i1 = self.area_at(i+1, 1)
+            k0_i0 = self.area_at(i, -1),
+            k0_i1 = self.area_at(i+1, -1),
+            k1_i0 = self.area_at(i),
+            k1_i1 = self.area_at(i+1)
             ) + self.spatial_diff(
-                k0_i0 = self.flow_at(i, 0),
-                k0_i1 = self.flow_at(i+1, 0),
-                k1_i0 = self.flow_at(i, 1),
-                k1_i1 = self.flow_at(i+1, 1)
+                k0_i0 = self.flow_at(i, -1),
+                k0_i1 = self.flow_at(i+1, -1),
+                k1_i0 = self.flow_at(i),
+                k1_i1 = self.flow_at(i+1)
             )
 
     def momentum_residual(self, i) -> float:
@@ -323,31 +302,31 @@ class PreissmannSolver(Solver):
 
         """     
         return self.time_diff(
-            k0_i0 = self.flow_at(i, 0),
-            k0_i1 = self.flow_at(i+1, 0),
-            k1_i0 = self.flow_at(i, 1),
-            k1_i1 = self.flow_at(i+1, 1)
+            k0_i0 = self.flow_at(i, -1),
+            k0_i1 = self.flow_at(i+1, -1),
+            k1_i0 = self.flow_at(i),
+            k1_i1 = self.flow_at(i+1)
             ) + self.spatial_diff(
-                k0_i0 = self.flow_at(i, 0) ** 2 / self.area_at(i, 0),
-                k0_i1 = self.flow_at(i+1, 0) ** 2 / self.area_at(i+1, 0),
-                k1_i0 = self.flow_at(i, 1) ** 2 / self.area_at(i, 1),
-                k1_i1 = self.flow_at(i+1, 1) ** 2 / self.area_at(i+1, 1)
+                k0_i0 = self.flow_at(i, -1) ** 2 / self.area_at(i, -1),
+                k0_i1 = self.flow_at(i+1, -1) ** 2 / self.area_at(i+1, -1),
+                k1_i0 = self.flow_at(i) ** 2 / self.area_at(i),
+                k1_i1 = self.flow_at(i+1) ** 2 / self.area_at(i+1)
             ) + g * self.cell_avg(
-                k0_i0=self.area_at(i, 0),
-                k0_i1=self.area_at(i+1, 0),
-                k1_i0=self.area_at(i, 1),
-                k1_i1=self.area_at(i+1, 1)
+                k0_i0=self.area_at(i, -1),
+                k0_i1=self.area_at(i+1, -1),
+                k1_i0=self.area_at(i),
+                k1_i1=self.area_at(i+1)
             ) * (
                 self.spatial_diff(
-                    k0_i0=self.water_level_at(i, 0),
-                    k0_i1=self.water_level_at(i+1, 0),
-                    k1_i0=self.water_level_at(i, 1),
-                    k1_i1=self.water_level_at(i+1, 1)
+                    k0_i0=self.water_level_at(i, -1),
+                    k0_i1=self.water_level_at(i+1, -1),
+                    k1_i0=self.water_level_at(i),
+                    k1_i1=self.water_level_at(i+1)
                 ) + self.cell_avg(
-                    k0_i0=self.Se_at(i, 0),
-                    k0_i1=self.Se_at(i+1, 0),
-                    k1_i0=self.Se_at(i, 1),
-                    k1_i1=self.Se_at(i+1, 1)
+                    k0_i0=self.Se_at(i, -1),
+                    k0_i1=self.Se_at(i+1, -1),
+                    k1_i0=self.Se_at(i),
+                    k1_i1=self.Se_at(i+1)
                 )
             )
     
@@ -361,12 +340,12 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        A = self.area_at(-1, 1)
-        h = self.depth_at(-1, 1)
+        A = self.area_at(-1)
+        h = self.depth_at(-1)
         B = self.width_at(-1)
         n = self.reach.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(-1)
-        Q = self.flow_at(-1, 1)
+        Q = self.flow_at(-1)
         
         residual = self.reach.downstream_boundary.condition_residual(time=time,
                                                                      depth=h,
@@ -378,11 +357,11 @@ class PreissmannSolver(Solver):
         return residual
 
     def storage_residual(self):
-        vol_in = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0)) * self.time_step
-        Y_old = self.water_level_at(-1, 0)
+        vol_in = 0.5 * (self.flow_at(-1) + self.flow_at(-1, -1)) * self.time_step
+        Y_old = self.water_level_at(-1, -1)
         
         target_Y, vol_out = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step, vol_in=vol_in, Y_old=Y_old)
-        self.Q_out = vol_out / self.time_step
+        self.outflow[self.time_level] = vol_out / self.time_step
         
         residual = self.reach.downstream_boundary.lumped_storage.stage - target_Y
         return residual
@@ -397,8 +376,8 @@ class PreissmannSolver(Solver):
             dU/dA
 
         """
-        A = self.area_at(0, 1)
-        h = self.depth_at(0, 1)
+        A = self.area_at(0)
+        h = self.depth_at(0)
         B = self.width_at(0)
         n = self.reach.get_n(A=A, i=0)
         S_0 = self.bed_slope_at(0)
@@ -578,28 +557,28 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i+1, 1)
-        Q = self.flow_at(i+1, 1)
+        A = self.area_at(i+1)
+        Q = self.flow_at(i+1)
         B = self.width_at(i+1)
         dSe_dA = self.reach.dSe_dA(A, Q, i+1)
         
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, 0),
-            k0_i1=self.area_at(i+1, 0),
-            k1_i0=self.area_at(i, 1),
-            k1_i1=self.area_at(i+1, 1)
+            k0_i0=self.area_at(i, -1),
+            k0_i1=self.area_at(i+1, -1),
+            k1_i0=self.area_at(i),
+            k1_i1=self.area_at(i+1)
         )
         avg_Se = self.cell_avg(
-            k0_i0=self.Se_at(i, 0),
-            k0_i1=self.Se_at(i+1, 0),
-            k1_i0=self.Se_at(i, 1),
-            k1_i1=self.Se_at(i+1, 1)
+            k0_i0=self.Se_at(i, -1),
+            k0_i1=self.Se_at(i+1, -1),
+            k1_i0=self.Se_at(i),
+            k1_i1=self.Se_at(i+1)
         )
         dY_dx = self.spatial_diff(
-            k0_i0=self.water_level_at(i, 0),
-            k0_i1=self.water_level_at(i+1, 0),
-            k1_i0=self.water_level_at(i, 1),
-            k1_i1=self.water_level_at(i+1, 1)
+            k0_i0=self.water_level_at(i, -1),
+            k0_i1=self.water_level_at(i+1, -1),
+            k1_i0=self.water_level_at(i),
+            k1_i1=self.water_level_at(i+1)
         )
         
         # -----------------
@@ -626,28 +605,28 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i, 1)
-        Q = self.flow_at(i, 1)
+        A = self.area_at(i)
+        Q = self.flow_at(i)
         B = self.width_at(i)
         dSe_dA = self.reach.dSe_dA(A, Q, i)
         
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, 0),
-            k0_i1=self.area_at(i+1, 0),
-            k1_i0=self.area_at(i, 1),
-            k1_i1=self.area_at(i+1, 1)
+            k0_i0=self.area_at(i, -1),
+            k0_i1=self.area_at(i+1, -1),
+            k1_i0=self.area_at(i),
+            k1_i1=self.area_at(i+1)
         )
         avg_Se = self.cell_avg(
-            k0_i0=self.Se_at(i, 0),
-            k0_i1=self.Se_at(i+1, 0),
-            k1_i0=self.Se_at(i, 1),
-            k1_i1=self.Se_at(i+1, 1)
+            k0_i0=self.Se_at(i, -1),
+            k0_i1=self.Se_at(i+1, -1),
+            k1_i0=self.Se_at(i),
+            k1_i1=self.Se_at(i+1)
         )
         dY_dx = self.spatial_diff(
-            k0_i0=self.water_level_at(i, 0),
-            k0_i1=self.water_level_at(i+1, 0),
-            k1_i0=self.water_level_at(i, 1),
-            k1_i1=self.water_level_at(i+1, 1)
+            k0_i0=self.water_level_at(i, -1),
+            k0_i1=self.water_level_at(i+1, -1),
+            k1_i0=self.water_level_at(i),
+            k1_i1=self.water_level_at(i+1)
         )
         
         # -----------------
@@ -674,15 +653,15 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i+1, 1)
-        Q = self.flow_at(i+1, 1)
+        A = self.area_at(i+1)
+        Q = self.flow_at(i+1)
         dSe_dQ = self.reach.dSe_dQ(A, Q, i+1)
         
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, 0),
-            k0_i1=self.area_at(i+1, 0),
-            k1_i0=self.area_at(i, 1),
-            k1_i1=self.area_at(i+1, 1)
+            k0_i0=self.area_at(i, -1),
+            k0_i1=self.area_at(i+1, -1),
+            k1_i0=self.area_at(i),
+            k1_i1=self.area_at(i+1)
         )
         
         # -----------------
@@ -709,15 +688,15 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i, 1)
-        Q = self.flow_at(i, 1)
+        A = self.area_at(i)
+        Q = self.flow_at(i)
         dSe_dQ = self.reach.dSe_dQ(A, Q, i)
         
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, 0),
-            k0_i1=self.area_at(i+1, 0),
-            k1_i0=self.area_at(i, 1),
-            k1_i1=self.area_at(i+1, 1)
+            k0_i0=self.area_at(i, -1),
+            k0_i1=self.area_at(i+1, -1),
+            k1_i0=self.area_at(i),
+            k1_i1=self.area_at(i+1)
         )
         
         # -----------------
@@ -744,8 +723,8 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(-1, 1)
-        h = self.depth_at(-1, 1)
+        A = self.area_at(-1)
+        h = self.depth_at(-1)
         B = self.width_at(-1)
         wet_h = self.wet_depth_at(-1)
         n = self.reach.get_n(A=A, i=-1)
@@ -816,8 +795,8 @@ class PreissmannSolver(Solver):
         return derivative
             
     def dSr_dQ(self, eff = False):
-        vol_in = 0.5 * (self.flow_at(-1, 1) + self.flow_at(-1, 0)) * self.time_step
-        Y_old = self.water_level_at(-1, 0)
+        vol_in = 0.5 * (self.flow_at(-1) + self.flow_at(-1, -1)) * self.time_step
+        Y_old = self.water_level_at(-1, -1)
                 
         dSr_dvol = 0 - self.reach.downstream_boundary.lumped_storage.dY_new_dvol_in(self.time_step, vol_in, Y_old)
         dvol_dQ = 0.5 * self.time_step

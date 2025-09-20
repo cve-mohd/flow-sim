@@ -34,7 +34,7 @@ solver = PreissmannSolver(reach=example_channel,
                           enforce_physicality=False)
 
 solver.run(duration=3600*24, verbose=2)
-solver.save_results(path='cases\\example\\results')
+solver.save_results(folder_path='cases\\example\\results')
 
 """
 from lax import LaxSolver
