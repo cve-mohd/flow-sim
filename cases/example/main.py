@@ -1,48 +1,55 @@
 from src.reach import Reach
 from src.boundary import Boundary
-from cases.example.settings import trapzoid_hydrograph
 from src.utility import Hydrograph
+from src.preissmann import PreissmannSolver
 
-hyd = Hydrograph(trapzoid_hydrograph)
-
-us = Boundary(initial_depth=3,
-              condition='flow_hydrograph',
-              bed_level=495,
+def trapzoid_hydrograph(t):
+    initial_flow = 1000
+    peak_flow = 10000
+    
+    lag_time = 3*3600
+    time_to_peak = 3*3600
+    peak_time = 6*3600
+    recession_time = 4*3600
+    
+    if t <= lag_time:
+        flow = initial_flow
+    elif t - lag_time < time_to_peak:
+        flow = initial_flow + (peak_flow - initial_flow) * (t - lag_time) / time_to_peak
+    elif t - lag_time - time_to_peak < peak_time:
+        flow = peak_flow
+    elif t - lag_time - time_to_peak - peak_time < recession_time:
+        flow = peak_flow - (peak_flow - initial_flow) * (t - lag_time - time_to_peak - peak_time) / recession_time
+    else:
+        flow = initial_flow
+        
+    return flow
+    
+us = Boundary(condition='flow_hydrograph',
+              bed_level=5,
               chainage=0,
-              hydrograph=hyd)
+              hydrograph=Hydrograph(trapzoid_hydrograph))
 
-ds = Boundary(initial_depth=5,
-              condition='normal_depth',
-              bed_level=488,
-              chainage=16000)
+ds = Boundary(condition='normal_depth',
+              bed_level=0,
+              chainage=20000)
 
 example_channel = Reach(width = 250,
-                        initial_flow_rate = 1562.5,
-                        roughness = 0.029,
+                        initial_flow = us.hydrograph.get_at(0),
+                        roughness = 0.027,
                         upstream_boundary = us,
-                        downstream_boundary = ds)
+                        downstream_boundary = ds,
+                        interpolation_method='steady-state')
 
 #example_channel.set_intermediate_bed_levels([510], [8000])
 #example_channel.set_intermediate_widths([400], [26000])
-
-from src.preissmann import PreissmannSolver
 
 solver = PreissmannSolver(reach=example_channel,
                           theta=0.8,
                           time_step=3600,
                           spatial_step=1000,
+                          simulation_time=24*3600,
                           enforce_physicality=False)
 
-solver.run(duration=3600*24, verbose=2)
+solver.run()
 solver.save_results(folder_path='cases\\example\\results')
-
-"""
-from lax import LaxSolver
-
-l_model = LaxSolver(channel=example_channel,
-                    time_step=50,
-                    spatial_step=1000)
-
-l_model.run(duration=3600*72)
-l_model.save_results()
-"""

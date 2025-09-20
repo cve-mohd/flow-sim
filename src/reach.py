@@ -10,7 +10,7 @@ class Reach:
                  upstream_boundary: Boundary,
                  downstream_boundary: Boundary,
                  width: float,
-                 initial_flow_rate: float,
+                 initial_flow: float,
                  roughness: float,
                  dry_roughness: float = None,
                  interpolation_method: str = 'GVF_equation'):
@@ -18,7 +18,7 @@ class Reach:
         Initialized an instance.
         """
         self.conditions_initialized = False
-        self.initial_flow_rate = initial_flow_rate
+        self.initial_flow_rate = initial_flow
         self.roughness = roughness
         self.dry_roughness = dry_roughness
         
@@ -34,8 +34,10 @@ class Reach:
         self.upstream_boundary = upstream_boundary
         self.downstream_boundary = downstream_boundary       
                 
-        if interpolation_method in ['linear', 'GVF_equation']:
+        if interpolation_method in ['linear', 'GVF_equation', 'steady-state']:
             self.interpolation_method = interpolation_method
+        else:
+            raise ValueError("Invalid interpolation method.")
         
         self.initial_conditions = None
         self.coordinated = False
@@ -107,7 +109,9 @@ class Reach:
         
     def normal_area(self, Q: float, i: int):
         B = self.width[i]
-        A_guess = self.downstream_boundary.initial_depth * B
+        h = self.downstream_boundary.initial_depth
+        h = 1 if h is None else h
+        A_guess = h * B
         n = self.get_n(A=A_guess, i=i)
         S_0 = self.bed_slopes[i]
         
@@ -177,7 +181,15 @@ class Reach:
                     
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
+        
+        elif self.interpolation_method == 'steady-state':
+            for i in range(n_nodes):
+                Q = self.initial_flow_rate
+                A = self.normal_area(Q, i)
                 
+                self.initial_conditions[i, 0] = A
+                self.initial_conditions[i, 1] = Q
+            
         else:
             raise ValueError("Invalid flow type.")
         

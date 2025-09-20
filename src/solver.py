@@ -1,8 +1,8 @@
 from src.reach import Reach
 import numpy as np
 from scipy.constants import g
-from math import sqrt
-
+import pandas as pd
+from src.utility import create_directory_if_not_exists
 
 class Solver:
     def __init__(self,
@@ -73,8 +73,9 @@ class Solver:
         """
         Save all results to a single Excel workbook with multiple sheets.
         """
-        import pandas as pd
+        create_directory_if_not_exists(folder_path)
         filename = folder_path + "\\results.xlsx"
+        
         arrays_2d = {
             "Area": self.area,
             "Flow": self.flow,
