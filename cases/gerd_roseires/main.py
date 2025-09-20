@@ -55,24 +55,25 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           theta=theta,
                           time_step=preissmann_dt,
                           spatial_step=dx,
+                          simulation_time=sim_duration,
                           enforce_physicality=enforce_physicality)
 
 print('Initialized solver.')
 
-solver.run(duration=sim_duration, verbose=0, auto=False, tolerance=tolerance)
+solver.run(duration=sim_duration, verbose=2, auto=False, tolerance=tolerance)
 print('Finished simulation.')
-#solver.save_results(path='cases\\gerd_roseires\\results')
+solver.save_results(folder_path='cases\\gerd_roseires\\results')
 #print('Saved results.')
 
 init_vol = np.interp(roseires_level,
                   [480, 481, 482, 484, 486, 488, 490, 492],
                   [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114])
-new_vol = init_vol + (solver.get_results(parameter='flow_rate', spatial_node=-1).sum() - 0) * preissmann_dt * 1e-6
+new_vol = init_vol + (solver.flow[:, -1].sum() - solver.outflow.sum()) * preissmann_dt * 1e-6
 correct_amp = np.interp(new_vol,
                      [1699, 1970, 2282, 3000, 3847, 4824, 5909, 7114],
                      [480, 481, 482, 484, 486, 488, 490, 492]) - roseires_level
 
-print(f'Increase = {solver.peak_amplitudes[-1]} m')
+print(f'Increase = {solver.depth[:, -1].max() - solver.depth[0, -1]} m')
 print(f'Correct increse = {correct_amp} m')
 """
 init_vol = interp(roseires_level,

@@ -29,8 +29,9 @@ class Solver:
         self.active_storage = (self.reach.downstream_boundary.lumped_storage is not None)
                 
         self.time_step, self.spatial_step = time_step, spatial_step
+        self.time_level = 0
         self.number_of_nodes = self.reach.length // self.spatial_step + 1
-        self.max_timesteps = simulation_time // self.time_step + 1
+        self.max_timelevels = simulation_time // self.time_step + 1
         
         if fit_spatial_step:
             self.fit_spatial_step()
@@ -38,26 +39,16 @@ class Solver:
         self.reach.initialize_conditions(n_nodes=self.number_of_nodes)
         self.num_celerity = self.spatial_step / self.time_step
 
-        self.areas = np.empty(shape=(self.max_timesteps, self.number_of_nodes), dtype=float)
-        self.flow = np.empty(shape=(self.max_timesteps, self.number_of_nodes), dtype=float)
+        self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
         
-        self.A_previous = None
-        self.Q_previous = None
-
-        self.A_current = None
-        self.Q_current = None
-
-        self.results = {
-            'area': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'flow_rate': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'velocity': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'depth': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'level': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'wave_celerity': np.zeros(shape=(1, self.number_of_nodes), dtype=float),
-            'outflow': np.array(self.reach.initial_conditions[:, 1], dtype=float)
-        }
+        self.velocity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.depth = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.level = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.wave_celerity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=float)
+        self.outflow = np.empty(shape=(self.max_timelevels), dtype=float)
+        self.peak_amplitude = np.zeros(shape=(self.number_of_nodes), dtype=float)
         
-        self.peak_amplitudes = None
         self.initial_depths = None
         self.type = None
         self.solved = False
@@ -67,139 +58,69 @@ class Solver:
     def fit_spatial_step(self):
         self.number_of_nodes = round(self.reach.length / self.spatial_step) + 1
         self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
-
-    def append_result(self):
-        self.results['area'] = np.vstack((self.results['area'], self.A_current))
-        self.results['flow_rate'] = np.vstack((self.results['flow_rate'], self.Q_current))
-                    
-        if self.initial_depths is None:
-            self.initial_depths = np.array(self.results['area'][0]) / np.array(self.reach.widths)
-            self.peak_amplitudes = np.zeros(shape=(self.number_of_nodes))
-        else:
-            amplitudes = np.array(self.A_current) / np.array(self.reach.widths) - self.initial_depths
-            for i in range(self.number_of_nodes):
-                self.peak_amplitudes[i] = max(amplitudes[i], self.peak_amplitudes[i])
-            
-        if self.type == 'preissmann' and self.active_storage:
-            self.results['outflow'] = np.append(self.results['outflow'], self.Q_out)
         
     def prepare_results(self) -> None:
-        self.results['velocity'] = self.results['flow_rate'] / self.results['area']
-        self.results['depth'] = self.results['area'] / self.reach.widths.reshape(1, -1)
-        self.results['level'] = self.results['depth'] + self.reach.bed_levels.reshape(1, -1)
-        self.results['wave_celerity'] = self.results['velocity'] + np.sqrt(self.results['depth'] * g)
+        self.velocity = self.flow / self.area
+        self.depth = self.area / self.reach.width
+        self.level = self.depth + self.reach.bed_level
+        self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
+        
+        ref = self.depth[0, :]
+        deviation = np.abs(self.depth - ref)
+        self.peak_amplitude = deviation.max(axis=0)
     
-    def save_results(self, size: tuple = (-1, -1), path: str = 'results') -> None:
+    def save_results(self, folder_path):
         """
-        Saves the results of the simulation in four .csv files, containing
-        the computed cross-sectional flow area, discharge, flow depth, and velocity.
-        The files are formatted with each row representing a time step and each
-        column representing a spatial point. The left-most column contains the
-        time coordinate starting at t=0.
-
-        Parameters
-        ----------
-        size : tuple of float
-            The number of temporal and spatial nodes to save.
-
-        Returns
-        -------
-        None.
-
+        Save all results to a single Excel workbook with multiple sheets.
         """
-        from src.utility import create_directory_if_not_exists
-        create_directory_if_not_exists(path)
-        
-        # Calculate steps
-        t_step = x_step = 1
-        
-        if size[0] > 1:
-            t_step = (len(self.results['area']) - 1) // (size[0] - 1)
-
-        if size[1] > 1:
-            x_step =  (self.number_of_nodes - 1) // (size[1] - 1)
-                    
-        # Compute the sets to be saved based on the steps
-        areas = [a[::x_step]
-                for a in self.results['area'][::t_step]]
-
-        flow_rates = [q[::x_step]
-                for q in self.results['flow_rate'][::t_step]]
-        
-        velocities = [v[::x_step]
-                for v in self.results['velocity'][::t_step]]
-        
-        levels = [levels[::x_step]
-                for levels in self.results['level'][::t_step]]
-        
-        depths = [h[::x_step]
-                for h in self.results['depth'][::t_step]]
-        
-        celerities = [c[::x_step]
-                for c in self.results['wave_celerity'][::t_step]]
-
-        data = {
-            'flow_area': areas,
-            'flow_rate': flow_rates,
-            'flow_depth': depths,
-            'flow_velocity': velocities,
-            'water_surface_level': levels,
-            'analytical_wave_celerity': celerities,
-            'bed_profile': [self.reach.bed_levels],
-            'widths': [self.reach.widths]
+        import pandas as pd
+        filename = folder_path + "\\results.xlsx"
+        arrays_2d = {
+            "Area": self.area,
+            "Flow": self.flow,
+            "Velocity": self.velocity,
+            "Depth": self.depth,
+            "Level": self.level,
+            "Wave celerity": self.wave_celerity,
         }
-        
-        # Create header with time column first, then spatial coordinates
-        spatial_header = [self.reach.upstream_boundary.chainage + x * self.spatial_step for x in range(0, self.number_of_nodes, x_step)]
-        header = ['Time'] + spatial_header
-        header_str = str(header)
-        for c in "[]' ":
-            header_str = header_str.replace(c, '')
-            
-        header_str += '\n'
 
-        # Generate time coordinates for each saved time step
-        time_coords = [i * t_step * self.time_step for i in range(len(areas))]
+        nt, nx = next(iter(arrays_2d.values())).shape
+        time = np.arange(nt) * self.time_step
+        distance = np.arange(nx) * self.spatial_step
 
-        # Save data
-        for key, value in data.items():
-            # Add time column to each row of data
-            value_with_time = []
-            for i, row in enumerate(value):
-                value_with_time.append([time_coords[i]] + row)
-            
-            value_str = str(value_with_time).replace('], [', '\n')
-            for c in "[]' ":
-                value_str = value_str.replace(c, '')
-            with open(path + f'//{key}.csv', 'w') as output_file:
-                output_file.write(header_str)
-                output_file.write(value_str)
-        
-        # Save peak amplitude profile
-        value_str = str([''] + self.peak_amplitudes)
-        for c in "[]' ":
-            value_str = value_str.replace(c, '')
-                
-        with open(path + '//Peak_amplitude_profile.csv', 'w') as output_file:
-                output_file.write(header_str)
-                output_file.write(value_str)
-                
-        # Save outflow hydrograph
-        header = ['Time'] + time_coords
-        header_str = str(header)
-        for c in "[]' ":
-            header_str = header_str.replace(c, '')
-        header_str += '\n'
-        value_str = str([''] + self.results['outflow'])
-        for c in "[]' ":
-            value_str = value_str.replace(c, '')
-                
-        with open(path + '//outflow.csv', 'w') as output_file:
-                output_file.write(header_str)
-                output_file.write(value_str)
+        with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+            # 2D arrays
+            for name, arr in arrays_2d.items():
+                df = pd.DataFrame(arr, index=time, columns=distance)
+                df.index.name = "Time"
+                df.columns.name = "Distance"
+                df.to_excel(writer, sheet_name=name)
+
+            # Outflow (1D time series)
+            df_out = pd.DataFrame({"outflow": self.outflow}, index=time)
+            df_out.index.name = "Time"
+            df_out.to_excel(writer, sheet_name="Outflow")
+
+            # Peak amplitude (row with distance headers)
+            df_peak = pd.DataFrame([self.peak_amplitude], columns=distance)
+            df_peak.index = ["Peak amplitude"]
+            df_peak.columns.name = "Distance"
+            df_peak.to_excel(writer, sheet_name="Peak amplitude")
+
+            # Width (row with distance headers)
+            df_width = pd.DataFrame([self.reach.width], columns=distance)
+            df_width.index = ["Width"]
+            df_width.columns.name = "Distance"
+            df_width.to_excel(writer, sheet_name="Width")
+
+            # Bed level (row with distance headers)
+            df_bed = pd.DataFrame([self.reach.bed_level], columns=distance)
+            df_bed.index = ["Bed level"]
+            df_bed.columns.name = "Distance"
+            df_bed.to_excel(writer, sheet_name="Bed level")
                 
         # Save data summary
-        with open(path + '//Data.txt', 'w') as output_file:
+        with open(folder_path + '\\Data.txt', 'w') as output_file:
             # Spatial step
             output_file.write(f'Spatial step = {self.spatial_step} m\n')
             
@@ -215,7 +136,7 @@ class Solver:
             output_file.write(f'Simulation duration = {seconds_to_hms(self.total_sim_duration)}\n')
             
             # Mass imbalance
-            x = np.array(self.results['flow_rate'])
+            x = np.array(self.flow)
             Q_in = x[:, 0]
             Q_out = x[:, -1]
             mass_imbalance = np.sum(Q_in - Q_out) * self.time_step
@@ -247,8 +168,6 @@ class Solver:
             output_file.write(f'Median volume arrival time = {seconds_to_hms(median_vol_arrival_time)}\n')
             output_file.write(f'Median volume travel time = {seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
             
-            
-                
     def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None):
         """
         Retrieves the whole or a part of the 2D list containing the computed values of the specified parameter.
@@ -286,20 +205,18 @@ class Solver:
         else:
             return reqursted
     
-    def finalize(self, time, verbose):
+    def finalize(self, verbose):
         self.solved = True
-        self.total_sim_duration = time
+        self.total_sim_duration = self.time_level * self.time_step
         
         self.prepare_results()
         
         if verbose >= 1:
             print("Simulation completed successfully.")
             
-    def area_at(self, i, current_time_level: bool, regularization: bool = None):
-        if current_time_level:
-            A = self.A_current[i]
-        else:
-            A = self.A_previous[i]
+    def area_at(self, i, k = None, regularization: bool = None):
+        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
+        A = self.area[k, i]
             
         if regularization is None:
             regularization = self.enforce_physicality
@@ -311,17 +228,15 @@ class Solver:
         
         return A
         
-    def flow_at(self, i, current_time_level: bool, chi_scaling: bool = None):
-        if current_time_level:
-            Q = self.Q_current[i]
-        else:
-            Q = self.Q_previous[i]
+    def flow_at(self, i, k = None, chi_scaling: bool = None):
+        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
+        Q = self.flow[k, i]
             
         if chi_scaling is None:
             chi_scaling = self.enforce_physicality
             
         if chi_scaling:
-            A_reg = self.area_at(i, current_time_level, 1)
+            A_reg = self.area_at(i, k, 1)
             h_min = 1e-4
             A_min = self.width_at(i) * h_min
             
@@ -331,23 +246,23 @@ class Solver:
         return Q
     
     def width_at(self, i):
-        return self.reach.widths[i]
+        return self.reach.width[i]
     
     def bed_slope_at(self, i):
         return self.reach.bed_slopes[i]
     
-    def depth_at(self, i, current_time_level: bool, regularization: bool = None):
-        return self.area_at(i, current_time_level, regularization) / self.width_at(i)
+    def depth_at(self, i, k = None, regularization: bool = None):
+        return self.area_at(i, k, regularization) / self.width_at(i)
     
-    def water_level_at(self, i, current_time_level: bool, regularization: bool = None):
-        return self.reach.bed_levels[i] + self.depth_at(i, current_time_level, regularization)
+    def water_level_at(self, i, k = None, regularization: bool = None):
+        return self.reach.bed_level[i] + self.depth_at(i, k, regularization)
     
     def wet_depth_at(self, i):
-        return self.reach.initial_conditions[i][0] / self.width_at(i)
+        return self.reach.initial_conditions[i, 0] / self.width_at(i)
     
-    def Se_at(self, i, current_time_level: bool, regularization: bool = None, chi_scaling: bool = None):
-        A = self.area_at(i, current_time_level, regularization)
-        Q = self.flow_at(i, current_time_level, chi_scaling)
+    def Se_at(self, i, k = None, regularization: bool = None, chi_scaling: bool = None):
+        A = self.area_at(i, k, regularization)
+        Q = self.flow_at(i, k, chi_scaling)
         
         return self.reach.Se(A, Q, i)
     
