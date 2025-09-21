@@ -27,7 +27,7 @@ solver = PreissmannSolver(reach=example_channel,
                           time_step=time_step,
                           spatial_step=spatial_step,
                           simulation_time=duration,
-                          enforce_physicality=False)
+                          regularization=False)
 
-solver.run(verbose=3, tolerance=tolerance)
+solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\akbari_firoozi\\results')

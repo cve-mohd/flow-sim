@@ -49,7 +49,7 @@ solver = PreissmannSolver(reach=example_channel,
                           time_step=3600,
                           spatial_step=1000,
                           simulation_time=24*3600,
-                          enforce_physicality=False)
+                          regularization=False)
 
-solver.run()
+solver.run(verbose=0)
 solver.save_results(folder_path='cases\\example\\results')
