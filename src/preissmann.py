@@ -53,8 +53,10 @@ class PreissmannSolver(Solver):
         
         self.theta = theta
         self.unknowns = None
+        self.scaling_vector = None
         self.type = 'preissmann'
         self.initialize_t0()
+        self.init_scaling_vector()
 
     def initialize_t0(self) -> None:
         """
@@ -91,7 +93,7 @@ class PreissmannSolver(Solver):
             R
             
         """
-        R = np.zeros(shape=(self.number_of_nodes*2, 1))
+        R = np.zeros(shape=(self.number_of_nodes*2))
         
         R[0]  = self.upstream_residual()
         R[-1] = self.downstream_residual()
@@ -180,14 +182,18 @@ class PreissmannSolver(Solver):
                 
                 R = self.compute_residual_vector()
                 J = self.compute_jacobian()
-                
+
+                if self.nondimensionalization:
+                    R = R / self.scaling_vector
+                    J = J / self.scaling_vector[:, np.newaxis]
+                                    
                 if np.isnan(R).any() or np.isnan(J).any():
                     raise ValueError("NaN in system assembly")
                 if np.linalg.cond(J) > 1e12:
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
                                 
                 delta = np.linalg.solve(J, -R)
-                self.unknowns += delta.flatten()
+                self.unknowns += delta
                 error = euclidean_norm(delta)
                 
                 if verbose == 3:
@@ -200,7 +206,7 @@ class PreissmannSolver(Solver):
                 
             total_iterations += iteration
             
-        print(f'Total iterations = {total_iterations}')                        
+        #print(f'Total iterations = {total_iterations}')                        
         super().finalize(verbose)
     
     def update_guesses(self) -> None:
@@ -241,7 +247,8 @@ class PreissmannSolver(Solver):
                                                                B=self.width_at(i=0),
                                                                Q=self.flow_at(i=0),
                                                                S0=self.bed_slope_at(i=0),
-                                                               n=self.reach.get_n(A=self.area_at(i=0), i=0))
+                                                               n=self.reach.get_n(A=self.area_at(i=0), i=0),
+                                                               nondimensionalization=self.nondimensionalization)
 
     def continuity_residual(self, i) -> float:
         """
@@ -342,7 +349,8 @@ class PreissmannSolver(Solver):
                                                                  B=self.width_at(i=-1),
                                                                  Q=self.flow_at(i=-1),
                                                                  S0=self.bed_slope_at(i=-1),
-                                                                 n=self.reach.get_n(A=self.area_at(i=-1), i=-1))
+                                                                 n=self.reach.get_n(A=self.area_at(i=-1), i=-1),
+                                                                 nondimensionalization=self.nondimensionalization)
         
     def storage_residual(self):
         vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1, i=-1)) * self.time_step
@@ -370,19 +378,25 @@ class PreissmannSolver(Solver):
         n = self.reach.get_n(A=A, i=0)
         S_0 = self.bed_slope_at(i=0)
                     
-        dU_dn = self.reach.upstream_boundary.df_dn(area=A, flow=Q, width=B, bed_slope=S_0, roughness=n)
+        dU_dn = self.reach.upstream_boundary.df_dn(area=A, flow=Q, width=B, bed_slope=S_0, roughness=n, nondimensionalization=self.nondimensionalization)
         
         dU = self.reach.upstream_boundary.df_dA(time=time,
                                                 A=A,
                                                 Q=Q,
                                                 B=B,
                                                 S0=S_0,
-                                                n=n) + dU_dn * self.reach.dn_dA(A=A, i=0)
+                                                n=n,
+                                                nondimensionalization=self.nondimensionalization) + dU_dn * self.reach.dn_dA(A=A, i=0)
         if not self.regularization:
             return dU
         else:
             dU_dAreg = dU            
-            dU_dQe = self.reach.upstream_boundary.df_dQ()
+            dU_dQe = self.reach.upstream_boundary.df_dQ(time=time,
+                                                        A=A,
+                                                        B=B,
+                                                        S0=S_0,
+                                                        n=n,
+                                                        nondimensionalization=self.nondimensionalization)
                         
             return dU_dAreg * self.dAreg_dA(i=0) + dU_dQe * self.dQe_dA(i=0)
     
@@ -401,7 +415,8 @@ class PreissmannSolver(Solver):
                                                 area=self.area_at(i=0),
                                                 width=self.width_at(i=0),
                                                 bed_slope=self.bed_slope_at(i=0),
-                                                roughness=self.reach.get_n(A=self.area_at(i=0), i=0))
+                                                roughness=self.reach.get_n(A=self.area_at(i=0), i=0),
+                                                nondimensionalization=self.nondimensionalization)
         
         if not self.regularization:
             return dU
@@ -741,7 +756,7 @@ class PreissmannSolver(Solver):
         n = self.reach.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(i=-1)
                 
-        dD_dn = self.reach.downstream_boundary.df_dn(area=A, flow=Q, width=B, bed_slope=S_0, roughness=n)
+        dD_dn = self.reach.downstream_boundary.df_dn(area=A, flow=Q, width=B, bed_slope=S_0, roughness=n, nondimensionalization=self.nondimensionalization)
         dn_dA = self.reach.dn_dA(A=A, i=-1)
         
         dD = self.reach.downstream_boundary.df_dA(time=time,
@@ -749,13 +764,21 @@ class PreissmannSolver(Solver):
                                                   Q=Q,
                                                   B=B,
                                                   S0=S_0,
-                                                  n=n) + dD_dn * dn_dA
+                                                  n=n,
+                                                  nondimensionalization=self.nondimensionalization) + dD_dn * dn_dA
         if not self.regularization:
             return dD
             
         else:
             dD_dAreg = dD
-            dD_dQe = self.reach.downstream_boundary.df_dQ()
+            dD_dQe = self.reach.downstream_boundary.df_dQ(
+                time=time,
+                A=A,
+                B=B,
+                S0=S_0,
+                n=n,
+                nondimensionalization=self.nondimensionalization
+                )
             
             return dD_dAreg * self.dAreg_dA(-1) + dD_dQe * self.dQe_dA(-1)
 
@@ -776,7 +799,8 @@ class PreissmannSolver(Solver):
             area=self.area_at(i=-1),
             width=self.width_at(i=-1),
             bed_slope=self.bed_slope_at(i=-1),
-            roughness=self.reach.get_n(self.area_at(i=-1), i=-1)
+            roughness=self.reach.get_n(self.area_at(i=-1), i=-1),
+            nondimensionalization=self.nondimensionalization
             )
         
         if not self.regularization:
@@ -796,7 +820,7 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        return self.reach.downstream_boundary.df_dYN(depth=self.depth_at(i=-1))
+        return self.reach.downstream_boundary.df_dYN(depth=self.depth_at(i=-1), nondimensionalization=self.nondimensionalization)
             
     def dSr_dQ(self):
         vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1, i=-1)) * self.time_step
@@ -815,7 +839,31 @@ class PreissmannSolver(Solver):
         
     def dSr_dYN(self):
         return 1
+    
+    def init_scaling_vector(self):
+        eps = 1e-12
+        
+        A_c = max(eps, np.mean(self.area[0, :]))
+        Q_c = max(eps, np.mean(self.flow[0, :]))
+        h_c = A_c / np.mean(self.reach.width)
+        
+        scale_cont = np.sqrt(A_c/self.time_step * Q_c/self.spatial_step)
+        scale_mom = np.power(Q_c/self.time_step * Q_c**2/A_c/self.spatial_step * g*A_c, 1.0/3.0)
+        
+        scale_cont = max(eps, scale_cont)
+        scale_mom = max(eps, scale_mom)
+        
+        vec = np.ones(shape=(2*self.number_of_nodes))
+
+        for i in range(self.number_of_nodes-1):
+            vec[1+2*i] = scale_cont
+            vec[2+2*i] = scale_mom
+                
+        if self.active_storage:
+            vec = np.append(vec, h_c)
             
+        self.scaling_vector = vec
+    
     def dAreg_dA(self, i, eps=1e-4):
         """
         Derivative of regularized area w.r.t. raw area.

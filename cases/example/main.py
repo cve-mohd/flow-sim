@@ -7,7 +7,7 @@ def trapzoid_hydrograph(t):
     initial_flow = 1000
     peak_flow = 10000
     
-    lag_time = 3*3600
+    lag_time = 0
     time_to_peak = 3*3600
     peak_time = 6*3600
     recession_time = 4*3600
@@ -32,7 +32,7 @@ us = Boundary(condition='flow_hydrograph',
 
 ds = Boundary(condition='normal_depth',
               bed_level=0,
-              chainage=20000)
+              chainage=3000)
 
 example_channel = Channel(width = 250,
                         initial_flow = us.hydrograph.get_at(0),
@@ -49,7 +49,8 @@ solver = PreissmannSolver(reach=example_channel,
                           time_step=3600,
                           spatial_step=1000,
                           simulation_time=24*3600,
-                          regularization=False)
+                          regularization=False,
+                          nondimensionalization=True)
 
 solver.run(verbose=0)
 solver.save_results(folder_path='cases\\example\\results')
