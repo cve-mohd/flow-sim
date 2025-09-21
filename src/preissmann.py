@@ -1,5 +1,5 @@
 from src.solver import Solver
-from src.reach import Reach
+from src.channel import Channel
 import numpy as np
 from scipy.constants import g
 from src.utility import euclidean_norm
@@ -20,7 +20,7 @@ class PreissmannSolver(Solver):
     """
 
     def __init__(self,
-                 reach: Reach,
+                 reach: Channel,
                  theta: int | float,
                  time_step: int | float,
                  spatial_step: int | float,
@@ -122,7 +122,7 @@ class PreissmannSolver(Solver):
         for row in range(1, 2 * self.number_of_nodes - 1, 2):
             spatial_node = (row - 1) // 2
             
-            jacobian_matrix[row, row - 1] = self.dC_dAi(i = spatial_node)
+            jacobian_matrix[row, row - 1] = self.dC_dAi(interval = spatial_node)
             jacobian_matrix[row, row + 0] = self.dC_dQi(i = spatial_node)
             jacobian_matrix[row, row + 1] = self.dC_dAiplus1(i = spatial_node)
             jacobian_matrix[row, row + 2] = self.dC_dQiplus1(i = spatial_node)
@@ -224,21 +224,13 @@ class PreissmannSolver(Solver):
         float
             The computed residual.
 
-        """
-        A = self.area_at(i=0)
-        h = self.depth_at(i=0)
-        B = self.width_at(i=0)
-        Q = self.flow_at(i=0)
-        S_0 = self.bed_slope_at(0)
-        n = self.reach.get_n(A=A, i=0)
-                
-        residual = self.reach.upstream_boundary.condition_residual(time=time,
-                                                                   depth=h,
-                                                                   width=B,
-                                                                   flow_rate=Q,
-                                                                   bed_slope=S_0,
-                                                                   roughness=n)
-        return residual
+        """  
+        return self.reach.upstream_boundary.condition_residual(time=time,
+                                                               depth=self.depth_at(i=0),
+                                                               width=self.width_at(i=0),
+                                                               flow_rate=self.flow_at(i=0),
+                                                               bed_slope=self.bed_slope_at(i=0),
+                                                               roughness=self.reach.get_n(A=self.area_at(i=0), i=0))
 
     def continuity_residual(self, i) -> float:
         """
@@ -255,17 +247,21 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        return self.time_diff(
-            k0_i0 = self.area_at(i, -1),
-            k0_i1 = self.area_at(i+1, -1),
-            k1_i0 = self.area_at(i),
-            k1_i1 = self.area_at(i+1)
-            ) + self.spatial_diff(
-                k0_i0 = self.flow_at(i, -1),
-                k0_i1 = self.flow_at(i+1, -1),
-                k1_i0 = self.flow_at(i),
-                k1_i1 = self.flow_at(i+1)
+        dA_dt = self.time_diff(
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
             )
+
+        dQ_dx = self.spatial_diff(
+                k_i=self.flow_at(k=-1, i=i),
+                k_i1=self.flow_at(k=-1, i=i+1),
+                k1_i=self.flow_at(i=i),
+                k1_i1=self.flow_at(i=i+1)
+            )
+
+        return dA_dt + dQ_dx
 
     def momentum_residual(self, i) -> float:
         """
@@ -281,35 +277,43 @@ class PreissmannSolver(Solver):
         float
             The computed residual.
 
-        """     
-        return self.time_diff(
-            k0_i0 = self.flow_at(i, -1),
-            k0_i1 = self.flow_at(i+1, -1),
-            k1_i0 = self.flow_at(i),
-            k1_i1 = self.flow_at(i+1)
-            ) + self.spatial_diff(
-                k0_i0 = self.flow_at(i, -1) ** 2 / self.area_at(i, -1),
-                k0_i1 = self.flow_at(i+1, -1) ** 2 / self.area_at(i+1, -1),
-                k1_i0 = self.flow_at(i) ** 2 / self.area_at(i),
-                k1_i1 = self.flow_at(i+1) ** 2 / self.area_at(i+1)
-            ) + g * self.cell_avg(
-                k0_i0=self.area_at(i, -1),
-                k0_i1=self.area_at(i+1, -1),
-                k1_i0=self.area_at(i),
-                k1_i1=self.area_at(i+1)
-            ) * (
-                self.spatial_diff(
-                    k0_i0=self.water_level_at(i, -1),
-                    k0_i1=self.water_level_at(i+1, -1),
-                    k1_i0=self.water_level_at(i),
-                    k1_i1=self.water_level_at(i+1)
-                ) + self.cell_avg(
-                    k0_i0=self.Se_at(i, -1),
-                    k0_i1=self.Se_at(i+1, -1),
-                    k1_i0=self.Se_at(i),
-                    k1_i1=self.Se_at(i+1)
-                )
+        """
+        dQ_dt = self.time_diff(
+            k_i=self.flow_at(k=-1, i=i),
+            k_i1=self.flow_at(k=-1, i=i+1),
+            k1_i=self.flow_at(i=i),
+            k1_i1=self.flow_at(i=i+1)
             )
+
+        dQ2A_dx = self.spatial_diff(
+            k_i=self.flow_at(k=-1, i=i) ** 2 / self.area_at(k=-1, i=i),
+            k_i1=self.flow_at(k=-1, i=i+1) ** 2 / self.area_at(k=-1, i=i+1),
+            k1_i=self.flow_at(i=i) ** 2 / self.area_at(i=i),
+            k1_i1=self.flow_at(i=i+1) ** 2 / self.area_at(i=i+1)
+            )
+
+        avg_A = self.cell_avg(
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
+            )
+
+        dY_dx = self.spatial_diff(
+            k_i=self.water_level_at(k=-1, i=i),
+            k_i1=self.water_level_at(k=-1, i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
+            )
+    
+        avg_Se = self.cell_avg(
+            k_i=self.Se_at(k=-1, i=i),
+            k_i1=self.Se_at(k=-1, i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
+            )
+
+        return dQ_dt + dQ2A_dx + g * avg_A * (dY_dx + avg_Se)
     
     def downstream_residual(self, time) -> float:
         """
@@ -321,31 +325,21 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        A = self.area_at(-1)
-        h = self.depth_at(-1)
-        B = self.width_at(-1)
-        n = self.reach.get_n(A=A, i=-1)
-        S_0 = self.bed_slope_at(-1)
-        Q = self.flow_at(-1)
+        return self.reach.downstream_boundary.condition_residual(time=time,
+                                                                 depth=self.depth_at(i=-1),
+                                                                 width=self.width_at(i=-1),
+                                                                 flow_rate=self.flow_at(i=-1),
+                                                                 bed_slope=self.bed_slope_at(i=-1),
+                                                                 roughness=self.reach.get_n(A=self.area_at(i=-1), i=-1))
         
-        residual = self.reach.downstream_boundary.condition_residual(time=time,
-                                                                     depth=h,
-                                                                     width=B,
-                                                                     flow_rate=Q,
-                                                                     bed_slope=S_0,
-                                                                     roughness=n)
-        
-        return residual
-
     def storage_residual(self):
-        vol_in = 0.5 * (self.flow_at(-1) + self.flow_at(-1, -1)) * self.time_step
-        Y_old = self.water_level_at(-1, -1)
+        vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1, i=-1)) * self.time_step
+        Y_old = self.water_level_at(k=-1, i=-1)
         
         target_Y, vol_out = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step, vol_in=vol_in, Y_old=Y_old)
         self.outflow[self.time_level] = vol_out / self.time_step
         
-        residual = self.reach.downstream_boundary.lumped_storage.stage - target_Y
-        return residual
+        return self.reach.downstream_boundary.lumped_storage.stage - target_Y
     
     def dU_dA(self) -> int:
         """
@@ -357,11 +351,11 @@ class PreissmannSolver(Solver):
             dU/dA
 
         """
-        A = self.area_at(0)
-        h = self.depth_at(0)
-        B = self.width_at(0)
+        A = self.area_at(i=0)
+        h = self.depth_at(i=0)
+        B = self.width_at(i=0)
         n = self.reach.get_n(A=A, i=0)
-        S_0 = self.bed_slope_at(0)
+        S_0 = self.bed_slope_at(i=0)
                     
         dU_dn = self.reach.upstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
         
@@ -405,17 +399,18 @@ class PreissmannSolver(Solver):
             dC/dA_(i+1)
 
         """
-        dC = 0.5 / self.time_step
-        
+        d_dA_dt_dA = self.time_diff(k1_i1=1)
+        d_dQ_dx_dA = 0
+
         if not self.regularization:
-            return dC
+            return d_dA_dt_dA + d_dQ_dx_dA
         else:
-            dC_dAreg = dC            
+            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dA
             dC_dQe = self.dC_dQiplus1(i, eff=True)
             
-            return dC_dAreg * self.dAreg_dA(i + 1) + dC_dQe * self.dQe_dA(i + 1)
+            return dC_dAreg * self.dAreg_dA(i+1) + dC_dQe * self.dQe_dA(i+1)
 
-    def dC_dAi(self, i) -> float:
+    def dC_dAi(self, interval) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the current spatial point.
@@ -426,15 +421,16 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = 0.5 / self.time_step
-        
+        d_dA_dt_dA = self.time_diff(k1_i=1)
+        d_dQ_dx_dA = 0
+
         if not self.regularization:
-            return dC
+            return d_dA_dt_dA + d_dQ_dx_dA
         else:
-            dC_dAreg = dC
-            dC_dQe = self.dC_dQi(i, eff=True)
+            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dA
+            dC_dQe = self.dC_dQi(interval, eff=True)
             
-            return dC_dAreg * self.dAreg_dA(i) + dC_dQe * self.dQe_dA(i)
+            return dC_dAreg * self.dAreg_dA(interval) + dC_dQe * self.dQe_dA(interval)
 
     def dC_dQiplus1(self, i, eff = False) -> float:
         """
@@ -447,13 +443,14 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = self.theta / self.spatial_step
-        
+        d_dA_dt_dQ = 0
+        d_dQ_dx_dQ = self.spatial_diff(k1_i1=1)
+
         if not self.regularization or eff:
-            return dC
+            return d_dA_dt_dQ + d_dQ_dx_dQ
         else:
-            dC_dQe = dC                        
-            return dC_dQe * self.dQe_dQ(i + 1)
+            dC_dQe = d_dA_dt_dQ + d_dQ_dx_dQ
+            return dC_dQe * self.dQe_dQ(i+1)
     
     def dC_dQi(self, i, eff = False) -> float:
         """
@@ -466,12 +463,13 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        dC = - self.theta / self.spatial_step
-        
+        d_dA_dt_dQ = 0
+        d_dQ_dx_dQ = self.spatial_diff(k1_i=1)
+
         if not self.regularization or eff:
-            return dC
+            return d_dA_dt_dQ + d_dQ_dx_dQ
         else:
-            dC_dQe = dC
+            dC_dQe = d_dA_dt_dQ + d_dQ_dx_dQ
             return dC_dQe * self.dQe_dQ(i)
 
     def dM_dAiplus1(self, i) -> float:
@@ -485,38 +483,48 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i+1)
-        Q = self.flow_at(i+1)
-        B = self.width_at(i+1)
+        # Flow variables:
+        A = self.area_at(i=i+1)
+        Q = self.flow_at(i=i+1)
+        
+        # Basic derivatives:
+        dY_dA = 1.0/self.width_at(i=i+1)
         dSe_dA = self.reach.dSe_dA(A, Q, i+1)
         
+        # Finite differences:
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, -1),
-            k0_i1=self.area_at(i+1, -1),
-            k1_i0=self.area_at(i),
-            k1_i1=self.area_at(i+1)
-        )
-        avg_Se = self.cell_avg(
-            k0_i0=self.Se_at(i, -1),
-            k0_i1=self.Se_at(i+1, -1),
-            k1_i0=self.Se_at(i),
-            k1_i1=self.Se_at(i+1)
-        )
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
+            )
+        
         dY_dx = self.spatial_diff(
-            k0_i0=self.water_level_at(i, -1),
-            k0_i1=self.water_level_at(i+1, -1),
-            k1_i0=self.water_level_at(i),
-            k1_i1=self.water_level_at(i+1)
-        )
+            k_i=self.water_level_at(k=-1, i=i),
+            k_i1=self.water_level_at(k=-1, i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
+            )
         
-        # -----------------
+        avg_Se = self.cell_avg(
+            k_i=self.Se_at(k=-1, i=i),
+            k_i1=self.Se_at(k=-1, i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
+            )
         
-        dM_dA = (
-            - self.theta / self.spatial_step * (Q/A) ** 2
-            + 0.5 * g * self.theta * (dY_dx + avg_Se)
-            + g * self.theta * avg_A * (1. / (self.spatial_step * B) + 0.5 * dSe_dA)
-        )
-                
+        # Derivatives of finite differences:
+        d_dQdt_dA = 0
+        d_dQ2Adx_dA = -self.spatial_diff(k1_i1=1) * (Q/A) ** 2
+        d_avgA_dA = self.cell_avg(k1_i1=1)
+        d_dYdx_dA = self.spatial_diff(k1_i1=1) * dY_dA
+        d_avgSe_dA = self.cell_avg(k1_i1=1) * dSe_dA
+        
+        # dM/dA:
+        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
+            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+            )
+        
         if not self.regularization:
             return dM_dA
         else:
@@ -534,37 +542,47 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i)
-        Q = self.flow_at(i)
-        B = self.width_at(i)
+        # Flow variables:
+        A = self.area_at(i=i)
+        Q = self.flow_at(i=i)
+        
+        # Basic derivatives:
+        dY_dA = 1.0/self.width_at(i=i)
         dSe_dA = self.reach.dSe_dA(A, Q, i)
         
+        # Finite differences:
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, -1),
-            k0_i1=self.area_at(i+1, -1),
-            k1_i0=self.area_at(i),
-            k1_i1=self.area_at(i+1)
-        )
-        avg_Se = self.cell_avg(
-            k0_i0=self.Se_at(i, -1),
-            k0_i1=self.Se_at(i+1, -1),
-            k1_i0=self.Se_at(i),
-            k1_i1=self.Se_at(i+1)
-        )
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
+            )
+        
         dY_dx = self.spatial_diff(
-            k0_i0=self.water_level_at(i, -1),
-            k0_i1=self.water_level_at(i+1, -1),
-            k1_i0=self.water_level_at(i),
-            k1_i1=self.water_level_at(i+1)
-        )
+            k_i=self.water_level_at(k=-1, i=i),
+            k_i1=self.water_level_at(k=-1, i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
+            )
         
-        # -----------------
+        avg_Se = self.cell_avg(
+            k_i=self.Se_at(k=-1, i=i),
+            k_i1=self.Se_at(k=-1, i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
+            )
         
-        dM_dA = (
-            + self.theta / self.spatial_step * (Q/A) ** 2
-            + 0.5 * g * self.theta * (dY_dx + avg_Se)
-            + g * self.theta * avg_A * (-1. / (self.spatial_step * B) + 0.5 * dSe_dA)
-        )
+        # Derivatives of finite differences:
+        d_dQdt_dA = 0
+        d_dQ2Adx_dA = -self.spatial_diff(k1_i=1) * (Q/A) ** 2
+        d_avgA_dA = self.cell_avg(k1_i=1)
+        d_dYdx_dA = self.spatial_diff(k1_i=1) * dY_dA
+        d_avgSe_dA = self.cell_avg(k1_i=1) * dSe_dA
+        
+        # dM/dA:
+        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
+            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+            )
         
         if not self.regularization:
             return dM_dA
@@ -582,25 +600,47 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i+1)
-        Q = self.flow_at(i+1)
+        # Flow variables:
+        A = self.area_at(i=i+1)
+        Q = self.flow_at(i=i+1)
+        
+        # Basic derivatives:
         dSe_dQ = self.reach.dSe_dQ(A, Q, i+1)
         
+        # Finite differences:
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, -1),
-            k0_i1=self.area_at(i+1, -1),
-            k1_i0=self.area_at(i),
-            k1_i1=self.area_at(i+1)
-        )
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
+            )
         
-        # -----------------
+        dY_dx = self.spatial_diff(
+            k_i=self.water_level_at(k=-1, i=i),
+            k_i1=self.water_level_at(k=-1, i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
+            )
         
-        dM_dQ = (
-            + 0.5 / self.time_step
-            + 2 * self.theta / self.spatial_step * Q / A
-            + 0.5 * self.theta * g * avg_A * dSe_dQ
-        )
+        avg_Se = self.cell_avg(
+            k_i=self.Se_at(k=-1, i=i),
+            k_i1=self.Se_at(k=-1, i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
+            )
         
+        # Derivatives of finite differences:
+        d_dQdt_dQ = self.time_diff(k1_i1=1)
+        d_dQ2Adx_dQ = self.spatial_diff(k1_i1=1) * 2*Q/A
+        d_avgA_dQ = 0
+        d_dYdx_dQ = 0
+        d_avgSe_dQ = self.cell_avg(k1_i1=1) * dSe_dQ
+        
+        # dM/dA:
+        dM_dQ = d_dQdt_dQ + d_dQ2Adx_dQ + g * (
+            avg_A * (d_dYdx_dQ + d_avgSe_dQ) + d_avgA_dQ * (dY_dx + avg_Se)
+            )
+    
         if not self.regularization or eff:
             return dM_dQ
         else:
@@ -617,25 +657,47 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i)
-        Q = self.flow_at(i)
+        # Flow variables:
+        A = self.area_at(i=i)
+        Q = self.flow_at(i=i)
+        
+        # Basic derivatives:
         dSe_dQ = self.reach.dSe_dQ(A, Q, i)
         
+        # Finite differences:
         avg_A = self.cell_avg(
-            k0_i0=self.area_at(i, -1),
-            k0_i1=self.area_at(i+1, -1),
-            k1_i0=self.area_at(i),
-            k1_i1=self.area_at(i+1)
-        )
+            k_i=self.area_at(k=-1, i=i),
+            k_i1=self.area_at(k=-1, i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
+            )
         
-        # -----------------
+        dY_dx = self.spatial_diff(
+            k_i=self.water_level_at(k=-1, i=i),
+            k_i1=self.water_level_at(k=-1, i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
+            )
         
-        dM_dQ = (
-            + 0.5 / self.time_step
-            - 2 * self.theta / self.spatial_step * Q / A
-            + 0.5 * self.theta * g * avg_A * dSe_dQ
-        )
+        avg_Se = self.cell_avg(
+            k_i=self.Se_at(k=-1, i=i),
+            k_i1=self.Se_at(k=-1, i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
+            )
         
+        # Derivatives of finite differences:
+        d_dQdt_dQ = self.time_diff(k1_i=1)
+        d_dQ2Adx_dQ = self.spatial_diff(k1_i=1) * 2*Q/A
+        d_avgA_dQ = 0
+        d_dYdx_dQ = 0
+        d_avgSe_dQ = self.cell_avg(k1_i=1) * dSe_dQ
+        
+        # dM/dA:
+        dM_dQ = d_dQdt_dQ + d_dQ2Adx_dQ + g * (
+            avg_A * (d_dYdx_dQ + d_avgSe_dQ) + d_avgA_dQ * (dY_dx + avg_Se)
+            )
+    
         if not self.regularization or eff:
             return dM_dQ
         else:
@@ -652,11 +714,11 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(-1)
-        h = self.depth_at(-1)
-        B = self.width_at(-1)
+        A = self.area_at(i=-1)
+        h = self.depth_at(i=-1)
+        B = self.width_at(i=-1)
         n = self.reach.get_n(A=A, i=-1)
-        S_0 = self.bed_slope_at(-1)
+        S_0 = self.bed_slope_at(i=-1)
                 
         dD_dn = self.reach.downstream_boundary.df_dn(depth=h, width=B, bed_slope=S_0, roughness=n)
         dn_dA = self.reach.dn_dA(A=A, i=-1)
@@ -707,8 +769,8 @@ class PreissmannSolver(Solver):
         return self.reach.downstream_boundary.df_dYN()
             
     def dSr_dQ(self):
-        vol_in = 0.5 * (self.flow_at(-1) + self.flow_at(-1, -1)) * self.time_step
-        Y_old = self.water_level_at(-1, -1)
+        vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1, i=-1)) * self.time_step
+        Y_old = self.water_level_at(k=-1, i=-1)
                 
         dSr_dvol = 0 - self.reach.downstream_boundary.lumped_storage.dY_new_dvol_in(self.time_step, vol_in, Y_old)
         dvol_dQ = 0.5 * self.time_step
@@ -742,7 +804,7 @@ class PreissmannSolver(Solver):
             
         """
         h_min = 1e-4
-        A_min = self.width_at(i) * h_min
+        A_min = self.width_at(i=i) * h_min
         A = self.area_at(i, 1, False)
         
         return 0.5 * (
@@ -770,7 +832,7 @@ class PreissmannSolver(Solver):
         """
         h_min = 1e-4
         
-        A_min = self.width_at(i) * h_min
+        A_min = self.width_at(i=i) * h_min
         A_reg = self.area_at(i, 1, True)
         Q = self.flow_at(i, 1, False)
         
@@ -793,25 +855,23 @@ class PreissmannSolver(Solver):
         """
         h_min = 1e-4
         
-        A_min = self.width_at(i) * h_min
+        A_min = self.width_at(i=i) * h_min
         A_reg = self.area_at(i, True, True)
         
         chi = A_reg / (A_reg + A_min)
         
         return chi
 
-    def time_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
-        return (k1_i1 + k1_i0 - k0_i1 - k0_i0) / (2 * self.time_step)
+    def time_diff(self, k1_i1 = 0, k1_i = 0, k_i1 = 0, k_i = 0):
+        return (k1_i1 + k1_i - k_i1 - k_i) / (2 * self.time_step)
     
-    def spatial_diff(self, k1_i1, k1_i0, k0_i1, k0_i0):
-        dx_k1 = (k1_i1 - k1_i0) / self.spatial_step
-        dx_k0 = (k0_i1 - k0_i0) / self.spatial_step
+    def spatial_diff(self, k1_i1 = 0, k1_i = 0, k_i1 = 0, k_i = 0):
+        dx_k1 = (k1_i1 - k1_i) / self.spatial_step
+        dx_k  = (k_i1  - k_i)  / self.spatial_step
+        return self.theta * dx_k1 + (1 - self.theta) * dx_k
         
-        return self.theta * dx_k1 + (1 - self.theta) * dx_k0
-        
-    def cell_avg(self, k1_i1, k1_i0, k0_i1, k0_i0):
-        k1 = (k1_i1 + k1_i0) * self.theta / 2
-        k2 = (k0_i1 + k0_i0) * (1 - self.theta) / 2
-        
+    def cell_avg(self, k1_i1 = 0, k1_i = 0, k_i1 = 0, k_i = 0):
+        k1 = 0.5 * self.theta * (k1_i1 + k1_i)
+        k2 = 0.5 * (1 - self.theta) * (k_i1 + k_i)
         return k1 + k2
     

@@ -1,4 +1,4 @@
-from src.reach import Reach
+from src.channel import Channel
 from src.boundary import Boundary
 from src.utility import Hydrograph, LumpedStorage
 from src.preissmann import PreissmannSolver
@@ -32,7 +32,7 @@ curve = import_area_curve(path='cases\\gerd_roseires\\input_data\\roseires_geome
 roseires_storage.set_area_curve(curve)
 Roseires.set_lumped_storage(roseires_storage)
 
-GERD_Roseires_system = Reach(width=widths[0],
+GERD_Roseires_system = Channel(width=widths[0],
                              initial_flow=hyd.get_at(0),
                              roughness=wet_n,
                              dry_roughness=dry_n,
@@ -50,7 +50,7 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           simulation_time=sim_duration,
                           enforce_physicality=enforce_physicality)
 
-solver.run(verbose=0, tolerance=tolerance)
+solver.run(verbose=2, tolerance=tolerance)
 solver.save_results(folder_path='cases\\gerd_roseires\\results')
 
 print("Simulation finished successfully.")

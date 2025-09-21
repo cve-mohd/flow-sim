@@ -1,4 +1,4 @@
-from src.reach import Reach
+from src.channel import Channel
 from src.boundary import Boundary
 from src.utility import Hydrograph
 from src.preissmann import PreissmannSolver
@@ -34,7 +34,7 @@ ds = Boundary(condition='normal_depth',
               bed_level=0,
               chainage=20000)
 
-example_channel = Reach(width = 250,
+example_channel = Channel(width = 250,
                         initial_flow = us.hydrograph.get_at(0),
                         roughness = 0.027,
                         upstream_boundary = us,
