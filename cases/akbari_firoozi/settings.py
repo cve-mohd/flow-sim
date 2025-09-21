@@ -1,5 +1,5 @@
 width = 120
-length = 29000
+length = 2000
 roughness = 0.023
 tolerance = 1e-4
 theta = 0.5

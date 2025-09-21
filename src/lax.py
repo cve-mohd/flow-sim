@@ -1,5 +1,5 @@
 from src.solver import Solver
-from src.reach import Reach
+from src.channel import Channel
 from scipy.constants import g
 
 class LaxSolver(Solver):
@@ -9,7 +9,7 @@ class LaxSolver(Solver):
         
     """
     def __init__(self,
-                 reach: Reach,
+                 reach: Channel,
                  temporal_step: int | float,
                  spatial_step: int | float,
                  secondary_boundary_conditions: tuple = ('constant', 'constant'),

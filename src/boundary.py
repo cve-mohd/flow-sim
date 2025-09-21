@@ -1,6 +1,5 @@
 from src.utility import RatingCurve, Hydrograph, Hydraulics, LumpedStorage
 
-
 class Boundary:
     def __init__(self,
                  condition: str,
@@ -76,7 +75,7 @@ class Boundary:
         return residual
         
     def df_dA(self, area = None, width = None, bed_slope = None, roughness = None):
-        dy_dA = 1. / width
+        dh_dA = 1/width
         
         if self.condition == 'flow_hydrograph':
             derivative = 0
@@ -85,7 +84,7 @@ class Boundary:
             if width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            derivative = dy_dA
+            derivative = dh_dA
         
         elif self.condition == 'normal_depth':
             if width is None or area is None or bed_slope is None or roughness is None:
@@ -99,13 +98,13 @@ class Boundary:
             
             stage = self.bed_level + area/width
             
-            derivative = 0 - self.rating_curve.derivative_wrt_stage(stage) * dy_dA
+            derivative = 0 - self.rating_curve.derivative_wrt_stage(stage) * dh_dA
             
         elif self.condition == 'stage_hydrograph':
             if width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            derivative = dy_dA
+            derivative = dh_dA
         
         return derivative
         

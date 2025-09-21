@@ -2,7 +2,7 @@ from src.boundary import Boundary
 from src.utility import Hydraulics
 import numpy as np
 
-class Reach:
+class Channel:
     """
     Represents a channel with hydraulic and geometric attributes.        
     """

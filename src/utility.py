@@ -21,7 +21,7 @@ def manhattan_norm(vector):
 
 def euclidean_norm(vector):
     vector = np.asarray(vector, dtype=np.float64)
-    return np.sum(np.square(vector)) ** 0.5
+    return np.sum(np.square(vector))**0.5
 
 def seconds_to_hms(seconds: int):
     if seconds < 0:
@@ -46,8 +46,8 @@ def compute_radii_curv(x_coords, y_coords):
     ddy = np.gradient(dy, s)
 
     # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
-    kappa = (dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5
-    radii = np.where(kappa != 0, 1./kappa, np.inf)
+    kappa = (dx * ddy - dy * ddx) / (dx**2 + dy**2)**1.5
+    radii = np.where(kappa != 0, 1/kappa, np.inf)
     
     return kappa, radii
 
@@ -106,10 +106,10 @@ class RatingCurve:
             x = stage + self.stage_shift
             
             if self.type == 'polynomial':
-                discharge = self.a * x ** 2 + self.b * x + self.c
+                discharge = self.a * x**2 + self.b * x + self.c
                 
             else:
-                discharge = self.a * x ** self.b
+                discharge = self.a * x**self.b
                     
             return discharge
 
@@ -193,7 +193,7 @@ class RatingCurve:
                 d = self.a * 2 * Y_ + self.b
         
         else:    
-            d = self.a * self.b * Y_ ** (self.b - 1)
+            d = self.a * self.b * Y_**(self.b - 1)
             
         return d
     
@@ -253,7 +253,7 @@ class Hydraulics:
     def normal_flow(A, S_0, n, B):
         R = Hydraulics.R(A, B)
         
-        Q = A * R ** (2./3) * np.abs(S_0) ** 0.5 / n
+        Q = A * R**(2/3) * np.abs(S_0)**0.5 / n
         if S_0 < 0:
             Q = -Q
                         
@@ -279,7 +279,7 @@ class Hydraulics:
         else:
             return roughness + (dry_roughness - roughness) * (depth - wet_depth) / transition_depth
         
-    def Sf(A: float, Q: float, n: float, B: float, approx_R = False) -> float:
+    def Sf(A: float, Q: float, n: float, B: float) -> float:
         """
         Computes the friction slope using Manning's equation.
         
@@ -297,7 +297,7 @@ class Hydraulics:
             
         """
         R = Hydraulics.R(A, B)
-        return n ** 2 * A ** -2 * R ** (-4. / 3) * Q * np.abs(Q)
+        return n**2 * A**-2 * R**(-4/3) * Q * np.abs(Q)
     
     def Sc(A: float, Q: float, n: float, B: float, rc: float) -> float:
         """
@@ -319,7 +319,7 @@ class Hydraulics:
         h = A/B
         Fr = Hydraulics.froude_num(A, Q, B)
         R = Hydraulics.R(A, B)
-        C = R**(1./6) / n
+        C = R**(1/6) / n
         f = 8 * g / C**2
         
         numerator = (2.86 * np.sqrt(f) + 2.07 * f) * h**2 * Fr**2
@@ -332,7 +332,7 @@ class Hydraulics:
         Fr = Hydraulics.froude_num(A, Q, B)
         R = Hydraulics.R(A, B)
         dR_dA = Hydraulics.dR_dA(A, B)
-        C = R**(1./6) / n
+        C = R**(1/6) / n
         f = 8 * g / C**2
         
         dh_dA = 1.0 / B
@@ -353,7 +353,7 @@ class Hydraulics:
         h = A / B
         Fr = Hydraulics.froude_num(A, Q, B)
         R = Hydraulics.R(A, B)
-        C = R**(1./6) / n
+        C = R**(1/6) / n
         f = 8 * g / C**2
         
         dFr_dQ = Fr / Q
@@ -371,10 +371,10 @@ class Hydraulics:
         h = A / B
         Fr = Hydraulics.froude_num(A, Q, B)
         R = Hydraulics.R(A, B)
-        C = R**(1./6) / n
+        C = R**(1/6) / n
         f = 8 * g / C**2
         
-        df_dn = 16.0 * g * n / R**(1./3)
+        df_dn = 16.0 * g * n / R**(1/3)
         
         sqrtf = np.sqrt(f)
         num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
@@ -405,8 +405,8 @@ class Hydraulics:
             float: dSf/dA
         """
         R = Hydraulics.R(A, B)
-        dSf_dA = -2 * n ** 2 * A ** -3 * R ** (-4. / 3) * Q * abs(Q)
-        dSf_dR = (-4./3) * n ** 2 * A ** -2 * R ** (-4./3 - 1) * Q * abs(Q)
+        dSf_dA = -2 * n**2 * A**-3 * R**(-4/3) * Q * abs(Q)
+        dSf_dR = (-4/3) * n**2 * A**-2 * R**(-4/3 - 1) * Q * abs(Q)
 
         return dSf_dA + dSf_dR * Hydraulics.dR_dA(A, B)
     
@@ -425,7 +425,7 @@ class Hydraulics:
         """
         R = Hydraulics.R(A, B)
         
-        d_Sf = 2 * abs(Q) * (n / (A * R ** (2. / 3))) ** 2
+        d_Sf = 2 * abs(Q) * (n / (A * R**(2/3)))**2
         
         return d_Sf
     
@@ -438,20 +438,22 @@ class Hydraulics:
         return A / P
     
     def dR_dA(A, B, approx = False):
+        """
+        dR/dA where R = A / P and P = B + 2A/B (unless approx=True, then P=B).
+        Correct formula: dR/dA = (P - A*dP/dA) / P**2
+        """
         if approx:
             P = B
-            dP_dA = 0
+            dP_dA = 0.0
         else:
-            P = B + 2. * A / B
-            dP_dA = 2. / B
-                
-        dR_dP = - A / P ** 2
-        
-        return dR_dP * dP_dA
+            P = B + 2.0 * A / B
+            dP_dA = 2.0 / B
+
+        return (P - A * dP_dA) / (P**2)
         
     def dSf_dn(A, Q, n, B):
         R = Hydraulics.R(A, B)
-        return 2 * n * A ** -2 * R ** (-4. / 3) * Q * abs(Q)
+        return 2 * n * A**-2 * R**(-4/3) * Q * abs(Q)
     
     def dn_dh(depth: float, steepness: float, roughness: float, dry_roughness: float, wet_depth: float):
         transition_depth = steepness * wet_depth
@@ -463,9 +465,9 @@ class Hydraulics:
         
     def dQn_dA(A, S, n, B):
         R = Hydraulics.R(A, B)
-        dQn_dR = (2./3) * A * R ** (2./3 - 1) * abs(S) ** 0.5 / n
+        dQn_dR = (2/3) * A * R**(2/3 - 1) * abs(S)**0.5 / n
         
-        dQn_dA = R ** (2./3) * abs(S) ** 0.5 / n + dQn_dR * Hydraulics.dR_dA(A, B)
+        dQn_dA = R**(2/3) * abs(S)**0.5 / n + dQn_dR * Hydraulics.dR_dA(A, B)
         if S < 0:
             dQn_dA = -dQn_dA
             
@@ -474,7 +476,7 @@ class Hydraulics:
     def dQn_dn(A, S_0, n, B):
         R = Hydraulics.R(A, B)
         
-        dQn_dn = -1 * A * R ** (2./3) * abs(S_0) ** 0.5 * n ** -2
+        dQn_dn = -1 * A * R**(2/3) * abs(S_0)**0.5 * n**-2
         
         if S_0 < 0:
             dQn_dn = -dQn_dn
@@ -520,7 +522,7 @@ class LumpedStorage:
         if Y_new <= self.min_stage:
             return 0.0
         
-        return 1. / self.area_at(Y_new)
+        return 1/self.area_at(Y_new)
             
     def set_area_curve(self, curve, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
@@ -546,13 +548,11 @@ class LumpedStorage:
             return self.alpha * np.interp(stage, self.area_curve[:, 0], self.area_gradient)
         
     def net_vol_change(self, Y1, Y2):
-        from numpy import linspace, trapezoid, min as min__, abs as abs__
-        
-        step =  min__(abs__(self.area_curve[1:, 0] - self.area_curve[:-1, 0]))
+        step =  np.min(np.abs(self.area_curve[1:, 0] - self.area_curve[:-1, 0]))
         n = int(abs(Y2-Y1)/step)
         if n > 2:
-            ys = linspace(Y1, Y2, n)
+            ys = np.linspace(Y1, Y2, n)
             areas = [self.area_at(y) for y in ys]
-            return trapezoid(areas, ys)
+            return np.trapezoid(areas, ys)
         else:
-            return 0.5 * (Y2-Y1) * (self.area_at(Y2)+self.area_at(Y1))
+            return 0.5 * (self.area_at(Y2) + self.area_at(Y1)) * (Y2 - Y1)

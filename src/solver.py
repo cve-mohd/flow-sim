@@ -1,4 +1,4 @@
-from src.reach import Reach
+from src.channel import Channel
 import numpy as np
 from scipy.constants import g
 import pandas as pd
@@ -6,7 +6,7 @@ from src.utility import create_directory_if_not_exists
 
 class Solver:
     def __init__(self,
-                 reach: Reach,
+                 reach: Channel,
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
@@ -215,7 +215,10 @@ class Solver:
         if verbose >= 1:
             print("Simulation completed successfully.")
             
-    def area_at(self, i, k = None, regularization: bool = None):
+    def area_at(self, k: int = None, i: int = None, regularization: bool = None):
+        if i is None:
+            raise ValueError("Spatial node must be specified.")
+        
         k = self.time_level if k is None else self.time_level-1 if k == -1 else k
         A = self.area[k, i]
             
@@ -224,12 +227,15 @@ class Solver:
         
         if regularization:
             h_min = 1e-4
-            A_min = self.width_at(i) * h_min
+            A_min = self.width_at(i=i) * h_min
             A = self.A_reg(A, A_min)
         
         return A
         
-    def flow_at(self, i, k = None, chi_scaling: bool = None):
+    def flow_at(self, k: int = None, i: int = None, chi_scaling: bool = None):
+        if i is None:
+            raise ValueError("Spatial node must be specified.")
+        
         k = self.time_level if k is None else self.time_level-1 if k == -1 else k
         Q = self.flow[k, i]
             
@@ -237,9 +243,9 @@ class Solver:
             chi_scaling = self.regularization
             
         if chi_scaling:
-            A_reg = self.area_at(i, k, 1)
+            A_reg = self.area_at(k=k, i=i, regularization=True)
             h_min = 1e-4
-            A_min = self.width_at(i) * h_min
+            A_min = self.width_at(i=i) * h_min
             
             chi = A_reg / (A_reg + A_min)
             Q = Q * chi
@@ -252,20 +258,19 @@ class Solver:
     def bed_slope_at(self, i):
         return self.reach.bed_slopes[i]
     
-    def depth_at(self, i, k = None, regularization: bool = None):
-        return self.area_at(i, k, regularization) / self.width_at(i)
+    def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
+        return self.area_at(k=k, i=i, regularization=regularization) / self.width_at(i)
     
-    def water_level_at(self, i, k = None, regularization: bool = None):
-        return self.reach.bed_level[i] + self.depth_at(i, k, regularization)
+    def water_level_at(self, k: int = None, i: int = None, regularization: bool = None):
+        return self.reach.bed_level[i] + self.depth_at(k=k, i=i, regularization=regularization)
     
     def wet_depth_at(self, i):
-        return self.reach.initial_conditions[i, 0] / self.width_at(i)
+        return self.reach.initial_conditions[i, 0] / self.width_at(i=i)
     
-    def Se_at(self, i, k = None, regularization: bool = None, chi_scaling: bool = None):
-        A = self.area_at(i, k, regularization)
-        Q = self.flow_at(i, k, chi_scaling)
-        
-        return self.reach.Se(A, Q, i)
+    def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
+        return self.reach.Se(A=self.area_at(k=k, i=i, regularization=regularization),
+                             Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
+                             i=i)
     
     def A_reg(self, A, eps=1e-4):
         """
@@ -285,7 +290,7 @@ class Solver:
             
         """
         h_min = 1e-4
-        A_min = self.width_at(0) * h_min
+        A_min = self.width_at(i=0) * h_min
         
         return A_min + 0.5 * (
             (A - A_min) + np.sqrt(
@@ -295,7 +300,7 @@ class Solver:
         
     def Q_eff(self, Q, A_reg):
         h_min = 1e-4
-        A_min = self.width_at(0) * h_min
+        A_min = self.width_at(i=0) * h_min
         
         chi = A_reg / (A_reg + A_min)
         return Q * chi
