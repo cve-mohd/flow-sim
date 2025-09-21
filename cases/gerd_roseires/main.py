@@ -50,7 +50,7 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           simulation_time=sim_duration,
                           enforce_physicality=enforce_physicality)
 
-solver.run(verbose=2, tolerance=tolerance)
+solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\gerd_roseires\\results')
 
 print("Simulation finished successfully.")

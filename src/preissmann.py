@@ -65,9 +65,9 @@ class PreissmannSolver(Solver):
         
         if self.active_storage:
             self.unknowns = np.append(self.unknowns, self.reach.downstream_boundary.lumped_storage.stage)
-            _, self.outflow[0] = self.reach.downstream_boundary.lumped_storage.mass_balance(self.time_step,
-                                                                                         self.flow[0, -1],
-                                                                                         self.water_level_at(-1, 0))
+            _, self.outflow[0] = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step,
+                                                                                            vol_in=self.flow[0, -1]*self.time_step,
+                                                                                            Y_old=self.water_level_at(k=0, i=-1))
 
     def compute_residual_vector(self) -> np.ndarray:
         """
