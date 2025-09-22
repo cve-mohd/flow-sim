@@ -49,7 +49,7 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           spatial_step=dx,
                           simulation_time=sim_duration,
                           regularization=enforce_physicality,
-                          nondimensionalization=True)
+                          normalize=True)
 
 solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\gerd_roseires\\results')
