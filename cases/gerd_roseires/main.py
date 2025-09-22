@@ -43,13 +43,12 @@ GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
 
-solver = PreissmannSolver(reach=GERD_Roseires_system,
+solver = PreissmannSolver(channel=GERD_Roseires_system,
                           theta=theta,
                           time_step=preissmann_dt,
                           spatial_step=dx,
                           simulation_time=sim_duration,
-                          regularization=enforce_physicality,
-                          normalize=True)
+                          regularization=enforce_physicality)
 
 solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\gerd_roseires\\results')

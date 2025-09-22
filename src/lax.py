@@ -46,7 +46,7 @@ class LaxSolver(Solver):
         None.
 
         """
-        for A, Q in self.reach.initial_conditions:
+        for A, Q in self.channel.initial_conditions:
             self.A_previous.append(A)
             self.Q_previous.append(Q)
 
@@ -105,13 +105,13 @@ class LaxSolver(Solver):
                     2 * self.flow_at(0, 0) - self.flow_at(1, 0))
         
     def compute_upstream_node(self, time):
-        BC = self.reach.upstream_boundary.condition
+        BC = self.channel.upstream_boundary.condition
         if BC == 'flow_hydrograph':
-            self.Q_current[0] = self.reach.upstream_boundary.hydrograph.get_at(time)
+            self.Q_current[0] = self.channel.upstream_boundary.hydrograph.get_at(time)
         
             if self.secondary_BC[0] == 'rating_curve':
-                stage = self.reach.upstream_boundary.rating_curve.stage(self.flow_at(0, 1))
-                depth = stage - self.reach.upstream_boundary.bed_level
+                stage = self.channel.upstream_boundary.rating_curve.stage(self.flow_at(0, 1))
+                depth = stage - self.channel.upstream_boundary.bed_level
                 self.A_current[0] = depth * self.width_at(0)        
             else:
                 self.A_current[0] = self.new_area(self.ghost_node()[0],
@@ -121,12 +121,12 @@ class LaxSolver(Solver):
             return
                 
         elif BC == 'stage_hydrograph':
-            stage = self.reach.upstream_boundary.hydrograph.get_at(time)
-            depth = stage - self.reach.upstream_boundary.bed_level
+            stage = self.channel.upstream_boundary.hydrograph.get_at(time)
+            depth = stage - self.channel.upstream_boundary.bed_level
             self.A_current[0] = depth * self.width_at(0)
         
             if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.reach.upstream_boundary.rating_curve.discharge(stage)
+                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
             else:
                 self.Q_current[0] = self.new_flow(self.ghost_node()[0],
                                                   self.A_previous[1],
@@ -134,11 +134,11 @@ class LaxSolver(Solver):
                                                   self.Q_previous[1])
                 
         elif BC == 'fixed_depth':
-            depth = self.reach.upstream_boundary.storage_stage - self.reach.upstream_boundary.bed_level
+            depth = self.channel.upstream_boundary.storage_stage - self.channel.upstream_boundary.bed_level
             self.A_current[0] = depth * self.width_at(0)
             
             if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.reach.upstream_boundary.rating_curve.discharge(stage)
+                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
             else:
                 self.Q_current[0] = self.new_flow(self.ghost_node()[0],
                                                   self.A_previous[1],
@@ -147,14 +147,14 @@ class LaxSolver(Solver):
             
         elif BC == 'normal_depth':        
             if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.reach.upstream_boundary.rating_curve.discharge(stage)
+                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
             else:
                 self.Q_current[0] = self.new_flow(self.ghost_node()[0],
                                                   self.A_previous[1],
                                                   self.ghost_node()[1],
                                                   self.Q_previous[1])
                 
-            self.A_current[0] = self.reach.normal_area(self.flow_at(0, 1), 0)
+            self.A_current[0] = self.channel.normal_area(self.flow_at(0, 1), 0)
         
         elif BC == 'rating_curve':
             if self.secondary_BC[0] == 'rating_curve':
@@ -165,7 +165,7 @@ class LaxSolver(Solver):
                                                   self.ghost_node()[1],
                                                   self.Q_previous[1])
             
-            self.Q_current[0] = self.reach.upstream_boundary.rating_curve.discharge(stage)
+            self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
 
     def compute_node(self, i, time):
         if i == 0:
@@ -204,23 +204,23 @@ class LaxSolver(Solver):
         else:
             raise ValueError("Invalid secondary downstream boundary condition.")
         
-        if self.reach.downstream_boundary.condition == 'fixed_depth':
+        if self.channel.downstream_boundary.condition == 'fixed_depth':
             if self.active_storage:
                 inflow = 0.5 * (self.Q_previous[-1] + self.Q_current[-1])
-                new_stage = self.reach.downstream_boundary.mass_balance(inflow, self.time_step)
-                self.reach.downstream_boundary.storage_stage = new_stage
+                new_stage = self.channel.downstream_boundary.mass_balance(inflow, self.time_step)
+                self.channel.downstream_boundary.storage_stage = new_stage
                 
-            self.A_current[-1] = self.reach.width * (self.reach.downstream_boundary.storage_stage - self.reach.downstream_boundary.bed_level)
+            self.A_current[-1] = self.channel.width * (self.channel.downstream_boundary.storage_stage - self.channel.downstream_boundary.bed_level)
             
-        elif self.reach.downstream_boundary.condition == 'normal_depth':
-            self.A_current[-1] = self.reach.manning_A(self.Q_current[-1])
+        elif self.channel.downstream_boundary.condition == 'normal_depth':
+            self.A_current[-1] = self.channel.manning_A(self.Q_current[-1])
             
-        elif self.reach.downstream_boundary.condition == 'rating_curve':
-            stage = self.reach.downstream_boundary.initial_stage
-            stage = self.reach.downstream_boundary.rating_curve.stage(self.Q_current[-1], stage)
-            depth = stage - self.reach.downstream_boundary.bed_level
+        elif self.channel.downstream_boundary.condition == 'rating_curve':
+            stage = self.channel.downstream_boundary.initial_stage
+            stage = self.channel.downstream_boundary.rating_curve.stage(self.Q_current[-1], stage)
+            depth = stage - self.channel.downstream_boundary.bed_level
             
-            self.A_current[-1] = depth * self.reach.width
+            self.A_current[-1] = depth * self.channel.width
             
         else:
             raise ValueError("Invalid downstream boundary condition.")
@@ -231,12 +231,12 @@ class LaxSolver(Solver):
         return A
 
     def new_flow(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
-        Sf_i_plus_1 = self.reach.friction_slope(A_i_plus_1, Q_i_plus_1)
-        Sf_i_minus_1 = self.reach.friction_slope(A_i_minus_1, Q_i_minus_1)
+        Sf_i_plus_1 = self.channel.friction_slope(A_i_plus_1, Q_i_plus_1)
+        Sf_i_minus_1 = self.channel.friction_slope(A_i_minus_1, Q_i_minus_1)
         
         Q = (
-             - g / (4 * self.reach.width * self.num_celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * self.time_step * self.reach.bed_slope * (A_i_plus_1 + A_i_minus_1)
+             - g / (4 * self.channel.width * self.num_celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
+             + 0.5 * g * self.time_step * self.channel.bed_slope * (A_i_plus_1 + A_i_minus_1)
              + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
              - 1. / (2 * self.num_celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
              - 0.5 * g * self.time_step * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
@@ -247,7 +247,7 @@ class LaxSolver(Solver):
     def check_cfl_all(self):
         for i, (A, Q) in enumerate(zip(self.A_current, self.Q_current)):
             V = Q / A
-            h = A / self.reach.width
+            h = A / self.channel.width
             
             if self.check_cfl_condition(V, h) == False:
                 analytical_celerity = max(V + (g * h) ** 0.5, V - (g * h) ** 0.5)
