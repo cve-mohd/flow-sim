@@ -22,7 +22,7 @@ example_channel = Channel(width=width,
                         downstream_boundary=ds,
                         interpolation_method='steady-state')
 
-solver = PreissmannSolver(reach=example_channel,
+solver = PreissmannSolver(channel=example_channel,
                           theta=theta,
                           time_step=time_step,
                           spatial_step=spatial_step,

@@ -132,19 +132,3 @@ class Boundary:
         else:
             return 0
     
-    def residual_scale(self):
-        if self.condition == 'flow_hydrograph':
-            return 1
-        
-        elif self.condition == 'rating_curve':
-            return 1
-        
-        elif self.condition == 'normal_depth':
-            return 1
-            
-        elif self.condition == 'fixed_depth':
-            return 0
-        
-        elif self.condition == 'stage_hydrograph':
-            return 0
-        

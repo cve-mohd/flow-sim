@@ -44,13 +44,12 @@ example_channel = Channel(width = 250,
 #example_channel.set_intermediate_bed_levels([510], [8000])
 #example_channel.set_intermediate_widths([400], [26000])
 
-solver = PreissmannSolver(reach=example_channel,
+solver = PreissmannSolver(channel=example_channel,
                           theta=0.8,
                           time_step=3600,
                           spatial_step=1000,
                           simulation_time=24*3600,
-                          regularization=False,
-                          normalize=True)
+                          regularization=False)
 
 solver.run(verbose=0)
 solver.save_results(folder_path='cases\\example\\results')

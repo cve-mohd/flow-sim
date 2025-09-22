@@ -6,7 +6,7 @@ from src.utility import create_directory_if_not_exists
 
 class Solver:
     def __init__(self,
-                 reach: Channel,
+                 channel: Channel,
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
@@ -26,18 +26,18 @@ class Solver:
             Spatial step for the simulation in meters.
             
         """
-        self.reach = reach
-        self.active_storage = (self.reach.downstream_boundary.lumped_storage is not None)
+        self.channel = channel
+        self.active_storage = (self.channel.downstream_boundary.lumped_storage is not None)
                 
         self.time_step, self.spatial_step = time_step, spatial_step
         self.time_level = 0
-        self.number_of_nodes = self.reach.length // self.spatial_step + 1
+        self.number_of_nodes = self.channel.length // self.spatial_step + 1
         self.max_timelevels = simulation_time // self.time_step + 1
         
         if fit_spatial_step:
             self.fit_spatial_step()
             
-        self.reach.initialize_conditions(n_nodes=self.number_of_nodes)
+        self.channel.initialize_conditions(n_nodes=self.number_of_nodes)
         self.num_celerity = self.spatial_step / self.time_step
 
         self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
@@ -58,13 +58,13 @@ class Solver:
         self.normalize = normalize
 
     def fit_spatial_step(self):
-        self.number_of_nodes = round(self.reach.length / self.spatial_step) + 1
-        self.spatial_step = self.reach.length / (self.number_of_nodes - 1)
+        self.number_of_nodes = round(self.channel.length / self.spatial_step) + 1
+        self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
         
     def prepare_results(self) -> None:
         self.velocity = self.flow / self.area
-        self.depth = self.area / self.reach.width
-        self.level = self.depth + self.reach.bed_level
+        self.depth = self.area / self.channel.width
+        self.level = self.depth + self.channel.bed_level
         self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
         
         ref = self.depth[0, :]
@@ -111,13 +111,13 @@ class Solver:
             df_peak.to_excel(writer, sheet_name="Peak amplitude")
 
             # Width (row with distance headers)
-            df_width = pd.DataFrame([self.reach.width], columns=distance)
+            df_width = pd.DataFrame([self.channel.width], columns=distance)
             df_width.index = ["Width"]
             df_width.columns.name = "Distance"
             df_width.to_excel(writer, sheet_name="Width")
 
             # Bed level (row with distance headers)
-            df_bed = pd.DataFrame([self.reach.bed_level], columns=distance)
+            df_bed = pd.DataFrame([self.channel.bed_level], columns=distance)
             df_bed.index = ["Bed level"]
             df_bed.columns.name = "Distance"
             df_bed.to_excel(writer, sheet_name="Bed level")
@@ -255,22 +255,22 @@ class Solver:
         return Q
     
     def width_at(self, i):
-        return self.reach.width[i]
+        return self.channel.width[i]
     
     def bed_slope_at(self, i):
-        return self.reach.bed_slopes[i]
+        return self.channel.bed_slopes[i]
     
     def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
         return self.area_at(k=k, i=i, regularization=regularization) / self.width_at(i)
     
     def water_level_at(self, k: int = None, i: int = None, regularization: bool = None):
-        return self.reach.bed_level[i] + self.depth_at(k=k, i=i, regularization=regularization)
+        return self.channel.bed_level[i] + self.depth_at(k=k, i=i, regularization=regularization)
     
     def wet_depth_at(self, i):
-        return self.reach.initial_conditions[i, 0] / self.width_at(i=i)
+        return self.channel.initial_conditions[i, 0] / self.width_at(i=i)
     
     def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
-        return self.reach.Se(A=self.area_at(k=k, i=i, regularization=regularization),
+        return self.channel.Se(A=self.area_at(k=k, i=i, regularization=regularization),
                              Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
                              i=i)
     

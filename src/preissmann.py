@@ -20,14 +20,13 @@ class PreissmannSolver(Solver):
     """
 
     def __init__(self,
-                 reach: Channel,
+                 channel: Channel,
                  theta: int | float,
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
                  fit_spatial_step: bool = True,
-                 regularization: bool = True,
-                 normalize: bool =True):
+                 regularization: bool = True):
         """
         Initializes the class.
 
@@ -43,18 +42,15 @@ class PreissmannSolver(Solver):
             Spatial step for the simulation in meters.
             
         """
-        super().__init__(reach=reach,
+        super().__init__(channel=channel,
                          time_step=time_step,
                          spatial_step=spatial_step,
                          simulation_time=simulation_time,
                          regularization=regularization,
-                         fit_spatial_step=fit_spatial_step,
-                         normalize=normalize)
+                         fit_spatial_step=fit_spatial_step)
         
         self.theta = theta
         self.unknowns = None
-        self.R_scales = np.ones(shape=(2*self.number_of_nodes + 1*self.active_storage), dtype=np.float64)
-        self.X_scales = np.ones(shape=(2*self.number_of_nodes + 1*self.active_storage), dtype=np.float64)
         self.type = 'preissmann'
         self.initialize_t0()
 
@@ -68,13 +64,13 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.area[0, :] = self.reach.initial_conditions[:, 0]
-        self.flow[0, :] = self.reach.initial_conditions[:, 1]
-        self.unknowns = self.reach.initial_conditions.flatten()
+        self.area[0, :] = self.channel.initial_conditions[:, 0]
+        self.flow[0, :] = self.channel.initial_conditions[:, 1]
+        self.unknowns = self.channel.initial_conditions.flatten()
         
         if self.active_storage:
-            self.unknowns = np.append(self.unknowns, self.reach.downstream_boundary.lumped_storage.stage)
-            _, self.outflow[0] = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step,
+            self.unknowns = np.append(self.unknowns, self.channel.downstream_boundary.lumped_storage.stage)
+            _, self.outflow[0] = self.channel.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step,
                                                                                             vol_in=self.flow[0, -1]*self.time_step,
                                                                                             Y_old=self.water_level_at(k=0, i=-1))
 
@@ -178,11 +174,6 @@ class PreissmannSolver(Solver):
                 
                 R = self.compute_residual_vector()
                 J = self.compute_jacobian()
-                if self.normalize:
-                    self.update_scales()
-                    R = R / self.R_scales
-                    J = J / self.R_scales[:, None]
-                    J = J * self.X_scales[None, :]
                                                         
                 if np.isnan(R).any() or np.isnan(J).any():
                     raise ValueError("NaN in system assembly")
@@ -190,11 +181,8 @@ class PreissmannSolver(Solver):
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
                                 
                 delta = np.linalg.solve(J, -R)
-                
-                if self.normalize:
-                    delta = delta * self.X_scales
-                
                 self.unknowns += delta
+                
                 error = euclidean_norm(delta)
                 
                 if verbose == 3:
@@ -207,7 +195,6 @@ class PreissmannSolver(Solver):
                 
             total_iterations += iteration
             
-        print(f'Total iterations = {total_iterations}')                        
         super().finalize(verbose)
     
     def update_guesses(self) -> None:
@@ -222,12 +209,12 @@ class PreissmannSolver(Solver):
         if self.active_storage:
             self.area[self.time_level, :] = self.unknowns[ :-1:2]
             self.flow[self.time_level, :] = self.unknowns[1:-1:2]
-            self.reach.downstream_boundary.lumped_storage.stage = float(self.unknowns[-1])
+            self.channel.downstream_boundary.lumped_storage.stage = float(self.unknowns[-1])
         else:
             self.area[self.time_level] = self.unknowns[ ::2]
             self.flow[self.time_level] = self.unknowns[1::2]
         
-    def upstream_residual(self, k = None) -> float:
+    def upstream_residual(self) -> float:
         """
         Computes the residual of the upstream boundary condition equation.
 
@@ -242,17 +229,16 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        k = self.time_level if k is None else k
         time = self.time_level * self.time_step
         
-        return self.reach.upstream_boundary.condition_residual(time=time,
-                                                               depth=self.depth_at(k=k, i=0),
+        return self.channel.upstream_boundary.condition_residual(time=time,
+                                                               depth=self.depth_at(i=0),
                                                                width=self.width_at(i=0),
-                                                               flow_rate=self.flow_at(k=k, i=0),
+                                                               flow_rate=self.flow_at(i=0),
                                                                bed_slope=self.bed_slope_at(i=0),
-                                                               roughness=self.reach.get_n(A=self.area_at(k=k, i=0), i=0))
+                                                               roughness=self.channel.get_n(A=self.area_at(i=0), i=0))
 
-    def continuity_residual(self, i, k = None) -> float:
+    def continuity_residual(self, i) -> float:
         """
         Computes the residual of the continuity equation for a specific node.
 
@@ -267,25 +253,23 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        k = self.time_level if k is None else k
-        
         dA_dt = self.time_diff(
-            k_i=self.area_at(k=k-1, i=i),
-            k_i1=self.area_at(k=k-1, i=i+1),
-            k1_i=self.area_at(k=k, i=i),
-            k1_i1=self.area_at(k=k, i=i+1)
+            k_i=self.area_at(k=-1,i=i),
+            k_i1=self.area_at(k=-1,i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
             )
 
         dQ_dx = self.spatial_diff(
-                k_i=self.flow_at(k=k-1, i=i),
-                k_i1=self.flow_at(k=k-1, i=i+1),
-                k1_i=self.flow_at(k=k, i=i),
-                k1_i1=self.flow_at(k=k, i=i+1)
+                k_i=self.flow_at(k=-1,i=i),
+                k_i1=self.flow_at(k=-1,i=i+1),
+                k1_i=self.flow_at(i=i),
+                k1_i1=self.flow_at(i=i+1)
             )
 
         return dA_dt + dQ_dx
 
-    def momentum_residual(self, i, k = None) -> float:
+    def momentum_residual(self, i) -> float:
         """
         Computes the residual of the momentum equation for a specific node.
 
@@ -300,46 +284,44 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        k = self.time_level if k is None else k
-        
         dQ_dt = self.time_diff(
-            k_i=self.flow_at(k=k-1, i=i),
-            k_i1=self.flow_at(k=k-1, i=i+1),
-            k1_i=self.flow_at(k=k, i=i),
-            k1_i1=self.flow_at(k=k, i=i+1)
+            k_i=self.flow_at(k=-1,i=i),
+            k_i1=self.flow_at(k=-1,i=i+1),
+            k1_i=self.flow_at(i=i),
+            k1_i1=self.flow_at(i=i+1)
             )
 
         dQ2A_dx = self.spatial_diff(
-            k_i=self.flow_at(k=k-1, i=i) ** 2 / self.area_at(k=k-1, i=i),
-            k_i1=self.flow_at(k=k-1, i=i+1) ** 2 / self.area_at(k=k-1, i=i+1),
-            k1_i=self.flow_at(k=k, i=i) ** 2 / self.area_at(k=k, i=i),
-            k1_i1=self.flow_at(k=k, i=i+1) ** 2 / self.area_at(k=k, i=i+1)
+            k_i=self.flow_at(k=-1,i=i) ** 2 / self.area_at(k=-1,i=i),
+            k_i1=self.flow_at(k=-1,i=i+1) ** 2 / self.area_at(k=-1,i=i+1),
+            k1_i=self.flow_at(i=i) ** 2 / self.area_at(i=i),
+            k1_i1=self.flow_at(i=i+1) ** 2 / self.area_at(i=i+1)
             )
 
         avg_A = self.cell_avg(
-            k_i=self.area_at(k=k-1, i=i),
-            k_i1=self.area_at(k=k-1, i=i+1),
-            k1_i=self.area_at(k=k, i=i),
-            k1_i1=self.area_at(k=k, i=i+1)
+            k_i=self.area_at(k=-1,i=i),
+            k_i1=self.area_at(k=-1,i=i+1),
+            k1_i=self.area_at(i=i),
+            k1_i1=self.area_at(i=i+1)
             )
 
         dY_dx = self.spatial_diff(
-            k_i=self.water_level_at(k=k-1, i=i),
-            k_i1=self.water_level_at(k=k-1, i=i+1),
-            k1_i=self.water_level_at(k=k, i=i),
-            k1_i1=self.water_level_at(k=k, i=i+1)
+            k_i=self.water_level_at(k=-1,i=i),
+            k_i1=self.water_level_at(k=-1,i=i+1),
+            k1_i=self.water_level_at(i=i),
+            k1_i1=self.water_level_at(i=i+1)
             )
     
         avg_Se = self.cell_avg(
-            k_i=self.Se_at(k=k-1, i=i),
-            k_i1=self.Se_at(k=k-1, i=i+1),
-            k1_i=self.Se_at(k=k, i=i),
-            k1_i1=self.Se_at(k=k, i=i+1)
+            k_i=self.Se_at(k=-1,i=i),
+            k_i1=self.Se_at(k=-1,i=i+1),
+            k1_i=self.Se_at(i=i),
+            k1_i1=self.Se_at(i=i+1)
             )
 
         return dQ_dt + dQ2A_dx + g * avg_A * (dY_dx + avg_Se)
     
-    def downstream_residual(self, k = None) -> float:
+    def downstream_residual(self) -> float:
         """
         Computes the residual of the downstream boundary condition equation.
 
@@ -349,26 +331,23 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        k = self.time_level if k is None else k
-        time = k * self.time_step
+        time = self.time_level * self.time_step
         
-        return self.reach.downstream_boundary.condition_residual(time=time,
-                                                                 depth=self.depth_at(k=k, i=-1),
+        return self.channel.downstream_boundary.condition_residual(time=time,
+                                                                 depth=self.depth_at(i=-1),
                                                                  width=self.width_at(i=-1),
-                                                                 flow_rate=self.flow_at(k=k, i=-1),
+                                                                 flow_rate=self.flow_at(i=-1),
                                                                  bed_slope=self.bed_slope_at(i=-1),
-                                                                 roughness=self.reach.get_n(A=self.area_at(k=k, i=-1), i=-1))
+                                                                 roughness=self.channel.get_n(A=self.area_at(i=-1), i=-1))
         
-    def storage_residual(self, k = None):
-        k = self.time_level if k is None else k
+    def storage_residual(self):
+        vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1,i=-1)) * self.time_step
+        Y_old = self.water_level_at(k=-1,i=-1)
         
-        vol_in = 0.5 * (self.flow_at(k=k, i=-1) + self.flow_at(k=k-1, i=-1)) * self.time_step
-        Y_old = self.water_level_at(k=k-1, i=-1)
-        
-        target_Y, vol_out = self.reach.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step, vol_in=vol_in, Y_old=Y_old)
+        target_Y, vol_out = self.channel.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step, vol_in=vol_in, Y_old=Y_old)
         self.outflow[self.time_level] = vol_out / self.time_step
         
-        return self.reach.downstream_boundary.lumped_storage.stage - target_Y
+        return self.channel.downstream_boundary.lumped_storage.stage - target_Y
     
     def dU_dA(self) -> int:
         """
@@ -382,20 +361,20 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i=0)
         B = self.width_at(i=0)
-        n = self.reach.get_n(A=A, i=0)
+        n = self.channel.get_n(A=A, i=0)
         S_0 = self.bed_slope_at(i=0)
                     
-        dU_dn = self.reach.upstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
+        dU_dn = self.channel.upstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
         
-        dU = self.reach.upstream_boundary.df_dA(area=A,
+        dU = self.channel.upstream_boundary.df_dA(area=A,
                                                 width=B,
                                                 bed_slope=S_0,
-                                                roughness=n) + dU_dn * self.reach.dn_dA(A=A, i=0)
+                                                roughness=n) + dU_dn * self.channel.dn_dA(A=A, i=0)
         if not self.regularization:
             return dU
         else:
             dU_dAreg = dU            
-            dU_dQe = self.reach.upstream_boundary.df_dQ()
+            dU_dQe = self.channel.upstream_boundary.df_dQ()
                         
             return dU_dAreg * self.dAreg_dA(i=0) + dU_dQe * self.dQe_dA(i=0)
     
@@ -409,7 +388,7 @@ class PreissmannSolver(Solver):
             dU/dQ
 
         """
-        dU = self.reach.upstream_boundary.df_dQ()
+        dU = self.channel.upstream_boundary.df_dQ()
         
         if not self.regularization:
             return dU
@@ -517,7 +496,7 @@ class PreissmannSolver(Solver):
         
         # Basic derivatives:
         dY_dA = 1.0/self.width_at(i=i+1)
-        dSe_dA = self.reach.dSe_dA(A, Q, i+1)
+        dSe_dA = self.channel.dSe_dA(A, Q, i+1)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -576,7 +555,7 @@ class PreissmannSolver(Solver):
         
         # Basic derivatives:
         dY_dA = 1.0/self.width_at(i=i)
-        dSe_dA = self.reach.dSe_dA(A, Q, i)
+        dSe_dA = self.channel.dSe_dA(A, Q, i)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -633,7 +612,7 @@ class PreissmannSolver(Solver):
         Q = self.flow_at(i=i+1)
         
         # Basic derivatives:
-        dSe_dQ = self.reach.dSe_dQ(A, Q, i+1)
+        dSe_dQ = self.channel.dSe_dQ(A, Q, i+1)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -690,7 +669,7 @@ class PreissmannSolver(Solver):
         Q = self.flow_at(i=i)
         
         # Basic derivatives:
-        dSe_dQ = self.reach.dSe_dQ(A, Q, i)
+        dSe_dQ = self.channel.dSe_dQ(A, Q, i)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -746,13 +725,13 @@ class PreissmannSolver(Solver):
         A = self.area_at(i=-1)
         Q = self.flow_at(i=-1)
         B = self.width_at(i=-1)
-        n = self.reach.get_n(A=A, i=-1)
+        n = self.channel.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(i=-1)
                 
-        dD_dn = self.reach.downstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
-        dn_dA = self.reach.dn_dA(A=A, i=-1)
+        dD_dn = self.channel.downstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
+        dn_dA = self.channel.dn_dA(A=A, i=-1)
         
-        dD = self.reach.downstream_boundary.df_dA(area=A,
+        dD = self.channel.downstream_boundary.df_dA(area=A,
                                                   width=B,
                                                   bed_slope=S_0,
                                                   roughness=n) + dD_dn * dn_dA
@@ -761,7 +740,7 @@ class PreissmannSolver(Solver):
             
         else:
             dD_dAreg = dD
-            dD_dQe = self.reach.downstream_boundary.df_dQ()
+            dD_dQe = self.channel.downstream_boundary.df_dQ()
             
             return dD_dAreg * self.dAreg_dA(i=-1) + dD_dQe * self.dQe_dA(i=-1)
 
@@ -777,7 +756,7 @@ class PreissmannSolver(Solver):
 
         """
         time = self.time_level * self.time_step
-        dD = self.reach.downstream_boundary.df_dQ()
+        dD = self.channel.downstream_boundary.df_dQ()
         
         if not self.regularization:
             return dD
@@ -796,13 +775,13 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        return self.reach.downstream_boundary.df_dYN()
+        return self.channel.downstream_boundary.df_dYN()
             
     def dSr_dQ(self):
         vol_in = 0.5 * (self.flow_at(i=-1) + self.flow_at(k=-1, i=-1)) * self.time_step
         Y_old = self.water_level_at(k=-1, i=-1)
                 
-        dSr_dvol = 0 - self.reach.downstream_boundary.lumped_storage.dY_new_dvol_in(self.time_step, vol_in, Y_old)
+        dSr_dvol = 0 - self.channel.downstream_boundary.lumped_storage.dY_new_dvol_in(self.time_step, vol_in, Y_old)
         dvol_dQ = 0.5 * self.time_step
         
         dSr = dSr_dvol * dvol_dQ
@@ -816,52 +795,6 @@ class PreissmannSolver(Solver):
     def dSr_dYN(self):
         return 1
     
-    def update_scales(self):
-        eps = 1
-        k1, k0 = self.time_level-1, max(self.time_level-2, 0)
-
-        us_sc = self.reach.upstream_boundary.residual_scale()
-        ds_sc = self.reach.downstream_boundary.residual_scale()
-        
-        for i in range(self.number_of_nodes):
-            A = self.area_at(k=k1, i=i)
-            Q = self.flow_at(k=k1, i=i)
-            A_prev = self.area_at(k=k0, i=i)
-            Q_prev = self.flow_at(k=k0, i=i)
-            
-            dA = A - A_prev
-            dQ = Q - Q_prev
-            dh = dA / self.width_at(i=i)
-            Se = self.Se_at(k=k1, i=i)
-
-            if i == 0:
-                self.R_scales[0] = max(abs(us_sc*dQ + (1-us_sc)*dh), eps)
-            if i == self.number_of_nodes-1:
-                self.R_scales[-1 - 1*self.active_storage] = max(abs(ds_sc*dQ + (1-ds_sc)*dh), eps)
-            else:
-                dYdx = (self.water_level_at(k=k1, i=i+1) - self.water_level_at(k=k1, i=i)) / self.spatial_step
-
-                # continuity scaling (units m²/s)
-                scale_cont = max(np.sqrt(abs(A)/self.time_step * abs(Q)/self.spatial_step), eps)
-                
-                # momentum scaling (units m²/s²)
-                scale_mom = max(np.pow(abs(Q)/self.time_step *
-                                abs(Q**2/A)/self.spatial_step *   # ~Q²/A/Δx
-                                9.81*abs(A)*(abs(Se) + abs(dYdx)), 1./3.),
-                                eps)
-
-                self.R_scales[1+2*i] = scale_cont
-                self.R_scales[2+2*i] = scale_mom
-
-            # variable scaling
-            self.X_scales[2*i]   = abs(A)
-            self.X_scales[2*i+1] = abs(Q)
-
-        if self.active_storage:
-            dY = self.water_level_at(k=k1, i=-1) - self.water_level_at(k=k0, i=-1)
-            self.R_scales[-1] = max(abs(dY), eps)
-            self.X_scales[-1] = max(abs(self.reach.downstream_boundary.lumped_storage.stage), eps)
-            
     def dAreg_dA(self, i, eps=1e-4):
         """
         Derivative of regularized area w.r.t. raw area.
