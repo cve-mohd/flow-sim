@@ -6,7 +6,7 @@ dry_n = 0.030
 ############                Simulation Parameters               ############
 
 enforce_physicality = False
-sim_duration = 3600 * 88
+sim_duration = 3600 * 96
 
 dx = 1000
 
@@ -19,8 +19,8 @@ lax_secondary_bc = ('constant', 'constant')
 
 ############                Hydrologic Parameters               ############
 
-roseires_level = 480
-gates_open = False
+initial_roseires_level = 490
+gates_open = True
 
 ############                Inflow Hydrograph Functions         ############
 

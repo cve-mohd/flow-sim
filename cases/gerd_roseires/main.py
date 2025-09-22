@@ -21,13 +21,13 @@ GERD = Boundary(condition='flow_hydrograph',
                 chainage=gerd_chainage,
                 hydrograph=hyd)
 
-ds_depth = roseires_level-roseires_bed_level
+ds_depth = initial_roseires_level-roseires_bed_level
 Roseires = Boundary(initial_depth=ds_depth,
                     condition='fixed_depth',
                     bed_level=roseires_bed_level,
                     chainage=roseires_chainage)
 
-roseires_storage = LumpedStorage(None, roseires_level, used_roseires_rc)
+roseires_storage = LumpedStorage(None, initial_roseires_level, used_roseires_rc)
 curve = import_area_curve(path='cases\\gerd_roseires\\input_data\\roseires_geometry.xlsx')
 roseires_storage.set_area_curve(curve)
 Roseires.set_lumped_storage(roseires_storage)
@@ -48,7 +48,8 @@ solver = PreissmannSolver(reach=GERD_Roseires_system,
                           time_step=preissmann_dt,
                           spatial_step=dx,
                           simulation_time=sim_duration,
-                          enforce_physicality=enforce_physicality)
+                          regularization=enforce_physicality,
+                          normalize=True)
 
 solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\gerd_roseires\\results')
