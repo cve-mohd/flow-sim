@@ -433,7 +433,7 @@ class Hydraulics:
         if approx:
             P = B
         else:
-            P = B + 2. * A / B
+            P = B + 2 * A/B
                     
         return A / P
     
@@ -448,7 +448,7 @@ class Hydraulics:
         else:
             P = B + 2.0 * A / B
             dP_dA = 2.0 / B
-
+    
         return (P - A * dP_dA) / (P**2)
         
     def dSf_dn(A, Q, n, B):

@@ -73,6 +73,7 @@ class PreissmannSolver(Solver):
             _, self.outflow[0] = self.channel.downstream_boundary.lumped_storage.mass_balance(duration=self.time_step,
                                                                                             vol_in=self.flow[0, -1]*self.time_step,
                                                                                             Y_old=self.water_level_at(k=0, i=-1))
+            self.outflow[0] /= self.time_step
 
     def compute_residual_vector(self, k = None) -> np.ndarray:
         """
@@ -156,7 +157,7 @@ class PreissmannSolver(Solver):
             self.time_level += 1
             if self.time_level >= self.max_timelevels:
                 running = False
-                self.time_level = self.max_timelevels
+                self.time_level = self.max_timelevels-1
                 break
             
             if verbose >= 1:

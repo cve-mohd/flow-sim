@@ -25,13 +25,13 @@ gates_open = True
 ############                Inflow Hydrograph Functions         ############
 
 lag_time = 0
-time_to_peak = 0 * 3600.
-peak_time = 1000 * 3600
-recession_time = 0 * 3600.
+time_to_peak = 12 * 3600.
+peak_time = 28 * 3600
+recession_time = 10 * 3600.
 
 initial_flow = 1562.5
 
-peak_flow = 24000
+peak_flow = 25000
 
 def trapzoid_hydrograph(t):
     if t <= lag_time:

@@ -11,8 +11,7 @@ class Solver:
                  spatial_step: int | float,
                  simulation_time: int,
                  regularization: bool = True,
-                 fit_spatial_step: bool = True,
-                 normalize: bool = True):
+                 fit_spatial_step: bool = True):
         """
         Initializes the class.
 
@@ -55,7 +54,6 @@ class Solver:
         self.solved = False
         self.total_sim_duration = 0
         self.regularization = regularization
-        self.normalize = normalize
 
     def fit_spatial_step(self):
         self.number_of_nodes = round(self.channel.length / self.spatial_step) + 1

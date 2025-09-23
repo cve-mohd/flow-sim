@@ -1,6 +1,7 @@
 from src.solver import Solver
 from src.channel import Channel
 from scipy.constants import g
+from scipy.optimize import brentq
 
 class LaxSolver(Solver):
     """
@@ -9,10 +10,11 @@ class LaxSolver(Solver):
         
     """
     def __init__(self,
-                 reach: Channel,
-                 temporal_step: int | float,
+                 channel: Channel,
+                 time_step: int | float,
                  spatial_step: int | float,
-                 secondary_boundary_conditions: tuple = ('constant', 'constant'),
+                 simulation_time: int,
+                 secondary_BC: tuple = ('constant', 'constant'),
                  fit_spatial_step: bool = True):
         """
         Initializes the class.
@@ -31,9 +33,14 @@ class LaxSolver(Solver):
             Wheter or not the size of the spatial step should be adjusted suit the total length of the reach.
             
         """
-        super().__init__(reach, temporal_step, spatial_step, fit_spatial_step)
+        super().__init__(channel=channel,
+                         time_step=time_step,
+                         spatial_step=spatial_step,
+                         simulation_time=simulation_time,
+                         fit_spatial_step=fit_spatial_step)
         
-        self.secondary_BC = secondary_boundary_conditions        
+        self.secondary_BC = secondary_BC
+        
         self.initialize_t0()
                 
     def initialize_t0(self):
@@ -46,16 +53,10 @@ class LaxSolver(Solver):
         None.
 
         """
-        for A, Q in self.channel.initial_conditions:
-            self.A_previous.append(A)
-            self.Q_previous.append(Q)
+        self.area[0, :] = self.channel.initial_conditions[:, 0]
+        self.flow[0, :] = self.channel.initial_conditions[:, 1]
 
-            self.A_current.append(A)
-            self.Q_current.append(Q)
-
-        self.append_result()
-
-    def run(self, duration: int, auto: bool = False, verbose: int = 1):
+    def run(self, verbose: int = 1):
         """
         Solves the system of equations using the Lax explicit scheme and stores
         the obtained values of the flow variables.
@@ -70,196 +71,195 @@ class LaxSolver(Solver):
         None.
 
         """
-        time = 0
         running = True
         
         while running:
-            time += self.time_step
-            if time > duration and not auto:
+            self.time_level += 1
+            if self.time_level >= self.max_timelevels:
                 running = False
-                time -= self.time_step
+                self.time_level = self.max_timelevels-1
                 break
             
             if verbose >= 1:
-                print('---------- Time = ' + str(time) + 's ----------')
+                print(f'\n> Time level #{self.time_level}')
                 
             for i in range(self.number_of_nodes):
-                self.compute_node(i, time)
+                self.compute_node(i)
                         
             self.check_cfl_all()
-            
-            self.append_result()
-            self.update()
         
-        super().finalize(time=time, verbose=verbose)
+        super().finalize(verbose=verbose)
         
-    def ghost_node(self):
+    def us_ghost_node(self):
         if self.secondary_BC[0] == 'constant':
-            return (self.area_at(0, 0), self.flow_at(0, 0))
+            return (self.area_at(k=-1, i=0), self.flow_at(k=-1, i=0))
                                 
         elif self.secondary_BC[0] == 'mirror':
-            return (self.area_at(1, 0), self.flow_at(1, 0))
+            return (self.area_at(k=-1, i=1), self.flow_at(k=-1, i=1))
                                 
         elif self.secondary_BC[0] == 'linear':
-            return (2 * self.area_at(0, 0) - self.area_at(1, 0),
-                    2 * self.flow_at(0, 0) - self.flow_at(1, 0))
-        
-    def compute_upstream_node(self, time):
-        BC = self.channel.upstream_boundary.condition
-        if BC == 'flow_hydrograph':
-            self.Q_current[0] = self.channel.upstream_boundary.hydrograph.get_at(time)
-        
-            if self.secondary_BC[0] == 'rating_curve':
-                stage = self.channel.upstream_boundary.rating_curve.stage(self.flow_at(0, 1))
-                depth = stage - self.channel.upstream_boundary.bed_level
-                self.A_current[0] = depth * self.width_at(0)        
-            else:
-                self.A_current[0] = self.new_area(self.ghost_node()[0],
-                                                  self.A_previous[1],
-                                                  self.ghost_node()[1],
-                                                  self.Q_previous[1])
-            return
-                
-        elif BC == 'stage_hydrograph':
-            stage = self.channel.upstream_boundary.hydrograph.get_at(time)
-            depth = stage - self.channel.upstream_boundary.bed_level
-            self.A_current[0] = depth * self.width_at(0)
-        
-            if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
-            else:
-                self.Q_current[0] = self.new_flow(self.ghost_node()[0],
-                                                  self.A_previous[1],
-                                                  self.ghost_node()[1],
-                                                  self.Q_previous[1])
-                
-        elif BC == 'fixed_depth':
-            depth = self.channel.upstream_boundary.storage_stage - self.channel.upstream_boundary.bed_level
-            self.A_current[0] = depth * self.width_at(0)
+            return (2 * self.area_at(k=-1, i=0) - self.area_at(k=-1, i=1),
+                    2 * self.flow_at(k=-1, i=0) - self.flow_at(k=-1, i=1))
             
-            if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
-            else:
-                self.Q_current[0] = self.new_flow(self.ghost_node()[0],
-                                                  self.A_previous[1],
-                                                  self.ghost_node()[1],
-                                                  self.Q_previous[1])
-            
-        elif BC == 'normal_depth':        
-            if self.secondary_BC[0] == 'rating_curve':
-                self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
-            else:
-                self.Q_current[0] = self.new_flow(self.ghost_node()[0],
-                                                  self.A_previous[1],
-                                                  self.ghost_node()[1],
-                                                  self.Q_previous[1])
-                
-            self.A_current[0] = self.channel.normal_area(self.flow_at(0, 1), 0)
+    def ds_ghost_node(self):
+        if self.secondary_BC[0] == 'constant':
+            return (self.area_at(k=-1, i=-1), self.flow_at(k=-1, i=-1))
+                                
+        elif self.secondary_BC[0] == 'mirror':
+            return (self.area_at(k=-1, i=-2), self.flow_at(k=-1, i=-2))
+                                
+        elif self.secondary_BC[0] == 'linear':
+            return (2 * self.area_at(k=-1, i=-1) - self.area_at(k=-1, i=-2),
+                    2 * self.flow_at(k=-1, i=-1) - self.flow_at(k=-1, i=-2))
         
-        elif BC == 'rating_curve':
-            if self.secondary_BC[0] == 'rating_curve':
-                raise ValueError("Duplicate BC.")
-            else:
-                self.Q_current[0] = self.new_flow(self.ghost_node()[0],
-                                                  self.A_previous[1],
-                                                  self.ghost_node()[1],
-                                                  self.Q_previous[1])
+    def compute_upstream_node(self):
+        ghost_A, ghost_Q = self.us_ghost_node()
+        if self.channel.upstream_boundary.df_dQ():
+            A = self.new_area(A_im1=ghost_A,
+                              A_ip1=self.area_at(k=-1, i=1),
+                              Q_im1=ghost_Q,
+                              Q_ip1=self.flow_at(k=-1, i=1))
             
-            self.Q_current[0] = self.channel.upstream_boundary.rating_curve.discharge(stage)
+            Q = -self.channel.upstream_boundary.condition_residual(
+                time=self.time_level*self.time_step,
+                depth=A/self.width_at(i=0),
+                width=self.width_at(i=0),
+                flow_rate=0,
+                bed_slope=self.bed_slope_at(i=0),
+                roughness=self.channel.get_n(A=A, i=0)
+            )
+            
+        else:
+            Q = self.new_flow(A_im1=ghost_A,
+                              A_ip1=self.area_at(k=-1, i=1),
+                              Q_im1=ghost_Q,
+                              Q_ip1=self.flow_at(k=-1, i=1))
+            
+            A = -self.width_at(i=0) * self.channel.upstream_boundary.condition_residual(
+                time=self.time_level*self.time_step,
+                depth=0,
+                width=self.width_at(i=0),
+                flow_rate=Q,
+                bed_slope=self.bed_slope_at(i=0),
+                roughness=self.channel.get_n(A=A, i=0)
+            )
+            
+        self.area[self.time_level, 0] = A
+        self.flow[self.time_level, 0] = Q
 
-    def compute_node(self, i, time):
+    def compute_node(self, i):
         if i == 0:
-            self.compute_upstream_node(time)
+            self.compute_upstream_node()
             
         elif i == self.number_of_nodes - 1:
             self.compute_downstream_node()
             
         else:            
-            self.A_current[i] = self.new_area(self.area_at(i-1, 0),
-                                              self.area_at(i+1, 0),
-                                              self.flow_at(i-1, 0),
-                                              self.flow_at(i+1, 0))
-                                                    
-            self.Q_current[i] = self.new_flow(self.area_at(i-1, 0),
-                                              self.area_at(i+1, 0),
-                                              self.flow_at(i-1, 0),
-                                              self.flow_at(i+1, 0))
+            # (kp1 - k_avg) / delta_t
+            Q_ip1 = self.flow_at(k=-1, i=i+1)
+            Q_im1 = self.flow_at(k=-1, i=i-1)
+            
+            A_ip1 = self.area_at(k=-1, i=i+1)
+            A_im1 = self.area_at(k=-1, i=i-1)
+            
+            avg_A  = self.cell_avg(ip1=A_ip1, im1=A_im1)
+            avg_Q  = self.cell_avg(ip1=Q_ip1, im1=Q_im1)
+            avg_Se = self.cell_avg(ip1=self.Se_at(k=-1, i=i+1), im1=self.Se_at(k=-1, i=i-1))
+            
+            dQ_dx = self.spatial_diff(
+                ip1=Q_ip1,
+                im1=Q_im1,
+            )
+            
+            dQ2A_dx = self.spatial_diff(
+                ip1=Q_ip1**2 / A_ip1,
+                im1=Q_im1**2 / A_im1
+            )
+            
+            dY_dx = self.spatial_diff(
+                ip1=self.water_level_at(k=-1, i=i+1),
+                im1=self.water_level_at(k=-1, i=i-1)
+            )
+                
+            self.area[self.time_level, i] = -dQ_dx * self.time_step + avg_A
+            self.flow[self.time_level, i] = -(dQ2A_dx + g * avg_A * (dY_dx + avg_Se)) * self.time_step + avg_Q
     
     def compute_downstream_node(self):
-        if self.secondary_BC[1] == 'constant':
-            self.Q_current[-1] = self.new_flow(self.A_previous[-2],
-                                                               self.A_previous[-1],
-                                                               self.Q_previous[-2],
-                                                               self.Q_previous[-1])
-        elif self.secondary_BC[1] == 'mirror':
-            self.Q_current[-1] = self.new_flow(self.A_previous[-2],
-                                                               self.A_previous[-2],
-                                                               self.Q_previous[-2],
-                                                               self.Q_previous[-2])
-        elif self.secondary_BC[1] == 'linear':
-            self.Q_current[-1] = self.new_flow(self.A_previous[-2],
-                                                               2 * self.A_previous[-1] - self.A_previous[-2],
-                                                               self.Q_previous[-2],
-                                                               2 * self.Q_previous[-1] - self.Q_previous[-2],)
+        ghost_A, ghost_Q = self.ds_ghost_node()
+        if self.channel.downstream_boundary.df_dQ():
+            A = self.new_area(A_im1=self.area_at(k=-1, i=-2),
+                              A_ip1=ghost_A,
+                              Q_im1=self.flow_at(k=-1, i=-2),
+                              Q_ip1=ghost_Q)
+            
+            Q = -self.channel.downstream_boundary.condition_residual(
+                time=self.time_level*self.time_step,
+                depth=A/self.width_at(i=-1),
+                width=self.width_at(i=-1),
+                flow_rate=0,
+                bed_slope=self.bed_slope_at(i=-1),
+                roughness=self.channel.get_n(A=A, i=-1)
+            )
+            
         else:
-            raise ValueError("Invalid secondary downstream boundary condition.")
+            Q = self.new_flow(A_im1=self.area_at(k=-1, i=-2),
+                              A_ip1=ghost_A,
+                              Q_im1=self.flow_at(k=-1, i=-2),
+                              Q_ip1=ghost_Q)
+            
+            A = -self.width_at(i=-1) * self.channel.downstream_boundary.condition_residual(
+                time=self.time_level*self.time_step,
+                depth=0,
+                width=self.width_at(i=-1),
+                flow_rate=Q,
+                bed_slope=self.bed_slope_at(i=-1),
+                roughness=self.channel.get_n(A=A, i=-1)
+            )
+            
+        self.area[self.time_level, -1] = A
+        self.flow[self.time_level, -1] = Q
         
-        if self.channel.downstream_boundary.condition == 'fixed_depth':
-            if self.active_storage:
-                inflow = 0.5 * (self.Q_previous[-1] + self.Q_current[-1])
-                new_stage = self.channel.downstream_boundary.mass_balance(inflow, self.time_step)
-                self.channel.downstream_boundary.storage_stage = new_stage
-                
-            self.A_current[-1] = self.channel.width * (self.channel.downstream_boundary.storage_stage - self.channel.downstream_boundary.bed_level)
-            
-        elif self.channel.downstream_boundary.condition == 'normal_depth':
-            self.A_current[-1] = self.channel.manning_A(self.Q_current[-1])
-            
-        elif self.channel.downstream_boundary.condition == 'rating_curve':
-            stage = self.channel.downstream_boundary.initial_stage
-            stage = self.channel.downstream_boundary.rating_curve.stage(self.Q_current[-1], stage)
-            depth = stage - self.channel.downstream_boundary.bed_level
-            
-            self.A_current[-1] = depth * self.channel.width
-            
-        else:
-            raise ValueError("Invalid downstream boundary condition.")
-
-    def new_area(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
-        A = 0.5 * (A_i_plus_1 + A_i_minus_1) - (0.5 / self.num_celerity) * (Q_i_plus_1 - Q_i_minus_1)
+    def new_area(self, A_im1, A_ip1, Q_im1, Q_ip1):
+        A = 0.5 * (A_ip1 + A_im1) - (0.5 / self.num_celerity) * (Q_ip1 - Q_im1)
 
         return A
 
-    def new_flow(self, A_i_minus_1, A_i_plus_1, Q_i_minus_1, Q_i_plus_1):
-        Sf_i_plus_1 = self.channel.friction_slope(A_i_plus_1, Q_i_plus_1)
-        Sf_i_minus_1 = self.channel.friction_slope(A_i_minus_1, Q_i_minus_1)
+    def new_flow(self, A_im1, A_ip1, Q_im1, Q_ip1):
+        Sf_ip1 = self.channel.Se(A_ip1, Q_ip1)
+        Sf_im1 = self.channel.Se(A_im1, Q_im1)
         
         Q = (
-             - g / (4 * self.channel.width * self.num_celerity) * (A_i_plus_1 ** 2 - A_i_minus_1 ** 2)
-             + 0.5 * g * self.time_step * self.channel.bed_slope * (A_i_plus_1 + A_i_minus_1)
-             + 0.5 * (Q_i_plus_1 + Q_i_minus_1)
-             - 1. / (2 * self.num_celerity) * (Q_i_plus_1 ** 2 / A_i_plus_1 - Q_i_minus_1 ** 2 / A_i_minus_1)
-             - 0.5 * g * self.time_step * (A_i_plus_1 * Sf_i_plus_1 + A_i_minus_1 * Sf_i_minus_1)
+             - g / (4 * self.channel.width * self.num_celerity) * (A_ip1 ** 2 - A_im1 ** 2)
+             + 0.5 * g * self.time_step * self.channel.bed_slope * (A_ip1 + A_im1)
+             + 0.5 * (Q_ip1 + Q_im1)
+             - 1. / (2 * self.num_celerity) * (Q_ip1 ** 2 / A_ip1 - Q_im1 ** 2 / A_im1)
+             - 0.5 * g * self.time_step * (A_ip1 * Sf_ip1 + A_im1 * Sf_im1)
              )
         
         return Q
                 
     def check_cfl_all(self):
-        for i, (A, Q) in enumerate(zip(self.A_current, self.Q_current)):
-            V = Q / A
-            h = A / self.channel.width
+        for i in range(self.number_of_nodes):
+            V = self.flow_at(i=i) / self.area_at(i=i)
+            h = self.depth_at(i=i)
             
             if self.check_cfl_condition(V, h) == False:
                 analytical_celerity = max(V + (g * h) ** 0.5, V - (g * h) ** 0.5)
-                raise ValueError(f'CFL condition is not satisfied.\nSpatial node = {i} (of {self.number_of_nodes-1})\nArea = {A}\nFlow rate = {Q}\n'
-                                 + f'CFL number = {analytical_celerity/self.num_celerity}')
+                raise ValueError(
+                    f'CFL condition failed at i={i}, k={self.time_level}. CFL number = {analytical_celerity/self.num_celerity}'
+                )
     
     def check_cfl_condition(self, velocity, depth):
         analytical_celerity = max(velocity + (g * depth) ** 0.5, velocity - (g * depth) ** 0.5)
         return self.num_celerity >= analytical_celerity
     
-    def update(self):
-        from copy import copy
-        self.A_previous = copy(self.A_current)
-        self.Q_previous = copy(self.Q_current)
-        
+    def time_diff(self, kp1, ip1, im1):
+        k = self.cell_avg(ip1=ip1, im1=im1)
+        return (kp1 - k) / self.time_step
+    
+    def spatial_diff(self, ip1, im1):
+        return 0.5 * (ip1 - im1) / self.spatial_step
+            
+    def cell_avg(self, ip1, im1):
+        return 0.5 * (ip1 + im1)
+    
