@@ -491,8 +491,9 @@ class LumpedStorage:
         self.stage = None
         self.area_curve = None
         
-        self.Y_min = solution_boundaries[0]
-        self.Y_max = solution_boundaries[1]
+        if solution_boundaries is not None:
+            self.Y_min = solution_boundaries[0]
+            self.Y_max = solution_boundaries[1]
     
     def mass_balance(self, duration, vol_in, Y_old=None):
         from scipy.optimize import brentq
@@ -509,15 +510,13 @@ class LumpedStorage:
         if Y_new < self.min_stage:
             Y_new = self.min_stage
 
-        # update outflow based on actual storage change achieved
-        vol_out = vol_in - self.net_vol_change(Y_old, Y_new) if self.rating_curve else 0.0
-        return Y_new, vol_out
+        return Y_new
 
     def dY_new_dvol_in(self, duration, vol_in, Y_old) -> float:
         """
         d(Y_new)/d(vol_in)
         """
-        Y_new, _ = self.mass_balance(duration, vol_in, Y_old)
+        Y_new = self.mass_balance(duration, vol_in, Y_old)
         if Y_new <= self.min_stage:
             return 0.0
         

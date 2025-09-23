@@ -24,10 +24,11 @@ example_channel = Channel(width=width,
 
 solver = PreissmannSolver(channel=example_channel,
                           theta=theta,
-                          time_step=time_step,
+                          time_step=preissmann_dt,
                           spatial_step=spatial_step,
                           simulation_time=duration,
                           regularization=False)
 
 solver.run(verbose=0, tolerance=tolerance)
-solver.save_results(folder_path='cases\\akbari_firoozi\\results')
+solver.save_results(folder_path='cases\\akbari_firoozi\\results\\preissmann')
+print('Simulation finished successfuly.')
