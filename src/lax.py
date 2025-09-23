@@ -15,7 +15,8 @@ class LaxSolver(Solver):
                  spatial_step: int | float,
                  simulation_time: int,
                  secondary_BC: tuple = ('constant', 'constant'),
-                 fit_spatial_step: bool = True):
+                 fit_spatial_step: bool = True,
+                 regularization: bool = False):
         """
         Initializes the class.
 
@@ -37,7 +38,8 @@ class LaxSolver(Solver):
                          time_step=time_step,
                          spatial_step=spatial_step,
                          simulation_time=simulation_time,
-                         fit_spatial_step=fit_spatial_step)
+                         fit_spatial_step=fit_spatial_step,
+                         regularization=regularization)
         
         self.secondary_BC = secondary_BC
         
@@ -92,28 +94,32 @@ class LaxSolver(Solver):
         
     def us_ghost_node(self):
         if self.secondary_BC[0] == 'constant':
-            return (self.area_at(k=-1, i=0), self.flow_at(k=-1, i=0))
+            return (self.area_at(k=-1, i=0), self.flow_at(k=-1, i=0), self.water_level_at(k=-1, i=0), self.Se_at(k=-1, i=0))
                                 
         elif self.secondary_BC[0] == 'mirror':
-            return (self.area_at(k=-1, i=1), self.flow_at(k=-1, i=1))
+            return (self.area_at(k=-1, i=1), self.flow_at(k=-1, i=1), self.water_level_at(k=-1, i=1), self.Se_at(k=-1, i=1))
                                 
         elif self.secondary_BC[0] == 'linear':
             return (2 * self.area_at(k=-1, i=0) - self.area_at(k=-1, i=1),
-                    2 * self.flow_at(k=-1, i=0) - self.flow_at(k=-1, i=1))
+                    2 * self.flow_at(k=-1, i=0) - self.flow_at(k=-1, i=1),
+                    2 * self.water_level_at(k=-1, i=0) - self.water_level_at(k=-1, i=1),
+                    2 * self.Se_at(k=-1, i=0) - self.Se_at(k=-1, i=1))
             
     def ds_ghost_node(self):
         if self.secondary_BC[0] == 'constant':
-            return (self.area_at(k=-1, i=-1), self.flow_at(k=-1, i=-1))
+            return (self.area_at(k=-1, i=-1), self.flow_at(k=-1, i=-1), self.water_level_at(k=-1, i=-1), self.Se_at(k=-1, i=-1))
                                 
         elif self.secondary_BC[0] == 'mirror':
-            return (self.area_at(k=-1, i=-2), self.flow_at(k=-1, i=-2))
+            return (self.area_at(k=-1, i=-2), self.flow_at(k=-1, i=-2), self.water_level_at(k=-1, i=-2), self.Se_at(k=-1, i=-2))
                                 
         elif self.secondary_BC[0] == 'linear':
             return (2 * self.area_at(k=-1, i=-1) - self.area_at(k=-1, i=-2),
-                    2 * self.flow_at(k=-1, i=-1) - self.flow_at(k=-1, i=-2))
+                    2 * self.flow_at(k=-1, i=-1) - self.flow_at(k=-1, i=-2),
+                    2 * self.water_level_at(k=-1, i=-1) - self.water_level_at(k=-1, i=-2),
+                    2 * self.Se_at(k=-1, i=-1) - self.Se_at(k=-1, i=-2))
         
     def compute_upstream_node(self):
-        ghost_A, ghost_Q = self.us_ghost_node()
+        ghost_A, ghost_Q, ghost_Y, ghost_Se = self.us_ghost_node()
         if self.channel.upstream_boundary.df_dQ():
             A = self.new_area(A_im1=ghost_A,
                               A_ip1=self.area_at(k=-1, i=1),
@@ -133,15 +139,16 @@ class LaxSolver(Solver):
             Q = self.new_flow(A_im1=ghost_A,
                               A_ip1=self.area_at(k=-1, i=1),
                               Q_im1=ghost_Q,
-                              Q_ip1=self.flow_at(k=-1, i=1))
+                              Q_ip1=self.flow_at(k=-1, i=1),
+                              Y_im1=ghost_Y,
+                              Y_ip1=self.water_level_at(k=-1, i=1),
+                              Se_im1=ghost_Se,
+                              Se_ip1=self.Se_at(k=-1, i=1))
             
             A = -self.width_at(i=0) * self.channel.upstream_boundary.condition_residual(
                 time=self.time_level*self.time_step,
                 depth=0,
-                width=self.width_at(i=0),
-                flow_rate=Q,
-                bed_slope=self.bed_slope_at(i=0),
-                roughness=self.channel.get_n(A=A, i=0)
+                width=self.width_at(i=0)
             )
             
         self.area[self.time_level, 0] = A
@@ -150,43 +157,26 @@ class LaxSolver(Solver):
     def compute_node(self, i):
         if i == 0:
             self.compute_upstream_node()
-            
         elif i == self.number_of_nodes - 1:
             self.compute_downstream_node()
-            
-        else:            
-            # (kp1 - k_avg) / delta_t
-            Q_ip1 = self.flow_at(k=-1, i=i+1)
-            Q_im1 = self.flow_at(k=-1, i=i-1)
-            
-            A_ip1 = self.area_at(k=-1, i=i+1)
-            A_im1 = self.area_at(k=-1, i=i-1)
-            
-            avg_A  = self.cell_avg(ip1=A_ip1, im1=A_im1)
-            avg_Q  = self.cell_avg(ip1=Q_ip1, im1=Q_im1)
-            avg_Se = self.cell_avg(ip1=self.Se_at(k=-1, i=i+1), im1=self.Se_at(k=-1, i=i-1))
-            
-            dQ_dx = self.spatial_diff(
-                ip1=Q_ip1,
-                im1=Q_im1,
-            )
-            
-            dQ2A_dx = self.spatial_diff(
-                ip1=Q_ip1**2 / A_ip1,
-                im1=Q_im1**2 / A_im1
-            )
-            
-            dY_dx = self.spatial_diff(
-                ip1=self.water_level_at(k=-1, i=i+1),
-                im1=self.water_level_at(k=-1, i=i-1)
-            )
-                
-            self.area[self.time_level, i] = -dQ_dx * self.time_step + avg_A
-            self.flow[self.time_level, i] = -(dQ2A_dx + g * avg_A * (dY_dx + avg_Se)) * self.time_step + avg_Q
+        else:                
+            self.area[self.time_level, i] = self.new_area(A_im1=self.area_at(k=-1, i=i-1),
+                                                          A_ip1=self.area_at(k=-1, i=i+1),
+                                                          Q_im1=self.flow_at(k=-1, i=i-1),
+                                                          Q_ip1=self.flow_at(k=-1, i=i+1))
+                                                          
+            self.flow[self.time_level, i] = self.new_flow(A_im1=self.area_at(k=-1, i=i-1),
+                                                          A_ip1=self.area_at(k=-1, i=i+1),
+                                                          Q_im1=self.flow_at(k=-1, i=i-1),
+                                                          Q_ip1=self.flow_at(k=-1, i=i+1),
+                                                          Y_im1=self.water_level_at(k=-1, i=i-1),
+                                                          Y_ip1=self.water_level_at(k=-1, i=i+1),
+                                                          Se_im1=self.Se_at(k=-1, i=i-1),
+                                                          Se_ip1=self.Se_at(k=-1, i=i+1))
     
     def compute_downstream_node(self):
-        ghost_A, ghost_Q = self.ds_ghost_node()
-        if self.channel.downstream_boundary.df_dQ():
+        ghost_A, ghost_Q, ghost_Y, ghost_Se = self.ds_ghost_node()
+        if self.channel.downstream_boundary.condition_type():
             A = self.new_area(A_im1=self.area_at(k=-1, i=-2),
                               A_ip1=ghost_A,
                               Q_im1=self.flow_at(k=-1, i=-2),
@@ -205,38 +195,53 @@ class LaxSolver(Solver):
             Q = self.new_flow(A_im1=self.area_at(k=-1, i=-2),
                               A_ip1=ghost_A,
                               Q_im1=self.flow_at(k=-1, i=-2),
-                              Q_ip1=ghost_Q)
+                              Q_ip1=ghost_Q,
+                              Y_im1=self.water_level_at(k=-1, i=-2),
+                              Y_ip1=ghost_Y,
+                              Se_im1=self.Se_at(k=-1, i=-2),
+                              Se_ip1=ghost_Se)
             
             A = -self.width_at(i=-1) * self.channel.downstream_boundary.condition_residual(
                 time=self.time_level*self.time_step,
                 depth=0,
                 width=self.width_at(i=-1),
-                flow_rate=Q,
-                bed_slope=self.bed_slope_at(i=-1),
-                roughness=self.channel.get_n(A=A, i=-1)
+                duration=self.time_step,
+                vol_in=0.5*(self.flow_at(k=-1, i=-1) + Q)*self.time_step,
+                Y_old=self.water_level_at(k=-1, i=-1)
             )
             
         self.area[self.time_level, -1] = A
         self.flow[self.time_level, -1] = Q
         
     def new_area(self, A_im1, A_ip1, Q_im1, Q_ip1):
-        A = 0.5 * (A_ip1 + A_im1) - (0.5 / self.num_celerity) * (Q_ip1 - Q_im1)
-
-        return A
-
-    def new_flow(self, A_im1, A_ip1, Q_im1, Q_ip1):
-        Sf_ip1 = self.channel.Se(A_ip1, Q_ip1)
-        Sf_im1 = self.channel.Se(A_im1, Q_im1)
+        avg_A  = self.cell_avg(ip1=A_ip1, im1=A_im1)
         
-        Q = (
-             - g / (4 * self.channel.width * self.num_celerity) * (A_ip1 ** 2 - A_im1 ** 2)
-             + 0.5 * g * self.time_step * self.channel.bed_slope * (A_ip1 + A_im1)
-             + 0.5 * (Q_ip1 + Q_im1)
-             - 1. / (2 * self.num_celerity) * (Q_ip1 ** 2 / A_ip1 - Q_im1 ** 2 / A_im1)
-             - 0.5 * g * self.time_step * (A_ip1 * Sf_ip1 + A_im1 * Sf_im1)
-             )
+        dQ_dx = self.spatial_diff(
+            ip1=Q_ip1,
+            im1=Q_im1,
+        )
+            
+        return -dQ_dx * self.time_step + avg_A
+
+    def new_flow(self, A_im1, A_ip1, Q_im1, Q_ip1, Y_ip1, Y_im1, Se_ip1, Se_im1):        
+        avg_A  = self.cell_avg(ip1=A_ip1, im1=A_im1)
+        avg_Q  = self.cell_avg(ip1=Q_ip1, im1=Q_im1)
+        avg_Se = self.cell_avg(
+            ip1=Se_ip1,
+            im1=Se_im1,
+        )
+                
+        dQ2A_dx = self.spatial_diff(
+            ip1=Q_ip1**2 / A_ip1,
+            im1=Q_im1**2 / A_im1
+        )
         
-        return Q
+        dY_dx = self.spatial_diff(
+            ip1=Y_ip1,
+            im1=Y_im1
+        )
+            
+        return -(dQ2A_dx + g * avg_A * (dY_dx + avg_Se)) * self.time_step + avg_Q
                 
     def check_cfl_all(self):
         for i in range(self.number_of_nodes):

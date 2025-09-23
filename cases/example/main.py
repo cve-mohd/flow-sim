@@ -3,6 +3,7 @@ from src.boundary import Boundary
 from src.utility import Hydrograph
 from src.preissmann import PreissmannSolver
 from src.lax import LaxSolver
+from src.utility import LumpedStorage
 
 def trapzoid_hydrograph(t):
     initial_flow = 1000
@@ -31,16 +32,19 @@ us = Boundary(condition='flow_hydrograph',
               chainage=0,
               hydrograph=Hydrograph(trapzoid_hydrograph))
 
-ds = Boundary(condition='normal_depth',
+ds = Boundary(condition='fixed_depth',
+              initial_depth=5,
               bed_level=0,
-              chainage=3000)
+              chainage=20000)
+
+ss = LumpedStorage(surface_area=5000*250, min_stage=5, solution_boundaries=(0, 200))
+ds.set_lumped_storage(ss)
 
 example_channel = Channel(width = 250,
                         initial_flow = us.hydrograph.get_at(0),
                         roughness = 0.027,
                         upstream_boundary = us,
-                        downstream_boundary = ds,
-                        interpolation_method='steady-state')
+                        downstream_boundary = ds)
 
 #example_channel.set_intermediate_bed_levels([510], [8000])
 #example_channel.set_intermediate_widths([400], [26000])
@@ -52,9 +56,9 @@ p_solver = PreissmannSolver(channel=example_channel,
                           simulation_time=24*3600,
                           regularization=False)
 
-#p_solver.run(verbose=0)
-#p_solver.save_results(folder_path='cases\\example\\preissmann_results')
-#print('Finished Preissmann.')
+p_solver.run(verbose=0)
+p_solver.save_results(folder_path='cases\\example\\results\\preissmann')
+print('Finished Preissmann.')
 
 example_channel = Channel(width = 250,
                         initial_flow = us.hydrograph.get_at(0),
@@ -64,11 +68,11 @@ example_channel = Channel(width = 250,
                         interpolation_method='steady-state')
 
 l_solver = LaxSolver(channel=example_channel,
-                     time_step=60,
+                     time_step=30,
                      spatial_step=1000,
                      simulation_time=24*3600,
                      secondary_BC=('constant', 'constant'))
 
 l_solver.run(verbose=0)
-l_solver.save_results(folder_path='cases\\example\\lax_results')
+l_solver.save_results(folder_path='cases\\example\\results\\lax')
 print('Finished Lax-Friedrich.')

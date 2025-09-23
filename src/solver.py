@@ -25,9 +25,7 @@ class Solver:
             Spatial step for the simulation in meters.
             
         """
-        self.channel = channel
-        self.active_storage = (self.channel.downstream_boundary.lumped_storage is not None)
-                
+        self.channel = channel                
         self.time_step, self.spatial_step = time_step, spatial_step
         self.time_level = 0
         self.number_of_nodes = self.channel.length // self.spatial_step + 1
@@ -46,7 +44,7 @@ class Solver:
         self.depth = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
         self.level = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
         self.wave_celerity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.outflow = np.empty(shape=(self.max_timelevels), dtype=np.float64)
+        self.storage_outflow = np.empty(shape=(self.max_timelevels), dtype=np.float64)
         self.peak_amplitude = np.zeros(shape=(self.number_of_nodes), dtype=np.float64)
         
         self.initial_depths = None
@@ -68,6 +66,21 @@ class Solver:
         ref = self.depth[0, :]
         deviation = np.abs(self.depth - ref)
         self.peak_amplitude = deviation.max(axis=0)
+        
+        if self.channel.downstream_boundary.lumped_storage is not None:
+            if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
+                self.storage_outflow[0] = 0
+            else:
+                self.storage_outflow[0] = self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.water_level_at(k=0, i=-1))
+            
+            for k in range(1, self.max_timelevels):
+                avg_inflow = 0.5 * (self.flow_at(k=k-1, i=-1) + self.flow_at(k=k, i=-1))
+                Y1 = self.water_level_at(k=k-1, i=-1)
+                Y2 = self.water_level_at(k=k, i=-1)
+                vol_change = self.channel.downstream_boundary.lumped_storage.net_vol_change(Y1=Y1, Y2=Y2)
+                avg_outflow = avg_inflow - vol_change / self.time_step
+                
+                self.storage_outflow[k] = avg_outflow * self.flow_at(k=k, i=-1) / avg_inflow
     
     def save_results(self, folder_path):
         """
@@ -98,9 +111,10 @@ class Solver:
                 df.to_excel(writer, sheet_name=name)
 
             # Outflow (1D time series)
-            df_out = pd.DataFrame({"outflow": self.outflow}, index=time)
-            df_out.index.name = "Time"
-            df_out.to_excel(writer, sheet_name="Outflow")
+            if self.channel.downstream_boundary.lumped_storage is not None:
+                df_out = pd.DataFrame({"outflow": self.storage_outflow}, index=time)
+                df_out.index.name = "Time"
+                df_out.to_excel(writer, sheet_name="Outflow")
 
             # Peak amplitude (row with distance headers)
             df_peak = pd.DataFrame([self.peak_amplitude], columns=distance)

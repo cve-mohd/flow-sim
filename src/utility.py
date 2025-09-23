@@ -484,16 +484,15 @@ class Hydraulics:
         return dQn_dn
     
 class LumpedStorage:
-    def __init__(self, surface_area: float, min_stage: float, rating_curve: RatingCurve = None, solution_boundaries: tuple = None):
+    def __init__(self, surface_area: float, min_stage: float, solution_boundaries: tuple, rating_curve: RatingCurve = None):
         self.rating_curve = rating_curve
         self.surface_area = surface_area
         self.min_stage = min_stage
         self.stage = None
         self.area_curve = None
         
-        if solution_boundaries is not None:
-            self.Y_min = solution_boundaries[0]
-            self.Y_max = solution_boundaries[1]
+        self.Y_min = solution_boundaries[0]
+        self.Y_max = solution_boundaries[1]
     
     def mass_balance(self, duration, vol_in, Y_old=None):
         from scipy.optimize import brentq
@@ -548,11 +547,14 @@ class LumpedStorage:
             return self.alpha * np.interp(stage, self.area_curve[:, 0], self.area_gradient)
         
     def net_vol_change(self, Y1, Y2):
-        step =  np.min(np.abs(self.area_curve[1:, 0] - self.area_curve[:-1, 0]))
-        n = int(abs(Y2-Y1)/step)
-        if n > 2:
-            ys = np.linspace(Y1, Y2, n)
-            areas = [self.area_at(y) for y in ys]
-            return np.trapezoid(areas, ys)
+        if self.area_curve is None:
+            return (Y2 - Y1) * self.surface_area
         else:
-            return 0.5 * (self.area_at(Y2) + self.area_at(Y1)) * (Y2 - Y1)
+            step =  np.min(np.abs(self.area_curve[1:, 0] - self.area_curve[:-1, 0]))
+            n = int(abs(Y2-Y1)/step)
+            if n > 2:
+                ys = np.linspace(Y1, Y2, n)
+                areas = [self.area_at(y) for y in ys]
+                return np.trapezoid(areas, ys)
+            else:
+                return 0.5 * (self.area_at(Y2) + self.area_at(Y1)) * (Y2 - Y1)

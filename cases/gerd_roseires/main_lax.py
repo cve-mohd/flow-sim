@@ -1,7 +1,7 @@
 from src.channel import Channel
 from src.boundary import Boundary
 from src.utility import Hydrograph, LumpedStorage
-from src.preissmann import PreissmannSolver
+from src.lax import LaxSolver
 from cases.gerd_roseires.settings import *
 from cases.gerd_roseires.custom_functions import import_geometry, import_area_curve
 
@@ -43,14 +43,14 @@ GERD_Roseires_system.set_coords(coords=coords, chainages=coords_ch)
 GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=levels, chainages=level_ch)
 GERD_Roseires_system.set_intermediate_widths(widths=widths, chainages=width_ch)
 
-solver = PreissmannSolver(channel=GERD_Roseires_system,
-                          theta=theta,
-                          time_step=preissmann_dt,
-                          spatial_step=dx,
-                          simulation_time=sim_duration,
-                          regularization=enforce_physicality)
+solver = LaxSolver(channel=GERD_Roseires_system,
+                   time_step=lax_dt,
+                   spatial_step=dx,
+                   simulation_time=sim_duration,
+                   regularization=regularization,
+                   secondary_BC=lax_secondary_bc)
 
-solver.run(verbose=0, tolerance=tolerance)
-solver.save_results(folder_path='cases\\gerd_roseires\\results')
+solver.run(verbose=0)
+solver.save_results(folder_path='cases\\gerd_roseires\\results\\lax')
 
 print("Simulation finished successfully.")
