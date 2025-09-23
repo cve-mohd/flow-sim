@@ -27,7 +27,7 @@ Roseires = Boundary(initial_depth=ds_depth,
                     bed_level=roseires_bed_level,
                     chainage=roseires_chainage)
 
-roseires_storage = LumpedStorage(None, initial_roseires_level, used_roseires_rc)
+roseires_storage = LumpedStorage(surface_area=None, min_stage=initial_roseires_level, rating_curve=used_roseires_rc, solution_boundaries=None)
 curve = import_area_curve(path='cases\\gerd_roseires\\input_data\\roseires_geometry.xlsx')
 roseires_storage.set_area_curve(curve)
 Roseires.set_lumped_storage(roseires_storage)

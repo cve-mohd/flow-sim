@@ -48,7 +48,7 @@ class Boundary:
                 raise ValueError("Fixed depth is not defined.")
             else:
                 if self.lumped_storage is not None:
-                    target_Y, _ = self.lumped_storage.mass_balance(
+                    target_Y = self.lumped_storage.mass_balance(
                         duration=duration,
                         vol_in=vol_in,
                         Y_old=Y_old,

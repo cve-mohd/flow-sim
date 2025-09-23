@@ -1,12 +1,17 @@
 width = 120
-length = 2000
+length = 29000
 roughness = 0.023
+S_0 = 0.00061
+
+spatial_step = 1000
+duration = 20 * 3600
+
 tolerance = 1e-4
 theta = 0.5
-time_step = 3600
-spatial_step = 1000
-S_0 = 0.00061
-duration = 20 * 3600
+preissmann_dt = 3600
+
+lax_dt = 150
+lax_secondary_bc = ('constant', 'constant')
 
 ############                Hydrologic Geometry                 ############
 
