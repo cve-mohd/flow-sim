@@ -32,7 +32,8 @@ class Boundary:
         self.lumped_storage = lumped_storage
         self.lumped_storage.stage = self.initial_stage
     
-    def condition_residual(self, time = None, depth = None, width = None, flow_rate = None, bed_slope = None, roughness = None):
+    def condition_residual(self, time = None, depth = None, width = None, flow_rate = None, bed_slope = None, roughness = None,
+                           duration = None, vol_in = None, Y_old = None):
         if self.condition == 'flow_hydrograph':
             if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
@@ -47,7 +48,12 @@ class Boundary:
                 raise ValueError("Fixed depth is not defined.")
             else:
                 if self.lumped_storage is not None:
-                    return depth - (self.lumped_storage.stage - self.bed_level)
+                    target_Y, _ = self.lumped_storage.mass_balance(
+                        duration=duration,
+                        vol_in=vol_in,
+                        Y_old=Y_old,
+                    )
+                    return depth - (target_Y - self.bed_level)
                 else:
                     return depth - self.initial_depth
         
@@ -104,12 +110,22 @@ class Boundary:
             
             return dh_dA
         
-    def df_dQ(self):
+    def df_dQ(self, duration = None, vol_in = None, Y_old = None):
         if self.condition == 'flow_hydrograph':
             return 1
             
         elif self.condition == 'fixed_depth':
-            return 0
+            if self.lumped_storage is not None:
+                dY_new_dvol = self.lumped_storage.dY_new_dvol_in(
+                    duration=duration,
+                    vol_in=vol_in,
+                    Y_old=Y_old,
+                )
+                dvol_dQ = 0.5 * duration
+                
+                return -dY_new_dvol * dvol_dQ
+            else:
+                return 0
         
         elif self.condition == 'normal_depth':
             return 1

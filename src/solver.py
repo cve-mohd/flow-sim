@@ -25,9 +25,7 @@ class Solver:
             Spatial step for the simulation in meters.
             
         """
-        self.channel = channel
-        self.active_storage = (self.channel.downstream_boundary.lumped_storage is not None)
-                
+        self.channel = channel                
         self.time_step, self.spatial_step = time_step, spatial_step
         self.time_level = 0
         self.number_of_nodes = self.channel.length // self.spatial_step + 1
