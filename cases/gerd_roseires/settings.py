@@ -5,7 +5,7 @@ dry_n = 0.030
 
 ############                Simulation Parameters               ############
 
-enforce_physicality = False
+regularization = False
 sim_duration = 3600 * 96
 
 dx = 1000
@@ -14,7 +14,7 @@ preissmann_dt = 3600
 theta = 0.8
 tolerance = 1e-4
 
-lax_time_step = 10
+lax_dt = 10
 lax_secondary_bc = ('constant', 'constant')
 
 ############                Hydrologic Parameters               ############

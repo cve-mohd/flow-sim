@@ -68,7 +68,11 @@ class Solver:
         self.peak_amplitude = deviation.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
-            self.storage_outflow[0] = self.flow_at(k=0, i=-1)
+            if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
+                self.storage_outflow[0] = 0
+            else:
+                self.storage_outflow[0] = self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.water_level_at(k=0, i=-1))
+            
             for k in range(1, self.max_timelevels):
                 avg_inflow = 0.5 * (self.flow_at(k=k-1, i=-1) + self.flow_at(k=k, i=-1))
                 Y1 = self.water_level_at(k=k-1, i=-1)

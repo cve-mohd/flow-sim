@@ -142,9 +142,9 @@ class Boundary:
         else:
             return 0
         
-    def df_dYN(self):
-        if self.condition == 'fixed_depth':
-            return -1
+    def condition_type(self):
+        if self.condition in['flow_hydrograph', 'normal_depth', 'rating_curve']:
+            return 1
         else:
             return 0
     
