@@ -1,6 +1,7 @@
 from src.solver import Solver
 from src.channel import Channel
 from scipy.constants import g
+from scipy.optimize import brentq
 
 class LaxSolver(Solver):
     """
@@ -154,15 +155,34 @@ class LaxSolver(Solver):
             self.compute_downstream_node()
             
         else:            
-            self.area[self.time_level, i] = self.new_area(A_im1=self.area_at(k=-1, i=i-1),
-                                                          A_ip1=self.area_at(k=-1, i=i+1),
-                                                          Q_im1=self.flow_at(k=-1, i=i-1),
-                                                          Q_ip1=self.flow_at(k=-1, i=i+1))
-                                                    
-            self.flow[self.time_level, i] = self.new_flow(A_im1=self.area_at(k=-1, i=i-1),
-                                                          A_ip1=self.area_at(k=-1, i=i+1),
-                                                          Q_im1=self.flow_at(k=-1, i=i-1),
-                                                          Q_ip1=self.flow_at(k=-1, i=i+1))
+            # (kp1 - k_avg) / delta_t
+            Q_ip1 = self.flow_at(k=-1, i=i+1)
+            Q_im1 = self.flow_at(k=-1, i=i-1)
+            
+            A_ip1 = self.area_at(k=-1, i=i+1)
+            A_im1 = self.area_at(k=-1, i=i-1)
+            
+            avg_A  = self.cell_avg(ip1=A_ip1, im1=A_im1)
+            avg_Q  = self.cell_avg(ip1=Q_ip1, im1=Q_im1)
+            avg_Se = self.cell_avg(ip1=self.Se_at(k=-1, i=i+1), im1=self.Se_at(k=-1, i=i-1))
+            
+            dQ_dx = self.spatial_diff(
+                ip1=Q_ip1,
+                im1=Q_im1,
+            )
+            
+            dQ2A_dx = self.spatial_diff(
+                ip1=Q_ip1**2 / A_ip1,
+                im1=Q_im1**2 / A_im1
+            )
+            
+            dY_dx = self.spatial_diff(
+                ip1=self.water_level_at(k=-1, i=i+1),
+                im1=self.water_level_at(k=-1, i=i-1)
+            )
+                
+            self.area[self.time_level, i] = -dQ_dx * self.time_step + avg_A
+            self.flow[self.time_level, i] = -(dQ2A_dx + g * avg_A * (dY_dx + avg_Se)) * self.time_step + avg_Q
     
     def compute_downstream_node(self):
         ghost_A, ghost_Q = self.ds_ghost_node()
@@ -232,4 +252,14 @@ class LaxSolver(Solver):
     def check_cfl_condition(self, velocity, depth):
         analytical_celerity = max(velocity + (g * depth) ** 0.5, velocity - (g * depth) ** 0.5)
         return self.num_celerity >= analytical_celerity
+    
+    def time_diff(self, kp1, ip1, im1):
+        k = self.cell_avg(ip1=ip1, im1=im1)
+        return (kp1 - k) / self.time_step
+    
+    def spatial_diff(self, ip1, im1):
+        return 0.5 * (ip1 - im1) / self.spatial_step
+            
+    def cell_avg(self, ip1, im1):
+        return 0.5 * (ip1 + im1)
     
