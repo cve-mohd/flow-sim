@@ -2,6 +2,7 @@ from src.channel import Channel
 from src.boundary import Boundary
 from src.utility import Hydrograph
 from src.preissmann import PreissmannSolver
+from src.lax import LaxSolver
 
 def trapzoid_hydrograph(t):
     initial_flow = 1000
@@ -44,12 +45,30 @@ example_channel = Channel(width = 250,
 #example_channel.set_intermediate_bed_levels([510], [8000])
 #example_channel.set_intermediate_widths([400], [26000])
 
-solver = PreissmannSolver(channel=example_channel,
+p_solver = PreissmannSolver(channel=example_channel,
                           theta=0.8,
                           time_step=3600,
                           spatial_step=1000,
                           simulation_time=24*3600,
                           regularization=False)
 
-solver.run(verbose=0)
-solver.save_results(folder_path='cases\\example\\results')
+p_solver.run(verbose=0)
+p_solver.save_results(folder_path='cases\\example\\results')
+print('Finished Preissmann.')
+
+example_channel = Channel(width = 250,
+                        initial_flow = us.hydrograph.get_at(0),
+                        roughness = 0.027,
+                        upstream_boundary = us,
+                        downstream_boundary = ds,
+                        interpolation_method='steady-state')
+
+l_solver = LaxSolver(channel=example_channel,
+                     time_step=3600,
+                     spatial_step=1000,
+                     simulation_time=24*3600,
+                     secondary_BC=('constant', 'constant'))
+
+l_solver.run(verbose=1)
+l_solver.save_results(folder_path='cases\\example\\results')
+print('Finished Lax-Friedrich.')
