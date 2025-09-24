@@ -64,45 +64,11 @@ def draw(chainages, widths, curvature, x0, y0, theta0):
     return plot_channel_outline(x, y, theta, widths)
     
 def import_geometry(path):
-    from pandas import read_excel, DataFrame
-    df = read_excel(path, skiprows=1)
-
-    chainages    = df.iloc[:, 1]
-    widths       = df.iloc[:, 2]
-    levels       = df.iloc[:, 3]
-    eastings     = df.iloc[:, 4]
-    northings    = df.iloc[:, 5]
-
-    width_df = DataFrame({
-        "chainage": chainages,
-        "width": widths
-    }).dropna()
-    width_df = width_df.astype(float).sort_values(by="chainage")
-
-    level_df = DataFrame({
-        "chainage": chainages,
-        "level": levels
-    }).dropna()
-    level_df = level_df.astype(float).sort_values(by="chainage")
+    from pandas import read_csv
+    table = read_csv(path).dropna(axis=1, how="all").dropna()
+    table = table.astype(np.float64).sort_values(by="chainage")
     
-    coords_df = DataFrame({
-        "chainage": chainages,
-        "eastings": eastings,
-        "northings": northings
-    }).dropna()
-    coords_df = coords_df.astype(float).sort_values(by="chainage")
-
-    width_ch     = np.array(width_df["chainage"].array, dtype=float)
-    widths       = np.array(width_df["width"].array, dtype=float)
-    level_ch     = np.array(level_df["chainage"].array, dtype=float)
-    levels       = np.array(level_df["level"].array, dtype=float)
-    coords_ch    = np.array(coords_df["chainage"].array, dtype=float)
-    
-    coords_x     = np.asarray(coords_df["eastings"], dtype=float).reshape(-1, 1)
-    coords_y     = np.asarray(coords_df["northings"], dtype=float).reshape(-1, 1)
-    coords       = np.hstack((coords_x, coords_y))
-
-    return widths, width_ch, levels, level_ch, coords, coords_ch
+    return table.to_numpy(dtype=np.float64)
 
 def export_banks(left_x, left_y, right_x, right_y,
                  crs="EPSG:20136",
@@ -137,22 +103,23 @@ def export_banks(left_x, left_y, right_x, right_y,
     return gdf
 
 def import_area_curve(path: str) -> np.ndarray:
-    """
-    Imports stage and area data from an Excel file and returns it as a 2D NumPy array.
-
-    Args:
-        path (str): The file path to the Excel file.
-
-    Returns:
-        np.ndarray: A 2D NumPy array where the first column contains stages 
-                    and the second column contains corresponding areas.
-    """
-    from pandas import read_excel
+    from pandas import read_csv
     
-    df = read_excel(path, skiprows=1)
-    stages = df.iloc[:, 0].to_numpy()
-    areas = df.iloc[:, 1].to_numpy()
+    table = read_csv(path, skiprows=[1])
+    table = table.astype(np.float64).sort_values(by="stage")
     
-    area_curve = np.vstack((stages, areas)).T
+    area_curve = table.to_numpy()[:, :2]
+    area_curve[:, 1] *= 1e6
+    
+    return area_curve
+
+def import_hydrograph(path: str) -> np.ndarray:
+    from pandas import read_csv
+    
+    table = read_csv(path, skiprows=[1])
+    table = table.astype(np.float64).sort_values(by="time")
+    
+    area_curve = table.to_numpy()
+    area_curve[:, 0] *= 3600
     
     return area_curve

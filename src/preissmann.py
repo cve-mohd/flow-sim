@@ -26,7 +26,7 @@ class PreissmannSolver(Solver):
                  spatial_step: int | float,
                  simulation_time: int,
                  fit_spatial_step: bool = True,
-                 regularization: bool = True):
+                 regularization: bool = False):
         """
         Initializes the class.
 
@@ -709,7 +709,11 @@ class PreissmannSolver(Solver):
             
         else:
             dD_dAreg = dD
-            dD_dQe = self.channel.downstream_boundary.df_dQ()
+            dD_dQe = self.channel.downstream_boundary.df_dQ(
+                duration=self.time_step,
+                vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
+                Y_old=self.water_level_at(k=-1, i=-1)
+                )
             
             return dD_dAreg * self.dAreg_dA(i=-1) + dD_dQe * self.dQe_dA(i=-1)
 
@@ -755,7 +759,7 @@ class PreissmannSolver(Solver):
         """
         h_min = 1e-4
         A_min = self.width_at(i=i) * h_min
-        A = self.area_at(i, 1, False)
+        A = self.area_at(i=i, regularization=False)
         
         return 0.5 * (
             1.0 + (A - A_min) / np.sqrt(
@@ -783,8 +787,8 @@ class PreissmannSolver(Solver):
         h_min = 1e-4
         
         A_min = self.width_at(i=i) * h_min
-        A_reg = self.area_at(i, 1, True)
-        Q = self.flow_at(i, 1, False)
+        A_reg = self.area_at(i=i, regularization=True)
+        Q = self.flow_at(i=i, chi_scaling=False)
         
         return A_min * Q * self.dAreg_dA(i=i) / (A_reg + A_min) ** 2
         
@@ -806,7 +810,7 @@ class PreissmannSolver(Solver):
         h_min = 1e-4
         
         A_min = self.width_at(i=i) * h_min
-        A_reg = self.area_at(i, True, True)
+        A_reg = self.area_at(i=i, regularization=True)
         
         chi = A_reg / (A_reg + A_min)
         

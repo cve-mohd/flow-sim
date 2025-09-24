@@ -176,6 +176,7 @@ class LaxSolver(Solver):
     
     def compute_downstream_node(self):
         ghost_A, ghost_Q, ghost_Y, ghost_Se = self.ds_ghost_node()
+        
         if self.channel.downstream_boundary.condition_type():
             A = self.new_area(A_im1=self.area_at(k=-1, i=-2),
                               A_ip1=ghost_A,
@@ -200,7 +201,7 @@ class LaxSolver(Solver):
                               Y_ip1=ghost_Y,
                               Se_im1=self.Se_at(k=-1, i=-2),
                               Se_ip1=ghost_Se)
-            
+                        
             A = -self.width_at(i=-1) * self.channel.downstream_boundary.condition_residual(
                 time=self.time_level*self.time_step,
                 depth=0,
@@ -220,7 +221,7 @@ class LaxSolver(Solver):
             ip1=Q_ip1,
             im1=Q_im1,
         )
-            
+                    
         return -dQ_dx * self.time_step + avg_A
 
     def new_flow(self, A_im1, A_ip1, Q_im1, Q_ip1, Y_ip1, Y_im1, Se_ip1, Se_im1):        

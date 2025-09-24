@@ -213,39 +213,34 @@ class RatingCurve:
         return equation
 
 class Hydrograph:
-    def __init__(self, function = None):
-        if function is not None:
-            self.used_function = function
-        else:
-            self.used_function = self.interpolate_hydrograph
-    
+    def __init__(self, function = None, table: np.ndarray = None):
+        """Creates a hydrograph object.
+
+        Args:
+            function (_type_, optional): f(t). Defaults to None.
+            table (np.ndarray, optional): Should contain time (in seconds) in the first column
+            and corresponding values in the second. Defaults to None.
+        """
+        self.table = table
+        self.used_function = self.interpolate_hydrograph if function is None else function
+            
     def interpolate_hydrograph(self, time):
-        if self.values is None:
+        if self.table is None:
             raise ValueError("Hydrograph is not defined.")
-        
-        if time > self.times[-1]:
-            return self.values[-1]
-                
-        return float(np.interp(time, self.times, self.values))
+                        
+        return float(np.interp(time, self.table[:, 0], self.table[:, 1]))
 
     def get_at(self, time):
         return self.used_function(time)
         
-    def set_values(self, times, values):
-        times  = np.asarray(times,   dtype=np.float64)
-        values = np.asarray(values, dtype=np.float64)
-        if times.shape != values.shape:
-            raise ValueError("Times and values must have the same length.")
-        
-        self.times, self.values = times, values
-        
-    def load_csv(self, path):
-        import pandas as pd
-        hydrograph_file = pd.read_csv(path, thousands=',')
-        
-        self.times  = np.asarray(hydrograph_file.iloc[:,0], dtype=np.float64)
-        self.values = np.asarray(hydrograph_file.iloc[:,1], dtype=np.float64)
-                    
+    def set_table(self, table: np.ndarray):
+        """Time (in seconds) in the first column and corresponding values in the second.
+
+        Args:
+            table (np.ndarray): NumPy array containing the hydrograph.
+        """
+        self.table = table
+       
     def set_function(self, func):
         self.used_function = func
     
@@ -484,10 +479,11 @@ class Hydraulics:
         return dQn_dn
     
 class LumpedStorage:
-    def __init__(self, surface_area: float, min_stage: float, solution_boundaries: tuple, rating_curve: RatingCurve = None):
+    def __init__(self, solution_boundaries: tuple, surface_area: float = None, min_stage: float = None, rating_curve: RatingCurve = None):
         self.rating_curve = rating_curve
         self.surface_area = surface_area
         self.min_stage = min_stage
+        
         self.stage = None
         self.area_curve = None
         
@@ -522,10 +518,10 @@ class LumpedStorage:
         
         return 1/self.area_at(Y_new)
             
-    def set_area_curve(self, curve, alpha=1, beta=0, update_solution_boundaries = True):
+    def set_area_curve(self, table, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
         self.beta = beta
-        self.area_curve = np.asarray(curve, dtype=np.float64)
+        self.area_curve = np.asarray(table, dtype=np.float64)
         self.area_gradient = np.gradient(self.area_curve[:, 1], self.area_curve[:, 0])
         
         if update_solution_boundaries:

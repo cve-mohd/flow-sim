@@ -6,7 +6,7 @@ dry_n = 0.030
 ############                Simulation Parameters               ############
 
 regularization = False
-sim_duration = 3600 * 96
+sim_duration = 3600*96
 
 dx = 1000
 
@@ -15,7 +15,7 @@ theta = 0.8
 tolerance = 1e-4
 
 lax_dt = 10
-lax_secondary_bc = ('constant', 'constant')
+lax_secondary_bc = ('constant', 'mirror')
 
 ############                Hydrologic Parameters               ############
 
@@ -34,6 +34,7 @@ initial_flow = 1562.5
 peak_flow = 25000
 
 def trapzoid_hydrograph(t):
+    return initial_flow
     if t <= lag_time:
         return initial_flow
     elif t - lag_time < time_to_peak:
