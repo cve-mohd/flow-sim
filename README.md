@@ -1,7 +1,7 @@
 # Simplified Solution of Flood Wave Propagation in Open Channel
 
 ## Overview
-This program numerically solves the Saint-Venant equations using the finite difference method.
+This program simulates one-dimensional open-channel flow by solving the Saint-Venant equations using the finite-difference method.
 
 ## Features
 TBA
