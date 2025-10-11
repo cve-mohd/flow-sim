@@ -5,17 +5,12 @@ dry_n = 0.030
 
 ############                Simulation Parameters               ############
 
-regularization = False
-sim_duration = 3600*96
-
-dx = 1000
-
-preissmann_dt = 3600
+spatial_step = 1000
+time_step = 3600
 theta = 0.8
-tolerance = 1e-4
 
-lax_dt = 10
-lax_secondary_bc = ('constant', 'mirror')
+sim_duration = 3600*96
+tolerance = 1e-6
 
 ############                Hydrologic Parameters               ############
 
@@ -34,7 +29,6 @@ initial_flow = 1562.5
 peak_flow = 25000
 
 def trapzoid_hydrograph(t):
-    return initial_flow
     if t <= lag_time:
         return initial_flow
     elif t - lag_time < time_to_peak:
@@ -48,7 +42,7 @@ def trapzoid_hydrograph(t):
     
 ############                Other Global Variables              ############
 
-rs_stages = [480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493]
+rs_stages = [i for i in range(480, 494)]
 spillway_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 9653, 9891, 10122, 10346]
 total_discharges = [14034, 14438, 14830, 15220, 15598, 15971, 16342, 16703, 17062, 17409, 17763, 18110, 18450, 18785]
 

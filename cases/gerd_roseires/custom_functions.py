@@ -63,13 +63,6 @@ def draw(chainages, widths, curvature, x0, y0, theta0):
     x, y, theta = reconstruct_centerline(chainages, curvature, x0, y0, theta0)
     return plot_channel_outline(x, y, theta, widths)
     
-def import_geometry(path):
-    from pandas import read_csv
-    table = read_csv(path).dropna(axis=1, how="all").dropna()
-    table = table.astype(np.float64).sort_values(by="chainage")
-    
-    return table.to_numpy(dtype=np.float64)
-
 def export_banks(left_x, left_y, right_x, right_y,
                  crs="EPSG:20136",
                  outfile="banks.shp"):
@@ -123,3 +116,12 @@ def import_hydrograph(path: str) -> np.ndarray:
     area_curve[:, 0] *= 3600
     
     return area_curve
+
+def import_table(path: str, header: bool = True, sort_by: str = None):
+    from pandas import read_csv
+    table = read_csv(path, header=(0 if header else None)).dropna(axis=1, how="all").dropna()
+    
+    if sort_by is not None:
+        table = table.astype(np.float64).sort_values(by=sort_by)
+    
+    return table.to_numpy(dtype=np.float64)
