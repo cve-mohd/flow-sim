@@ -1,5 +1,5 @@
-from hydromodel.boundary import Boundary
-from hydromodel.utility import Hydraulics, compute_radii_curv
+from .boundary import Boundary
+from .utility import Hydraulics, compute_radii_curv
 import numpy as np
 
 class Channel:

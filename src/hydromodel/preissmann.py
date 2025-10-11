@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.constants import g
-from hydromodel.solver import Solver
-from hydromodel.channel import Channel
-from hydromodel.utility import euclidean_norm
+from .solver import Solver
+from .channel import Channel
+from .utility import euclidean_norm
 
 class PreissmannSolver(Solver):
     """

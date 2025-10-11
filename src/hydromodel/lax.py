@@ -1,5 +1,5 @@
-from hydromodel.solver import Solver
-from hydromodel.channel import Channel
+from .solver import Solver
+from .channel import Channel
 from scipy.constants import g
 
 class LaxSolver(Solver):

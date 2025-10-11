@@ -1,10 +1,10 @@
-from hydromodel.channel import Channel
-from hydromodel.boundary import Boundary
-from hydromodel.utility import Hydrograph
-from hydromodel.preissmann import PreissmannSolver
-from cases.gerd_roseires.settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance
-from cases.gerd_roseires.custom_functions import import_table, import_hydrograph
-from cases.gerd_roseires.roseires_rating_curve import RoseiresRatingCurve
+from src.hydromodel.channel import Channel
+from src.hydromodel.boundary import Boundary
+from src.hydromodel.utility import Hydrograph
+from src.hydromodel.preissmann import PreissmannSolver
+from ..settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance
+from ..custom_functions import import_table, import_hydrograph
+from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
 

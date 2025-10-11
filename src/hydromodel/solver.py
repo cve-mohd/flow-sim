@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 from scipy.constants import g
-from hydromodel.channel import Channel
-from hydromodel.utility import create_directory_if_not_exists
-from hydromodel.utility import seconds_to_hms
+from .channel import Channel
+from .utility import create_directory_if_not_exists
+from .utility import seconds_to_hms
 
 class Solver:
     def __init__(self,
