@@ -1,8 +1,9 @@
-from src.channel import Channel
 import numpy as np
-from scipy.constants import g
 import pandas as pd
-from src.utility import create_directory_if_not_exists
+from scipy.constants import g
+from hydromodel.channel import Channel
+from hydromodel.utility import create_directory_if_not_exists
+from hydromodel.utility import seconds_to_hms
 
 class Solver:
     def __init__(self,
@@ -147,7 +148,6 @@ class Solver:
                 output_file.write(f'Theta = {self.theta}\n')
             
             # Simulation duration
-            from src.utility import seconds_to_hms
             output_file.write(f'Simulation duration = {seconds_to_hms(self.total_sim_duration)}\n')
             
             # Mass imbalance

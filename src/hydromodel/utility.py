@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from scipy.constants import g
+from scipy.optimize import brentq
     
 def create_directory_if_not_exists(directory):
     """
@@ -491,9 +492,7 @@ class LumpedStorage:
             self.Y_min = solution_boundaries[0]
             self.Y_max = solution_boundaries[1]
     
-    def mass_balance(self, duration, vol_in, Y_old = None, time = None):
-        from scipy.optimize import brentq
-        
+    def mass_balance(self, duration, vol_in, Y_old = None, time = None):        
         if Y_old is None:
             Y_old = self.stage
 

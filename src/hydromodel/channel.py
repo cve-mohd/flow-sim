@@ -1,5 +1,5 @@
-from src.boundary import Boundary
-from src.utility import Hydraulics
+from hydromodel.boundary import Boundary
+from hydromodel.utility import Hydraulics, compute_radii_curv
 import numpy as np
 
 class Channel:
@@ -265,33 +265,30 @@ class Channel:
         self.bed_level = bed_levels
         self.level_chainages = chainages
 
-    def initialize_geometry(self, n_nodes):
-        from numpy import interp, gradient, linspace, array, trapezoid
-        from src.utility import compute_radii_curv
-        
-        self.chainages = linspace(
+    def initialize_geometry(self, n_nodes):        
+        self.chainages = np.linspace(
             start=self.upstream_boundary.chainage,
             stop=self.downstream_boundary.chainage,
             num=n_nodes
         )
 
         if self.coordinated:
-            x = interp(self.chainages, self.coords_chainages, self.coords[:, 0])
-            y = interp(self.chainages, self.coords_chainages, self.coords[:, 1])
+            x = np.interp(self.chainages, self.coords_chainages, self.coords[:, 0])
+            y = np.interp(self.chainages, self.coords_chainages, self.coords[:, 1])
             self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
 
-        self.width = interp(
+        self.width = np.interp(
             self.chainages,
-            array(self.width_chainages, dtype=np.float64),
-            array(self.width, dtype=np.float64)
+            np.array(self.width_chainages, dtype=np.float64),
+            np.array(self.width, dtype=np.float64)
         )
-        self.bed_level = interp(
+        self.bed_level = np.interp(
             self.chainages,
-            array(self.level_chainages, dtype=np.float64),
-            array(self.bed_level, dtype=np.float64)
+            np.array(self.level_chainages, dtype=np.float64),
+            np.array(self.bed_level, dtype=np.float64)
         )
-        self.bed_slopes = -gradient(self.bed_level, self.chainages)
-        self.surface_area = trapezoid(self.width, self.chainages)
+        self.bed_slopes = -np.gradient(self.bed_level, self.chainages)
+        self.surface_area = np.trapezoid(self.width, self.chainages)
     
     def wet_depth(self, i):
         return self.initial_conditions[i, 0] / self.width[i]

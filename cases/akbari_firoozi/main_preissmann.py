@@ -1,7 +1,7 @@
-from src.channel import Channel
-from src.boundary import Boundary
-from src.preissmann import PreissmannSolver
-from src.utility import Hydrograph
+from hydromodel.channel import Channel
+from hydromodel.boundary import Boundary
+from hydromodel.preissmann import PreissmannSolver
+from hydromodel.utility import Hydrograph
 from cases.akbari_firoozi.settings import *
 
 hyd = Hydrograph(hydrograph)

@@ -1,7 +1,6 @@
-from src.solver import Solver
-from src.channel import Channel
+from hydromodel.solver import Solver
+from hydromodel.channel import Channel
 from scipy.constants import g
-from scipy.optimize import brentq
 
 class LaxSolver(Solver):
     """

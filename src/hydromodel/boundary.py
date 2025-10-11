@@ -1,4 +1,4 @@
-from src.utility import RatingCurve, Hydrograph, Hydraulics, LumpedStorage
+from hydromodel.utility import RatingCurve, Hydrograph, Hydraulics, LumpedStorage
 
 class Boundary:
     def __init__(self,
