@@ -52,6 +52,7 @@ class Boundary:
                         duration=duration,
                         vol_in=vol_in,
                         Y_old=Y_old,
+                        time=time                        
                     )
                     return depth - (target_Y - self.bed_level)
                 else:
@@ -69,7 +70,7 @@ class Boundary:
             if depth is None or flow_rate is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return flow_rate - self.rating_curve.discharge(self.bed_level + depth)
+            return flow_rate - self.rating_curve.discharge(stage=self.bed_level + depth, time=time)
             
         if self.condition == 'stage_hydrograph':
             if time is None or depth is None:
@@ -78,7 +79,7 @@ class Boundary:
             stage_t = self.hydrograph.get_at(time=time)
             return self.bed_level + depth - stage_t
         
-    def df_dA(self, area = None, width = None, bed_slope = None, roughness = None):
+    def df_dA(self, area = None, width = None, bed_slope = None, roughness = None, time = None):
         dh_dA = 1/width
         
         if self.condition == 'flow_hydrograph':
@@ -97,12 +98,11 @@ class Boundary:
             return 0 - Hydraulics.dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
         
         elif self.condition == 'rating_curve':
-            if width is None or area is None:
+            if width is None or area is None or time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             stage = self.bed_level + area/width
-            
-            return 0 - self.rating_curve.derivative_wrt_stage(stage) * dh_dA
+            return 0 - self.rating_curve.dQ_dz(stage, time=time) * dh_dA
             
         elif self.condition == 'stage_hydrograph':
             if width is None:
@@ -110,7 +110,7 @@ class Boundary:
             
             return dh_dA
         
-    def df_dQ(self, duration = None, vol_in = None, Y_old = None):
+    def df_dQ(self, duration = None, vol_in = None, Y_old = None, time = None):
         if self.condition == 'flow_hydrograph':
             return 1
             
@@ -120,6 +120,7 @@ class Boundary:
                     duration=duration,
                     vol_in=vol_in,
                     Y_old=Y_old,
+                    time=time
                 )
                 dvol_dQ = 0.5 * duration
                 

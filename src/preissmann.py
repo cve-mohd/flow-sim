@@ -334,13 +334,15 @@ class PreissmannSolver(Solver):
         B = self.width_at(i=0)
         n = self.channel.get_n(A=A, i=0)
         S_0 = self.bed_slope_at(i=0)
+        t = self.time_level * self.time_step
                     
         dU_dn = self.channel.upstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
         
         dU = self.channel.upstream_boundary.df_dA(area=A,
                                                   width=B,
                                                   bed_slope=S_0,
-                                                  roughness=n) + dU_dn * self.channel.dn_dA(A=A, i=0)
+                                                  roughness=n,
+                                                  time=t) + dU_dn * self.channel.dn_dA(A=A, i=0)
         if not self.regularization:
             return dU
         else:
@@ -696,6 +698,7 @@ class PreissmannSolver(Solver):
         B = self.width_at(i=-1)
         n = self.channel.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(i=-1)
+        t = self.time_level * self.time_step
                 
         dD_dn = self.channel.downstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
         dn_dA = self.channel.dn_dA(A=A, i=-1)
@@ -703,7 +706,8 @@ class PreissmannSolver(Solver):
         dD = self.channel.downstream_boundary.df_dA(area=A,
                                                     width=B,
                                                     bed_slope=S_0,
-                                                    roughness=n) + dD_dn * dn_dA
+                                                    roughness=n,
+                                                    time=t) + dD_dn * dn_dA
         if not self.regularization:
             return dD
             
@@ -712,7 +716,8 @@ class PreissmannSolver(Solver):
             dD_dQe = self.channel.downstream_boundary.df_dQ(
                 duration=self.time_step,
                 vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-                Y_old=self.water_level_at(k=-1, i=-1)
+                Y_old=self.water_level_at(k=-1, i=-1),
+                time=t
                 )
             
             return dD_dAreg * self.dAreg_dA(i=-1) + dD_dQe * self.dQe_dA(i=-1)
@@ -728,10 +733,12 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
+        t = self.time_level * self.time_step
         dD = self.channel.downstream_boundary.df_dQ(
             duration=self.time_step,
             vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-            Y_old=self.water_level_at(k=-1, i=-1)
+            Y_old=self.water_level_at(k=-1, i=-1),
+            time=t
         )
         
         if not self.regularization:

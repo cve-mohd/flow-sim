@@ -202,7 +202,7 @@ class Channel:
         wet_h = self.wet_depth(i)
         h = A / self.width[i]
         
-        return Hydraulics.effective_roughness(depth=h, roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
+        return Hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
               
     def dn_dA(self, A: float, i: int, steepness = 0.15):
         if self.dry_roughness is None:
@@ -231,7 +231,7 @@ class Channel:
     def set_intermediate_widths(self, widths, chainages):
         widths    = np.asarray(widths,    dtype=np.float64)
         chainages = np.asarray(chainages, dtype=np.float64)
-
+        
         if widths.shape != chainages.shape:
             raise ValueError("Widths and chainages must have the same length.")
 

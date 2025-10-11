@@ -80,7 +80,7 @@ class RatingCurve:
         self.defined = True
         self.type = type
         
-    def discharge(self, stage):
+    def discharge(self, stage, time = None):
         """
         Computes the discharge for a given stage using
         the rating curve equation.
@@ -113,22 +113,22 @@ class RatingCurve:
                     
             return discharge
 
-    def stage(self, discharge: float, trial_stage: float = None, tolerance: float = 1e-2, rate=1) -> float:
+    def stage(self, discharge: float, trial_stage: float = None, time = None, tolerance: float = 1e-2, rate=1) -> float:
         if not self.defined:
             raise ValueError("Rating curve is undefined.")
         
         if trial_stage is None:
             trial_stage = - self.stage_shift * 1.05
         
-        q = self.discharge(stage=trial_stage)
+        q = self.discharge(stage=trial_stage, time=time)
         
         while abs(q - discharge) > tolerance:
             func = q - discharge
-            deriv = self.derivative_wrt_stage(stage=trial_stage)
+            deriv = self.dQ_dz(stage=trial_stage, time=time)
             
             delta = - rate * func / deriv
             trial_stage += delta
-            q = self.discharge(stage=trial_stage)
+            q = self.discharge(stage=trial_stage, time=time)
         
         return trial_stage
     
@@ -180,7 +180,7 @@ class RatingCurve:
         
         self.defined = True
         
-    def derivative_wrt_stage(self, stage):
+    def dQ_dz(self, stage, time = None):
         Y_ = stage + self.stage_shift
         
         if not self.defined:
@@ -264,15 +264,15 @@ class Hydraulics:
             
         return A_guess
     
-    def effective_roughness(depth: float, steepness, roughness, dry_roughness, wet_depth):
+    def effective_roughness(depth: float, steepness, wet_roughness, dry_roughness, wet_depth):
         transition_depth = steepness * wet_depth
         
         if depth <= wet_depth:
-            return roughness
+            return wet_roughness
         if transition_depth == 0 or depth - wet_depth > transition_depth:
             return dry_roughness
         else:
-            return roughness + (dry_roughness - roughness) * (depth - wet_depth) / transition_depth
+            return wet_roughness + (dry_roughness - wet_roughness) * (depth - wet_depth) / transition_depth
         
     def Sf(A: float, Q: float, n: float, B: float) -> float:
         """
@@ -491,14 +491,14 @@ class LumpedStorage:
             self.Y_min = solution_boundaries[0]
             self.Y_max = solution_boundaries[1]
     
-    def mass_balance(self, duration, vol_in, Y_old=None):
+    def mass_balance(self, duration, vol_in, Y_old = None, time = None):
         from scipy.optimize import brentq
         
         if Y_old is None:
             Y_old = self.stage
 
         def f(Y_new):
-            Q_out = 0.5 * (self.rating_curve.discharge(Y_old) + self.rating_curve.discharge(Y_new)) if self.rating_curve else 0.0
+            Q_out = 0.5 * (self.rating_curve.discharge(Y_old, time) + self.rating_curve.discharge(Y_new, time)) if self.rating_curve else 0.0
             target_vol = vol_in - Q_out * duration
             return self.net_vol_change(Y_old, Y_new) - target_vol
 
@@ -508,11 +508,11 @@ class LumpedStorage:
 
         return Y_new
 
-    def dY_new_dvol_in(self, duration, vol_in, Y_old) -> float:
+    def dY_new_dvol_in(self, duration, vol_in, Y_old, time = None) -> float:
         """
         d(Y_new)/d(vol_in)
         """
-        Y_new = self.mass_balance(duration, vol_in, Y_old)
+        Y_new = self.mass_balance(duration, vol_in, Y_old, time)
         if Y_new <= self.min_stage:
             return 0.0
         
