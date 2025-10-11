@@ -1,7 +1,6 @@
-from src.solver import Solver
-from src.channel import Channel
+from .solver import Solver
+from .channel import Channel
 from scipy.constants import g
-from scipy.optimize import brentq
 
 class LaxSolver(Solver):
     """

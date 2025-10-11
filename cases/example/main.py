@@ -1,9 +1,8 @@
-from src.channel import Channel
-from src.boundary import Boundary
-from src.utility import Hydrograph
-from src.preissmann import PreissmannSolver
-from src.lax import LaxSolver
-from src.utility import LumpedStorage
+from src.hydromodel.channel import Channel
+from src.hydromodel.boundary import Boundary
+from src.hydromodel.utility import Hydrograph, LumpedStorage
+from src.hydromodel.preissmann import PreissmannSolver
+from src.hydromodel.lax import LaxSolver
 
 def trapzoid_hydrograph(t):
     initial_flow = 1000

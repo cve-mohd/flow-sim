@@ -1,18 +1,21 @@
-from src.channel import Channel
-from src.boundary import Boundary
-from src.utility import Hydrograph
-from src.preissmann import PreissmannSolver
-from cases.gerd_roseires.settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance
-from cases.gerd_roseires.custom_functions import import_table, import_hydrograph
-from cases.gerd_roseires.roseires_rating_curve import RoseiresRatingCurve
+from src.hydromodel.channel import Channel
+from src.hydromodel.boundary import Boundary
+from src.hydromodel.utility import Hydrograph, LumpedStorage
+from src.hydromodel.preissmann import PreissmannSolver
+from ..settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance
+from ..custom_functions import import_table, import_hydrograph, import_area_curve
+from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
 
-input_dir = "cases\\gerd_roseires\\explicit\\input_data\\"
+roseires_storage = LumpedStorage(min_stage=467, rating_curve=RoseiresRatingCurve(), solution_boundaries=None)
+
+input_dir = "cases\\gerd_roseires\\lumped\\input_data\\"
 inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\input\\inflow_hydrograph.csv"))
 bed_profile = import_table(input_dir + "bed_profile.csv", sort_by='chainage')
 widths = import_table(input_dir + "width.csv", sort_by='chainage')
 coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
+roseires_storage.set_area_curve(table=import_area_curve(input_dir + 'roseires_storage_curve.csv'))
 
 gerd_bed_level = bed_profile[0, 1]
 gerd_chainage = min([bed_profile[:, 0].min(), widths[:, 0].min(), coords[:, 0].min()])
@@ -25,11 +28,13 @@ GERD = Boundary(condition='flow_hydrograph',
                 chainage=gerd_chainage,
                 hydrograph=inflow_hyd)
 
-Roseires = Boundary(initial_depth=initial_roseires_level-ds_bed_level,
-                    condition='rating_curve',
+ds_depth = initial_roseires_level-ds_bed_level
+Roseires = Boundary(initial_depth=ds_depth,
+                    condition='fixed_depth',
                     bed_level=ds_bed_level,
-                    chainage=ds_chainage,
-                    rating_curve=RoseiresRatingCurve())
+                    chainage=ds_chainage)
+
+Roseires.set_lumped_storage(roseires_storage)
 
 GERD_Roseires_system = Channel(width=widths[0, 1],
                                initial_flow=inflow_hyd.get_at(0),
@@ -54,6 +59,6 @@ solver.run(verbose=0, tolerance=tolerance)
 
 print("Saving results...")
 
-solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
+solver.save_results(folder_path='cases\\gerd_roseires\\lumped\\results\\')
 
 print("Done.")

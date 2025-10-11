@@ -46,7 +46,7 @@ rs_stages = [i for i in range(480, 494)]
 spillway_discharges = [7147, 7420, 7686, 7945, 8197, 8449, 8701, 8946, 9184, 9422, 9653, 9891, 10122, 10346]
 total_discharges = [14034, 14438, 14830, 15220, 15598, 15971, 16342, 16703, 17062, 17409, 17763, 18110, 18450, 18785]
 
-from src.utility import RatingCurve
+from src.hydromodel.utility import RatingCurve
 rating_curves = []
 roseires_spillway_rating_curve = RatingCurve()
 roseires_spillway_rating_curve.fit(discharges=spillway_discharges, stages=rs_stages)

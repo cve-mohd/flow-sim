@@ -1,9 +1,8 @@
-from src.solver import Solver
-from src.channel import Channel
 import numpy as np
 from scipy.constants import g
-from src.utility import euclidean_norm
-
+from .solver import Solver
+from .channel import Channel
+from .utility import euclidean_norm
 
 class PreissmannSolver(Solver):
     """

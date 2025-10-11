@@ -1,5 +1,5 @@
 import numpy as np
-from src.utility import RatingCurve
+from src.hydromodel.utility import RatingCurve
 from pandas import read_csv
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
