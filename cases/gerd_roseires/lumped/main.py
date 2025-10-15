@@ -8,7 +8,7 @@ from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
 
-roseires_storage = LumpedStorage(min_stage=467, rating_curve=RoseiresRatingCurve(), solution_boundaries=None)
+roseires_storage = LumpedStorage(min_stage=490, rating_curve=RoseiresRatingCurve(), solution_boundaries=None)
 
 input_dir = "cases\\gerd_roseires\\lumped\\input_data\\"
 inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\input\\inflow_hydrograph.csv"))
@@ -34,6 +34,8 @@ Roseires = Boundary(initial_depth=ds_depth,
                     bed_level=ds_bed_level,
                     chainage=ds_chainage)
 
+roseires_storage.reservoir_length = 122000 - ds_chainage
+roseires_storage.capture_losses = True
 Roseires.set_lumped_storage(roseires_storage)
 
 GERD_Roseires_system = Channel(width=widths[0, 1],
@@ -62,3 +64,5 @@ print("Saving results...")
 solver.save_results(folder_path='cases\\gerd_roseires\\lumped\\results\\')
 
 print("Done.")
+
+# Run command: py -m cases.gerd_roseires.lumped.main

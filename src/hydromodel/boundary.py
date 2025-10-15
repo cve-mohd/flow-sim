@@ -48,13 +48,15 @@ class Boundary:
                 raise ValueError("Fixed depth is not defined.")
             else:
                 if self.lumped_storage is not None:
-                    target_Y = self.lumped_storage.mass_balance(
+                    target_depth = self.lumped_storage.mass_balance(
                         duration=duration,
                         vol_in=vol_in,
                         Y_old=Y_old,
                         time=time                        
-                    )
-                    return depth - (target_Y - self.bed_level)
+                    ) - self.bed_level
+                    
+                    hl = 0#self.lumped_storage.energy_loss(Q=flow_rate, A=depth*width, n=roughness, h=depth)
+                    return depth - (target_depth + hl)
                 else:
                     return depth - self.initial_depth
         
@@ -63,7 +65,6 @@ class Boundary:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             normal_flow = Hydraulics.normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
-            #print(f'Normal = {normal_flow}, current = {flow_rate}')
             return flow_rate - normal_flow
         
         elif self.condition == 'rating_curve':
@@ -79,7 +80,7 @@ class Boundary:
             stage_t = self.hydrograph.get_at(time=time)
             return self.bed_level + depth - stage_t
         
-    def df_dA(self, area = None, width = None, bed_slope = None, roughness = None, time = None):
+    def df_dA(self, area = None, flow_rate = None, width = None, bed_slope = None, roughness = None, time = None):
         dh_dA = 1/width
         
         if self.condition == 'flow_hydrograph':
@@ -89,7 +90,12 @@ class Boundary:
             if width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return dh_dA
+            if self.lumped_storage is not None:
+                dhl_dA = 0#self.lumped_storage.dhl_dA(Q=flow_rate, A=area, n=roughness, h=area/width)
+            else:
+                dhl_dA = 0
+            
+            return dh_dA - dhl_dA
         
         elif self.condition == 'normal_depth':
             if width is None or area is None or bed_slope is None or roughness is None:
@@ -110,7 +116,7 @@ class Boundary:
             
             return dh_dA
         
-    def df_dQ(self, duration = None, vol_in = None, Y_old = None, time = None):
+    def df_dQ(self, area = None, flow_rate = None, roughness = None, depth = None, duration = None, vol_in = None, Y_old = None, time = None):
         if self.condition == 'flow_hydrograph':
             return 1
             
@@ -124,7 +130,9 @@ class Boundary:
                 )
                 dvol_dQ = 0.5 * duration
                 
-                return -dY_new_dvol * dvol_dQ
+                dhl_dQ = 0#self.lumped_storage.dhl_dQ(Q=flow_rate, A=area, n=roughness, h=depth)
+                
+                return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)
             else:
                 return 0
         
@@ -137,9 +145,14 @@ class Boundary:
         elif self.condition == 'stage_hydrograph':
             return 0
     
-    def df_dn(self, depth, width, bed_slope, roughness):
+    def df_dn(self, depth, roughness, width, bed_slope, flow_rate=None):
         if self.condition == 'normal_depth':
             return 0 - Hydraulics.dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+        
+        elif self.condition == 'fixed_depth' and self.lumped_storage:
+            dhl_dn = self.lumped_storage.dhl_dn(Q=flow_rate, n=roughness, h=depth)
+            return 0 - (0 + dhl_dn)
+                
         else:
             return 0
         

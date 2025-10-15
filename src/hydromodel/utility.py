@@ -395,7 +395,6 @@ class Hydraulics:
             Q (float): Flow rate
             n (float): Manning's coefficient
             B (float): Cross-sectional width
-            approx_R (bool, optional): Whether P (wetted perimeter) is approximated to B. Defaults to False.
 
         Returns:
             float: dSf/dA
@@ -406,7 +405,7 @@ class Hydraulics:
 
         return dSf_dA + dSf_dR * Hydraulics.dR_dA(A, B)
     
-    def dSf_dQ(A: float, Q: float, n: float, B: float, approx_R = False) -> float:
+    def dSf_dQ(A: float, Q: float, n: float, B: float) -> float:
         """Computes the partial derivative of Sf w.r.t. Q.
 
         Args:
@@ -414,7 +413,6 @@ class Hydraulics:
             Q (float): Flow rate
             n (float): Manning's coefficient
             B (float): Cross-sectional width
-            approx_R (bool, optional): Whether P (wetted perimeter) is approximated to B. Defaults to False.
 
         Returns:
             float: dSf/dQ
@@ -487,6 +485,9 @@ class LumpedStorage:
         
         self.stage = None
         self.area_curve = None
+        self.reservoir_length = None
+        self.widths = None
+        self.capture_losses = False
         
         if solution_boundaries is not None:
             self.Y_min = solution_boundaries[0]
@@ -501,11 +502,11 @@ class LumpedStorage:
             target_vol = vol_in - Q_out * duration
             return self.net_vol_change(Y_old, Y_new) - target_vol
 
-        Y_new = brentq(f, self.Y_min, self.Y_max)
-        if Y_new < self.min_stage:
-            Y_new = self.min_stage
+        Y_target = brentq(f, self.Y_min, self.Y_max)
+        if Y_target < self.min_stage:
+            Y_target = self.min_stage
 
-        return Y_new
+        return Y_target
 
     def dY_new_dvol_in(self, duration, vol_in, Y_old, time = None) -> float:
         """
@@ -516,6 +517,110 @@ class LumpedStorage:
             return 0.0
         
         return 1/self.area_at(Y_new)
+    
+    def energy_loss(self, Q, n, h, K_q=0):
+        if not self.capture_losses:
+            return 0
+                
+        hf = self.friction_loss(Q, h, n)
+        h_exp = self.expansion_loss(Q, h)
+        h_emp = self.empirical_loss(Q, h, K_q)
+        
+        return hf + h_exp + h_emp
+
+    def friction_loss(self, Q, h, n):
+        A_res = h * self.widths[0]
+        Sf = Hydraulics.Sf(A=A_res, Q=Q, n=n, B=self.widths[0])
+        return Sf * self.reservoir_length
+
+    def expansion_loss(self, Q, h):
+        h_trans = 0.0
+        for i in range(len(self.widths)-1):
+            A_up = h * self.widths[i]; A_down = h * self.widths[i+1]
+            if A_down > A_up:
+                K = (1 - A_up/A_down)**2
+                V = Q / A_up
+            else:
+                # contraction
+                Cc = 0.5
+                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                V = Q / A_down               # or Q/A_up depending on choice
+            h_trans += K * V**2 / (2*g)
+            
+        return h_trans
+    
+    def empirical_loss(self, Q, h, K_q):
+        V = Q/(h*self.widths[0])
+        return K_q * V**2 / (2*g)
+    
+    def dhl_dn(self, Q, n, h):
+        if not self.capture_losses:
+            return 0
+                
+        A_res = h * self.widths[0]
+        Sf = Hydraulics.dSf_dn(A=A_res, Q=Q, n=n, B=self.widths[0])
+        return Sf * self.reservoir_length
+
+    def dhf_dA(self, Q, n, A_res):
+        dSf_dA = Hydraulics.dSf_dA(A=A_res, Q=Q, n=n, B=self.entrance_width)
+        return dSf_dA * self.reservoir_length
+    
+    def d_h_exp_dA(self, A, A_res, Q):
+        V = Q/A
+        K_exp = (1 - A/A_res)**2
+        
+        dV_dA = -Q/(A**2)
+        dK_dA = 2*(1 - A/A_res) * (-1./A_res)
+        
+        return (K_exp * 2*V*dV_dA + dK_dA * V**2) / (2*g)
+    
+    def d_h_emp_dA(self, K_q, A, Q):
+        V = Q/A
+        dV_dA = -Q/(A**2)
+        
+        return K_q * 2*V*dV_dA / (2*g)
+
+    def dhl_dA(self, Q, n, h, K_q=0):
+        if not self.capture_losses:
+            return 0
+        
+        A_ent = self.widths[0]*h
+        
+        dhf_dA = self.dhf_dA(Q, n, A_ent)
+        d_h_exp_dA = self.d_h_exp_dA(A_ent, A_ent, Q)
+        d_h_emp_dA = self.d_h_emp_dA(K_q, A_ent, Q)
+        
+        return dhf_dA + d_h_exp_dA + d_h_emp_dA
+
+    def dhf_dQ(self, Q, n, B, A_res):
+        dSf_dQ = Hydraulics.dSf_dQ(A=A_res, Q=Q, n=n, B=B)
+        return dSf_dQ * self.reservoir_length
+
+    def d_h_exp_dQ(self, A, A_res, Q):
+        V = Q/A
+        dV_dQ = 1./A
+        K_exp = (1 - A/A_res)**2        
+        
+        return (K_exp * 2*V*dV_dQ) / (2*g)
+    
+    def d_h_emp_dQ(self, K_q, A, Q):
+        V = Q/A
+        dV_dQ = 1./A
+        
+        return K_q * 2*V*dV_dQ / (2*g)
+            
+    def dhl_dQ(self, Q, A, n, h, K_q=0):
+        if not self.capture_losses:
+            return 0
+        
+        B = self.dA_dY(stage=self.stage)
+        A_res = B*h
+        
+        dhf_dQ = self.dhf_dQ(Q, n, B, A_res)
+        d_h_exp_dQ = self.d_h_exp_dQ(A, A_res, Q)
+        d_h_emp_dQ = self.d_h_emp_dQ(K_q, A, Q)
+        
+        return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
             
     def set_area_curve(self, table, alpha=1, beta=0, update_solution_boundaries = True):
         self.alpha = alpha
