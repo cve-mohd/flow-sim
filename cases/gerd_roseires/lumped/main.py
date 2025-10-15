@@ -2,7 +2,7 @@ from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
 from src.hydromodel.utility import Hydrograph, LumpedStorage
 from src.hydromodel.preissmann import PreissmannSolver
-from ..settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance, used_roseires_rc
+from ..settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance, used_roseires_rc, constant_flow
 from ..custom_functions import import_table, import_hydrograph, import_area_curve
 from ..roseires_rating_curve import RoseiresRatingCurve
 
@@ -20,26 +20,41 @@ gerd_chainage = min([bed_profile[:, 0].min(), widths[:, 0].min(), coords[:, 0].m
 ds_bed_level = bed_profile[-1, 1]
 ds_chainage = max([bed_profile[:, 0].max(), widths[:, 0].max(), coords[:, 0].max()])
 
+roseires_storage = LumpedStorage(min_stage=initial_roseires_level,
+                                 #rating_curve=RoseiresRatingCurve(),
+                                 rating_curve=used_roseires_rc,
+                                 solution_boundaries=None)
+roseires_storage.set_area_curve(table=import_area_curve(input_dir + 'roseires_storage_curve.csv'))
+roseires_storage.reservoir_length = 0.5*(122000 - ds_chainage)
+roseires_storage.capture_losses = True
+roseires_storage.widths = [widths[-1, 1], 7075, 6222, 8400, 5000, 8550, 13800]
+
+ds_depth = initial_roseires_level - ds_bed_level
+
+while True:
+    new_ds_depth = initial_roseires_level - ds_bed_level + roseires_storage.energy_loss(
+        Q=inflow_hyd.get_at(0),
+        h=ds_depth,
+        n=wet_n
+    )
+    
+    diff = ds_depth - new_ds_depth
+    ds_depth = new_ds_depth
+    
+    if abs(diff) < 1e-6:
+        break
+    
+print(ds_depth + ds_bed_level)
+
 GERD = Boundary(condition='flow_hydrograph',
                 bed_level=gerd_bed_level,
                 chainage=gerd_chainage,
                 hydrograph=inflow_hyd)
 
-ds_depth = initial_roseires_level-ds_bed_level
 Roseires = Boundary(initial_depth=ds_depth,
                     condition='fixed_depth',
                     bed_level=ds_bed_level,
                     chainage=ds_chainage)
-
-roseires_storage = LumpedStorage(min_stage=490,
-                                 #rating_curve=RoseiresRatingCurve(),
-                                 rating_curve=used_roseires_rc,
-                                 solution_boundaries=None)
-
-roseires_storage.set_area_curve(table=import_area_curve(input_dir + 'roseires_storage_curve.csv'))
-roseires_storage.reservoir_length = 0.5*(122000 - ds_chainage)
-roseires_storage.capture_losses = True
-roseires_storage.widths = [widths[-1, 1], 7075, 6222, 8400, 5000, 8550, 13800]
 
 Roseires.set_lumped_storage(roseires_storage)
 

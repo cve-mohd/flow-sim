@@ -40,6 +40,9 @@ def trapzoid_hydrograph(t):
     else:
         return initial_flow
     
+def constant_flow(t):
+    return initial_flow
+    
 ############                Other Global Variables              ############
 
 rs_stages = [i for i in range(480, 494)]
