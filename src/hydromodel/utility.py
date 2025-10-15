@@ -483,7 +483,7 @@ class LumpedStorage:
         self.surface_area = surface_area
         self.min_stage = min_stage
         
-        self.stage = None
+        self.stage_hydrograph = []
         self.area_curve = None
         self.reservoir_length = None
         self.widths = None
@@ -493,10 +493,7 @@ class LumpedStorage:
             self.Y_min = solution_boundaries[0]
             self.Y_max = solution_boundaries[1]
     
-    def mass_balance(self, duration, vol_in, Y_old = None, time = None):        
-        if Y_old is None:
-            Y_old = self.stage
-
+    def mass_balance(self, duration, vol_in, Y_old = None, time = None):
         def f(Y_new):
             Q_out = 0.5 * (self.rating_curve.discharge(Y_old, time) + self.rating_curve.discharge(Y_new, time)) if self.rating_curve else 0.0
             target_vol = vol_in - Q_out * duration

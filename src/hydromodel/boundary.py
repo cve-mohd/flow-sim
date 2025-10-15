@@ -47,16 +47,27 @@ class Boundary:
             elif self.initial_depth is None:
                 raise ValueError("Fixed depth is not defined.")
             else:
-                if self.lumped_storage is not None:
-                    target_depth = self.lumped_storage.mass_balance(
+                if self.lumped_storage is not None:                    
+                    reservoir_stage = self.lumped_storage.mass_balance(
                         duration=duration,
                         vol_in=vol_in,
                         Y_old=Y_old,
-                        time=time                        
-                    ) - self.bed_level
+                        time=time
+                    )
+                    reservoir_depth = reservoir_stage - self.bed_level
+
+                    hl = self.lumped_storage.energy_loss(
+                        Q=flow_rate, n=roughness, h=depth
+                    )
                     
-                    hl = self.lumped_storage.energy_loss(Q=flow_rate, n=roughness, h=depth)
-                    return depth - (target_depth + hl)
+                    if not self.lumped_storage.stage_hydrograph:
+                        self.lumped_storage.stage_hydrograph.append([time, reservoir_stage])
+                    elif self.lumped_storage.stage_hydrograph[-1][0] == time:
+                        self.lumped_storage.stage_hydrograph[-1][1] = reservoir_stage
+                    else:
+                        self.lumped_storage.stage_hydrograph.append([time, reservoir_stage])
+
+                    return depth - (reservoir_depth + hl)
                 else:
                     return depth - self.initial_depth
         
