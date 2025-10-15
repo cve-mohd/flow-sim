@@ -523,11 +523,10 @@ class LumpedStorage:
             return 0
                 
         hf = self.friction_loss(Q, h, n)
-        h_exp = 0#self.expansion_loss(Q, h)
+        h_exp = self.expansion_loss(Q, h)
         h_emp = self.empirical_loss(Q, h, K_q)
         
         head_loss = hf + h_exp + h_emp
-        print(f'Within-reservoir head loss = {head_loss*100} cm')
         return head_loss
 
     def friction_loss(self, Q, h, n):
