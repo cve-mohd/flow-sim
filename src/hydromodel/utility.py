@@ -523,14 +523,16 @@ class LumpedStorage:
             return 0
                 
         hf = self.friction_loss(Q, h, n)
-        h_exp = self.expansion_loss(Q, h)
+        h_exp = 0#self.expansion_loss(Q, h)
         h_emp = self.empirical_loss(Q, h, K_q)
         
-        return hf + h_exp + h_emp
+        head_loss = hf + h_exp + h_emp
+        #print(f'Within-reservoir head loss = {head_loss*100} cm')
+        return head_loss
 
     def friction_loss(self, Q, h, n):
-        A_res = h * self.widths[0]
-        Sf = Hydraulics.Sf(A=A_res, Q=Q, n=n, B=self.widths[0])
+        A_ent = h * self.widths[0]
+        Sf = Hydraulics.Sf(A=A_ent, Q=Q, n=n, B=self.widths[0])
         return Sf * self.reservoir_length
 
     def expansion_loss(self, Q, h):
@@ -550,19 +552,21 @@ class LumpedStorage:
         return h_trans
     
     def empirical_loss(self, Q, h, K_q):
-        V = Q/(h*self.widths[0])
+        A_ent = h * self.widths[0]
+        V = Q/A_ent
         return K_q * V**2 / (2*g)
     
-    def dhl_dn(self, Q, n, h):
+    def dhl_dn(self, Q, h, n):
         if not self.capture_losses:
             return 0
                 
-        A_res = h * self.widths[0]
-        Sf = Hydraulics.dSf_dn(A=A_res, Q=Q, n=n, B=self.widths[0])
-        return Sf * self.reservoir_length
+        A_ent = h * self.widths[0]
+        dSf_dn = Hydraulics.dSf_dn(A=A_ent, Q=Q, n=n, B=self.widths[0])
+        return dSf_dn * self.reservoir_length
 
-    def dhf_dA(self, Q, n, A_res):
-        dSf_dA = Hydraulics.dSf_dA(A=A_res, Q=Q, n=n, B=self.entrance_width)
+    def dhf_dA(self, Q, h, n):
+        A_ent = h * self.widths[0]
+        dSf_dA = Hydraulics.dSf_dA(A=A_ent, Q=Q, n=n, B=self.widths[0])
         return dSf_dA * self.reservoir_length
     
     def d_h_exp_dA(self, A, A_res, Q):
@@ -574,26 +578,26 @@ class LumpedStorage:
         
         return (K_exp * 2*V*dV_dA + dK_dA * V**2) / (2*g)
     
-    def d_h_emp_dA(self, K_q, A, Q):
-        V = Q/A
-        dV_dA = -Q/(A**2)
+    def d_h_emp_dA(self, Q, h, K_q):
+        A_ent = h * self.widths[0]
+        V = Q/A_ent
+        dV_dA = -Q/(A_ent**2)
         
         return K_q * 2*V*dV_dA / (2*g)
 
-    def dhl_dA(self, Q, n, h, K_q=0):
+    def dhl_dA(self, Q, h, n, K_q=0):
         if not self.capture_losses:
             return 0
         
-        A_ent = self.widths[0]*h
-        
-        dhf_dA = self.dhf_dA(Q, n, A_ent)
-        d_h_exp_dA = self.d_h_exp_dA(A_ent, A_ent, Q)
-        d_h_emp_dA = self.d_h_emp_dA(K_q, A_ent, Q)
+        dhf_dA = self.dhf_dA(Q, h, n)
+        d_h_exp_dA = 0#self.d_h_exp_dA(A_ent, A_ent, Q)
+        d_h_emp_dA = self.d_h_emp_dA(Q, h, K_q)
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
 
-    def dhf_dQ(self, Q, n, B, A_res):
-        dSf_dQ = Hydraulics.dSf_dQ(A=A_res, Q=Q, n=n, B=B)
+    def dhf_dQ(self, Q, h, n):
+        A_ent = self.widths[0] * h
+        dSf_dQ = Hydraulics.dSf_dQ(A=A_ent, Q=Q, n=n, B=self.widths[0])
         return dSf_dQ * self.reservoir_length
 
     def d_h_exp_dQ(self, A, A_res, Q):
@@ -603,22 +607,20 @@ class LumpedStorage:
         
         return (K_exp * 2*V*dV_dQ) / (2*g)
     
-    def d_h_emp_dQ(self, K_q, A, Q):
-        V = Q/A
-        dV_dQ = 1./A
+    def d_h_emp_dQ(self, Q, h, K_q):
+        A_ent = h * self.widths[0]
+        V = Q/A_ent
+        dV_dQ = 1./A_ent
         
         return K_q * 2*V*dV_dQ / (2*g)
             
-    def dhl_dQ(self, Q, A, n, h, K_q=0):
+    def dhl_dQ(self, Q, h, n, K_q=0):
         if not self.capture_losses:
             return 0
         
-        B = self.dA_dY(stage=self.stage)
-        A_res = B*h
-        
-        dhf_dQ = self.dhf_dQ(Q, n, B, A_res)
-        d_h_exp_dQ = self.d_h_exp_dQ(A, A_res, Q)
-        d_h_emp_dQ = self.d_h_emp_dQ(K_q, A, Q)
+        dhf_dQ = self.dhf_dQ(Q, h, n)
+        d_h_exp_dQ = 0#self.d_h_exp_dQ(A, A_res, Q)
+        d_h_emp_dQ = self.d_h_emp_dQ(Q, h, K_q)
         
         return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
             

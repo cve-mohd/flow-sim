@@ -55,7 +55,7 @@ class Boundary:
                         time=time                        
                     ) - self.bed_level
                     
-                    hl = 0#self.lumped_storage.energy_loss(Q=flow_rate, A=depth*width, n=roughness, h=depth)
+                    hl = self.lumped_storage.energy_loss(Q=flow_rate, n=roughness, h=depth)
                     return depth - (target_depth + hl)
                 else:
                     return depth - self.initial_depth
@@ -91,7 +91,7 @@ class Boundary:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             if self.lumped_storage is not None:
-                dhl_dA = 0#self.lumped_storage.dhl_dA(Q=flow_rate, A=area, n=roughness, h=area/width)
+                dhl_dA = self.lumped_storage.dhl_dA(Q=flow_rate, n=roughness, h=area/width)
             else:
                 dhl_dA = 0
             
@@ -130,7 +130,7 @@ class Boundary:
                 )
                 dvol_dQ = 0.5 * duration
                 
-                dhl_dQ = 0#self.lumped_storage.dhl_dQ(Q=flow_rate, A=area, n=roughness, h=depth)
+                dhl_dQ = self.lumped_storage.dhl_dQ(Q=flow_rate, n=roughness, h=depth)
                 
                 return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)
             else:
