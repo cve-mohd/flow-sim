@@ -34,9 +34,9 @@ Roseires = Boundary(initial_depth=ds_depth,
                     bed_level=ds_bed_level,
                     chainage=ds_chainage)
 
-roseires_storage.reservoir_length = 122000 - ds_chainage
+roseires_storage.reservoir_length = 0.5*(122000 - ds_chainage)
 roseires_storage.capture_losses = True
-roseires_storage.widths = [widths[-1, 1]]
+roseires_storage.widths = [widths[-1, 1], 7075, 6222, 8400, 5000, 8550, 13800]
 Roseires.set_lumped_storage(roseires_storage)
 
 GERD_Roseires_system = Channel(width=widths[0, 1],

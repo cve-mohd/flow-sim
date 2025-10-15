@@ -527,7 +527,7 @@ class LumpedStorage:
         h_emp = self.empirical_loss(Q, h, K_q)
         
         head_loss = hf + h_exp + h_emp
-        #print(f'Within-reservoir head loss = {head_loss*100} cm')
+        print(f'Within-reservoir head loss = {head_loss*100} cm')
         return head_loss
 
     def friction_loss(self, Q, h, n):
@@ -538,7 +538,7 @@ class LumpedStorage:
     def expansion_loss(self, Q, h):
         h_trans = 0.0
         for i in range(len(self.widths)-1):
-            A_up = h * self.widths[i]; A_down = h * self.widths[i+1]
+            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
             if A_down > A_up:
                 K = (1 - A_up/A_down)**2
                 V = Q / A_up
@@ -546,7 +546,7 @@ class LumpedStorage:
                 # contraction
                 Cc = 0.5
                 K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
-                V = Q / A_down               # or Q/A_up depending on choice
+                V = Q / A_down
             h_trans += K * V**2 / (2*g)
             
         return h_trans
@@ -569,14 +569,31 @@ class LumpedStorage:
         dSf_dA = Hydraulics.dSf_dA(A=A_ent, Q=Q, n=n, B=self.widths[0])
         return dSf_dA * self.reservoir_length
     
-    def d_h_exp_dA(self, A, A_res, Q):
-        V = Q/A
-        K_exp = (1 - A/A_res)**2
-        
-        dV_dA = -Q/(A**2)
-        dK_dA = 2*(1 - A/A_res) * (-1./A_res)
-        
-        return (K_exp * 2*V*dV_dA + dK_dA * V**2) / (2*g)
+    def d_h_exp_dA(self, Q, h):
+        dh_exp_dh = 0.0
+        h_trans = 0.0
+        for i in range(len(self.widths)-1):
+            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
+            if A_down > A_up:
+                K = (1 - A_up/A_down)**2
+                V = Q / A_up
+                dV_dA_up = -Q / A_up**2
+                dA_up_dh = self.widths[i]
+                dV_dh = dV_dA_up * dA_up_dh
+            else:
+                # contraction
+                Cc = 0.5
+                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                V = Q / A_down
+                dV_dA_down = -Q / A_down**2
+                dA_down_dh = self.widths[i+1]
+                dV_dh = dV_dA_down * dA_down_dh
+                
+            h_trans += K * V**2 / (2*g)
+            dh_exp_dh += K * 2*V*dV_dh / (2*g)
+            
+        dh_dA = 1/self.widths[0]
+        return dh_exp_dh * dh_dA
     
     def d_h_emp_dA(self, Q, h, K_q):
         A_ent = h * self.widths[0]
@@ -588,9 +605,9 @@ class LumpedStorage:
     def dhl_dA(self, Q, h, n, K_q=0):
         if not self.capture_losses:
             return 0
-        
+                
         dhf_dA = self.dhf_dA(Q, h, n)
-        d_h_exp_dA = 0#self.d_h_exp_dA(A_ent, A_ent, Q)
+        d_h_exp_dA = self.d_h_exp_dA(Q, h)
         d_h_emp_dA = self.d_h_emp_dA(Q, h, K_q)
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
@@ -600,12 +617,25 @@ class LumpedStorage:
         dSf_dQ = Hydraulics.dSf_dQ(A=A_ent, Q=Q, n=n, B=self.widths[0])
         return dSf_dQ * self.reservoir_length
 
-    def d_h_exp_dQ(self, A, A_res, Q):
-        V = Q/A
-        dV_dQ = 1./A
-        K_exp = (1 - A/A_res)**2        
-        
-        return (K_exp * 2*V*dV_dQ) / (2*g)
+    def d_h_exp_dQ(self, Q, h):
+        dh_exp_dQ = 0.0
+        h_trans = 0.0
+        for i in range(len(self.widths)-1):
+            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
+            if A_down > A_up:
+                K = (1 - A_up/A_down)**2
+                V = Q / A_up
+            else:
+                # contraction
+                Cc = 0.5
+                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                V = Q / A_down
+                
+            h_trans += K * V**2 / (2*g)
+            dV_dQ = V / Q
+            dh_exp_dQ += K * 2*V*dV_dQ / (2*g)
+            
+        return dh_exp_dQ
     
     def d_h_emp_dQ(self, Q, h, K_q):
         A_ent = h * self.widths[0]
@@ -619,7 +649,7 @@ class LumpedStorage:
             return 0
         
         dhf_dQ = self.dhf_dQ(Q, h, n)
-        d_h_exp_dQ = 0#self.d_h_exp_dQ(A, A_res, Q)
+        d_h_exp_dQ = self.d_h_exp_dQ(Q, h)
         d_h_emp_dQ = self.d_h_emp_dQ(Q, h, K_q)
         
         return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
