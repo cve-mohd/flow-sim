@@ -177,6 +177,7 @@ class PreissmannSolver(Solver):
             total_iterations += iteration
             
         super().finalize(verbose)
+        print(f'Total iterations = {total_iterations}')
     
     def update_guesses(self) -> None:
         """
@@ -317,7 +318,7 @@ class PreissmannSolver(Solver):
                                                                    roughness=self.channel.get_n(A=self.area_at(i=-1), i=-1),
                                                                    duration=self.time_step,
                                                                    vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-                                                                   Y_old=self.water_level_at(k=-1, i=-1))
+                                                                   Y_old=self.get_Y_old())
             
     def dU_dA(self) -> int:
         """
@@ -694,15 +695,17 @@ class PreissmannSolver(Solver):
 
         """
         A = self.area_at(i=-1)
+        Q = self.flow_at(i=-1)
         B = self.width_at(i=-1)
         n = self.channel.get_n(A=A, i=-1)
         S_0 = self.bed_slope_at(i=-1)
         t = self.time_level * self.time_step
                 
-        dD_dn = self.channel.downstream_boundary.df_dn(depth=A/B, width=B, bed_slope=S_0, roughness=n)
+        dD_dn = self.channel.downstream_boundary.df_dn(flow_rate=Q, depth=A/B, width=B, bed_slope=S_0, roughness=n)
         dn_dA = self.channel.dn_dA(A=A, i=-1)
         
         dD = self.channel.downstream_boundary.df_dA(area=A,
+                                                    flow_rate=Q,
                                                     width=B,
                                                     bed_slope=S_0,
                                                     roughness=n,
@@ -712,10 +715,15 @@ class PreissmannSolver(Solver):
             
         else:
             dD_dAreg = dD
+            
             dD_dQe = self.channel.downstream_boundary.df_dQ(
+                area=A,
+                flow_rate=Q,
+                roughness=n,
+                depth=self.depth_at(i=-1),
                 duration=self.time_step,
                 vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-                Y_old=self.water_level_at(k=-1, i=-1),
+                Y_old=self.get_Y_old(),
                 time=t
                 )
             
@@ -733,10 +741,17 @@ class PreissmannSolver(Solver):
 
         """
         t = self.time_level * self.time_step
+        A = self.area_at(i=-1)
+        n = self.channel.get_n(A=A, i=-1)
+        
         dD = self.channel.downstream_boundary.df_dQ(
+            area=A,
+            flow_rate=self.flow_at(i=-1),
+            roughness=n,
+            depth=self.depth_at(i=-1),
             duration=self.time_step,
             vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-            Y_old=self.water_level_at(k=-1, i=-1),
+            Y_old=self.get_Y_old(),
             time=t
         )
         

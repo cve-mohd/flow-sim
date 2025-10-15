@@ -69,15 +69,26 @@ class Solver:
         self.peak_amplitude = deviation.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
+            initial_storage_stage = self.water_level_at(k=0, i=-1) - self.channel.downstream_boundary.lumped_storage.energy_loss(
+                Q=self.flow_at(k=0, i=-1),
+                h=self.depth_at(k=0, i=-1),
+                n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1)
+            )
+            self.channel.downstream_boundary.lumped_storage.stage_hydrograph.insert(0, [0, initial_storage_stage])
+            self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)
+            self.storage_stage = self.storage_stage[:, 1].flatten()
+            
             if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
                 self.storage_outflow[0] = 0
             else:
-                self.storage_outflow[0] = min(self.flow_at(k=0, i=-1), self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.water_level_at(k=0, i=-1), time=0))
+                self.storage_outflow[0] = min(
+                    self.flow_at(k=0, i=-1),
+                    self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.storage_stage[0], time=0)
+                    )
             
             for k in range(1, self.max_timelevels):
                 avg_inflow = 0.5 * (self.flow_at(k=k-1, i=-1) + self.flow_at(k=k, i=-1))
-                Y1 = self.water_level_at(k=k-1, i=-1)
-                Y2 = self.water_level_at(k=k, i=-1)
+                Y1 = self.storage_stage[k-1]; Y2 = self.storage_stage[k]
                 vol_change = self.channel.downstream_boundary.lumped_storage.net_vol_change(Y1=Y1, Y2=Y2)
                 avg_outflow = avg_inflow - vol_change / self.time_step
                 
@@ -116,6 +127,10 @@ class Solver:
                 df_out = pd.DataFrame({"outflow": self.storage_outflow}, index=time)
                 df_out.index.name = "Time"
                 df_out.to_excel(writer, sheet_name="Outflow")
+                
+                df_stage = pd.DataFrame({"stage": self.storage_stage}, index=time)
+                df_stage.index.name = "Time"
+                df_stage.to_excel(writer, sheet_name="Reservoir stage")
 
             # Peak amplitude (row with distance headers)
             df_peak = pd.DataFrame([self.peak_amplitude], columns=distance)
@@ -285,6 +300,21 @@ class Solver:
         return self.channel.Se(A=self.area_at(k=k, i=i, regularization=regularization),
                              Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
                              i=i)
+    
+    
+    def get_Y_old(self):
+        if not self.channel.downstream_boundary.lumped_storage:
+            Y_old = self.water_level_at(k=-1, i=-1)
+        else:
+            if self.time_level <= 1:
+                Y_old = self.water_level_at(k=0, i=-1) - self.channel.downstream_boundary.lumped_storage.energy_loss(
+                    Q=self.flow_at(k=0, i=-1),
+                    h=self.depth_at(k=0, i=-1),
+                    n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1)
+                )
+            else:
+                Y_old = self.channel.downstream_boundary.lumped_storage.stage_hydrograph[self.time_level-2][1]
+        return Y_old
     
     def A_reg(self, A, eps=1e-4):
         """
