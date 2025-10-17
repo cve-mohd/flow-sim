@@ -1,6 +1,6 @@
 from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
-from src.hydromodel.utility import Hydrograph
+from src.hydromodel.hydrograph import Hydrograph
 from src.hydromodel.preissmann import PreissmannSolver
 from ..settings import initial_roseires_level, wet_n, dry_n, theta, spatial_step, time_step, sim_duration, tolerance
 from ..custom_functions import import_table, import_hydrograph
@@ -8,8 +8,8 @@ from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
 
-input_dir = "cases\\gerd_roseires\\explicit\\input_data\\"
-inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\input\\inflow_hydrograph.csv"))
+input_dir = "cases\\gerd_roseires\\explicit\\data\\"
+inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\data\\inflow_hydrograph.csv"))
 bed_profile = import_table(input_dir + "bed_profile.csv", sort_by='chainage')
 widths = import_table(input_dir + "width.csv", sort_by='chainage')
 coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')

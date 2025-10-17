@@ -1,7 +1,7 @@
 from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
 from src.hydromodel.lax import LaxSolver
-from src.hydromodel.utility import Hydrograph
+from src.hydromodel.hydrograph import Hydrograph
 from ..akbari_firoozi.settings import *
 
 hyd = Hydrograph(hydrograph)

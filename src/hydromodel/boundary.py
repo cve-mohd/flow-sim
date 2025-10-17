@@ -1,4 +1,7 @@
-from .utility import RatingCurve, Hydrograph, Hydraulics, LumpedStorage
+from .rating_curve import RatingCurve
+from .hydrograph import Hydrograph
+from .hydraulics import normal_flow, dQn_dA, dQn_dn
+from .lumped_storage import LumpedStorage
 
 class Boundary:
     def __init__(self,
@@ -74,8 +77,8 @@ class Boundary:
             if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            normal_flow = Hydraulics.normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
-            return flow_rate - normal_flow
+            Qn = normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            return flow_rate - Qn
         
         elif self.condition == 'rating_curve':
             if depth is None or flow_rate is None:
@@ -111,7 +114,7 @@ class Boundary:
             if width is None or area is None or bed_slope is None or roughness is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return 0 - Hydraulics.dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
+            return 0 - dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
         
         elif self.condition == 'rating_curve':
             if width is None or area is None or time is None:
@@ -157,7 +160,7 @@ class Boundary:
     
     def df_dn(self, depth, roughness, width, bed_slope, flow_rate=None):
         if self.condition == 'normal_depth':
-            return 0 - Hydraulics.dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            return 0 - dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
         
         elif self.condition == 'fixed_depth' and self.lumped_storage:
             dhl_dn = self.lumped_storage.dhl_dn(Q=flow_rate, n=roughness, h=depth)

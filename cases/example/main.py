@@ -1,6 +1,7 @@
 from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
-from src.hydromodel.utility import Hydrograph, LumpedStorage
+from src.hydromodel.hydrograph import Hydrograph
+from src.hydromodel.lumped_storage import LumpedStorage
 from src.hydromodel.preissmann import PreissmannSolver
 from src.hydromodel.lax import LaxSolver
 

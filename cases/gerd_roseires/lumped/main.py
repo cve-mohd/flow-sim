@@ -1,17 +1,15 @@
 from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
-from src.hydromodel.utility import Hydrograph, LumpedStorage
+from src.hydromodel.hydrograph import Hydrograph
+from src.hydromodel.lumped_storage import LumpedStorage
 from src.hydromodel.preissmann import PreissmannSolver
 from ..settings import initial_roseires_level, wet_n, dry_n, used_roseires_rc, constant_flow
 from ..settings import theta, spatial_step, time_step, sim_duration, tolerance
 from ..custom_functions import import_table, import_hydrograph, import_area_curve
 from ..roseires_rating_curve import RoseiresRatingCurve
-import numpy as np
 
-#print("Processing input data...")
-
-input_dir = "cases\\gerd_roseires\\lumped\\input_data\\"
-inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\input\\inflow_hydrograph.csv"))
+input_dir = "cases\\gerd_roseires\\lumped\\data\\"
+inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\data\\inflow_hydrograph.csv"))
 bed_profile = import_table(input_dir + "bed_profile.csv", sort_by='chainage')
 widths = import_table(input_dir + "width.csv", sort_by='chainage')
 coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
@@ -30,7 +28,9 @@ def run(
     dry_n = dry_n,
     n_steepness = 0.15,
     Cc = 0.5,
-    K_q = 0
+    K_q = 0,
+    verbose = False,
+    save_results = False
 ):      
 
     roseires_storage = LumpedStorage(min_stage=initial_roseires_level,
@@ -77,22 +77,27 @@ def run(
                               spatial_step=spatial_step,
                               simulation_time=sim_duration)
 
-    #print("Simulation started.")
+    if verbose:
+        print("Simulation started.")
 
     solver.run(verbose=0, tolerance=tolerance)
+    
+    
+    if save_results:
+        if verbose:
+            print("Saving results...")
+            
+        solver.save_results(folder_path='cases\\gerd_roseires\\lumped\\results\\')
+        
+        if verbose:
+            print("Done.")
 
-    ds_peak_amp = np.max(solver.storage_stage) - initial_roseires_level
-    attenuation = 1 - np.max(solver.flow[:, -1]) / np.max(solver.flow[:, 0])
+    from numpy import max as max_
+    ds_peak_amp = max_(solver.storage_stage) - initial_roseires_level
+    attenuation = 1 - max_(solver.flow[:, -1]) / max_(solver.flow[:, 0])
     us_peak_amp = solver.peak_amplitude[0]
     
     return attenuation, us_peak_amp, ds_peak_amp
-    #print("Saving results...")
-
-    #solver.save_results(folder_path='cases\\gerd_roseires\\lumped\\results\\')
-
-    #print("Done.")
-
-    # Run command: py -m cases.gerd_roseires.lumped.main
 
 def recalc_ds_h(ds_depth, wet_n, roseires_storage: LumpedStorage):
     while True:
@@ -108,3 +113,8 @@ def recalc_ds_h(ds_depth, wet_n, roseires_storage: LumpedStorage):
         if abs(diff) < 1e-6:
             break
     return ds_depth
+
+if __name__ == '__main__':
+    run(verbose=True, save_results=True)
+    
+# Run command: py -m cases.gerd_roseires.lumped.main

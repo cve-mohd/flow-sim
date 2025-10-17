@@ -129,9 +129,10 @@ class Solver:
                 df_out.index.name = "Time"
                 df_out.to_excel(writer, sheet_name="Outflow")
                 
-                df_stage = pd.DataFrame({"stage": self.storage_stage}, index=time)
-                df_stage.index.name = "Time"
-                df_stage.to_excel(writer, sheet_name="Reservoir stage")
+                if self.type=='preissmann':
+                    df_stage = pd.DataFrame({"stage": self.storage_stage}, index=time)
+                    df_stage.index.name = "Time"
+                    df_stage.to_excel(writer, sheet_name="Reservoir stage")
 
             # Peak amplitude (row with distance headers)
             df_peak = pd.DataFrame([self.peak_amplitude], columns=distance)
