@@ -4,6 +4,8 @@ from .hydraulics import normal_flow, dQn_dA, dQn_dn
 from .lumped_storage import LumpedStorage
 
 class Boundary:
+    """Contains the necessary functionality for upstream and downstream boundary handling.
+    """
     def __init__(self,
                  condition: str,
                  bed_level: float,
@@ -11,6 +13,16 @@ class Boundary:
                  initial_depth: float = None,
                  rating_curve: RatingCurve = None,
                  hydrograph: Hydrograph = None):
+        """Initializes a channel boundary
+
+        Args:
+            condition (str): Boundary condition type (e.g., 'flow_hydrograph').
+            bed_level (float): Bed elevation above a datum.
+            chainage (int | float): Horizontal distance from a datum (used to compute channel length).
+            initial_depth (float, optional): Initial flow depth at the boundary. Defaults to None.
+            rating_curve (RatingCurve, optional): Stage-discharge relationship for 'rating_curve' boundary conditions. Defaults to None.
+            hydrograph (Hydrograph, optional): Flow or stage hydrograph for hydrograph-type boundary conditions. Defaults to None.
+        """
         
         self.condition = condition
         self.bed_level = bed_level
@@ -32,10 +44,31 @@ class Boundary:
         self.lumped_storage = None
     
     def set_lumped_storage(self, lumped_storage: LumpedStorage):
+        """Connect the boundary to a 0D storage element.
+
+        Args:
+            lumped_storage (LumpedStorage): The storage element.
+        """
         self.lumped_storage = lumped_storage
     
     def condition_residual(self, time = None, depth = None, width = None, flow_rate = None, bed_slope = None, roughness = None,
-                           duration = None, vol_in = None, Y_old = None):
+                           duration = None, vol_in = None, Y_old = None) -> float:
+        """Computes the residual of the boundary condition equation.
+
+        Args:
+            time (int | float, optional): Current temporal coordinate. Defaults to None.
+            depth (float, optional): Current flow depth at the boundary. Defaults to None.
+            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
+            flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
+            bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
+            roughness (float, optional): Manning's roughness coefficient. Defaults to None.
+            duration (int | float, optional): Time step. Defaults to None.
+            vol_in (float, optional): Water volume passing through the boundary. Defaults to None.
+            Y_old (float, optional): Water level at the boundary in the previous time level. Defaults to None.
+
+        Returns:
+            float: Residual
+        """
         if self.condition == 'flow_hydrograph':
             if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
@@ -93,7 +126,20 @@ class Boundary:
             stage_t = self.hydrograph.get_at(time=time)
             return self.bed_level + depth - stage_t
         
-    def df_dA(self, area = None, flow_rate = None, width = None, bed_slope = None, roughness = None, time = None):
+    def df_dA(self, area = None, flow_rate = None, width = None, bed_slope = None, roughness = None, time = None) -> float:
+        """Computes the derivative of the boundary condition equation with respect to the cross-sectional flow area.
+
+        Args:
+            area (float, optional): Cross-sectional flow area at the boundary. Defaults to None.
+            flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
+            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
+            bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
+            roughness (float, optional): Manning's roughness coefficient. Defaults to None.
+            time (int | float, optional): Current temporal coordinate. Defaults to None.
+
+        Returns:
+            float: df/dA
+        """
         dh_dA = 1/width
         
         if self.condition == 'flow_hydrograph':
@@ -129,7 +175,22 @@ class Boundary:
             
             return dh_dA
         
-    def df_dQ(self, area = None, flow_rate = None, roughness = None, depth = None, duration = None, vol_in = None, Y_old = None, time = None):
+    def df_dQ(self, area = None, flow_rate = None, roughness = None, depth = None, duration = None, vol_in = None, Y_old = None, time = None) -> float:
+        """Computes the derivative of the boundary condition equation with respect to flow rate.
+
+        Args:
+            area (float, optional): Cross-sectional flow area at the boundary. Defaults to None.
+            flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
+            roughness (float, optional): Manning's roughness coefficient. Defaults to None.
+            depth (float, optional): Current flow depth at the boundary. Defaults to None.
+            duration (int | float, optional): Time step. Defaults to None.
+            vol_in (float, optional): Water volume passing through the boundary. Defaults to None.
+            Y_old (float, optional): Water level at the boundary in the previous time level. Defaults to None.
+            time (int | float, optional): Current temporal coordinate. Defaults to None.
+
+        Returns:
+            float: df/dQ
+        """
         if self.condition == 'flow_hydrograph':
             return 1
             
@@ -158,7 +219,19 @@ class Boundary:
         elif self.condition == 'stage_hydrograph':
             return 0
     
-    def df_dn(self, depth, roughness, width, bed_slope, flow_rate=None):
+    def df_dn(self, depth, roughness, width, bed_slope, flow_rate=None) -> float:
+        """Computes the derivative of the boundary condition equation with respect to Manning's roughness.
+
+        Args:
+            depth (float, optional): Current flow depth at the boundary. Defaults to None.
+            roughness (float, optional): Manning's roughness coefficient. Defaults to None.
+            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
+            bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
+            flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
+
+        Returns:
+            float: df/dn
+        """
         if self.condition == 'normal_depth':
             return 0 - dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
         
@@ -169,9 +242,8 @@ class Boundary:
         else:
             return 0
         
-    def condition_type(self):
-        if self.condition in['flow_hydrograph', 'normal_depth', 'rating_curve']:
-            return 1
-        else:
-            return 0
+    def condition_type(self) -> bool:
+        """Returns 1 if the boundary equation is Q-dependant, and 0 otherwise.
+        """
+        return (self.condition in['flow_hydrograph', 'normal_depth', 'rating_curve'])
     
