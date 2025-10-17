@@ -488,6 +488,8 @@ class LumpedStorage:
         self.reservoir_length = None
         self.widths = None
         self.capture_losses = False
+        self.Cc = 0.5    # Cc ~ 0.2-0.7
+        self.K_q = 0
         
         if solution_boundaries is not None:
             self.Y_min = solution_boundaries[0]
@@ -515,13 +517,13 @@ class LumpedStorage:
         
         return 1/self.area_at(Y_new)
     
-    def energy_loss(self, Q, n, h, K_q=0):
+    def energy_loss(self, Q, n, h):
         if not self.capture_losses:
             return 0
                 
         hf = self.friction_loss(Q, h, n)
         h_exp = self.expansion_loss(Q, h)
-        h_emp = self.empirical_loss(Q, h, K_q)
+        h_emp = self.empirical_loss(Q, h)
         
         head_loss = hf + h_exp + h_emp
         return head_loss
@@ -540,17 +542,16 @@ class LumpedStorage:
                 V = Q / A_up
             else:
                 # contraction
-                Cc = 0.5
-                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                K = self.Cc * (1 - A_down/A_up)
                 V = Q / A_down
             h_trans += K * V**2 / (2*g)
             
         return h_trans
     
-    def empirical_loss(self, Q, h, K_q):
+    def empirical_loss(self, Q, h):
         A_ent = h * self.widths[0]
         V = Q/A_ent
-        return K_q * V**2 / (2*g)
+        return self.K_q * V**2 / (2*g)
     
     def dhl_dn(self, Q, h, n):
         if not self.capture_losses:
@@ -578,8 +579,7 @@ class LumpedStorage:
                 dV_dh = dV_dA_up * dA_up_dh
             else:
                 # contraction
-                Cc = 0.5
-                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                K = self.Cc * (1 - A_down/A_up)
                 V = Q / A_down
                 dV_dA_down = -Q / A_down**2
                 dA_down_dh = self.widths[i+1]
@@ -591,20 +591,20 @@ class LumpedStorage:
         dh_dA = 1/self.widths[0]
         return dh_exp_dh * dh_dA
     
-    def d_h_emp_dA(self, Q, h, K_q):
+    def d_h_emp_dA(self, Q, h):
         A_ent = h * self.widths[0]
         V = Q/A_ent
         dV_dA = -Q/(A_ent**2)
         
-        return K_q * 2*V*dV_dA / (2*g)
+        return self.K_q * 2*V*dV_dA / (2*g)
 
-    def dhl_dA(self, Q, h, n, K_q=0):
+    def dhl_dA(self, Q, h, n):
         if not self.capture_losses:
             return 0
                 
         dhf_dA = self.dhf_dA(Q, h, n)
         d_h_exp_dA = self.d_h_exp_dA(Q, h)
-        d_h_emp_dA = self.d_h_emp_dA(Q, h, K_q)
+        d_h_emp_dA = self.d_h_emp_dA(Q, h)
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
 
@@ -623,8 +623,7 @@ class LumpedStorage:
                 V = Q / A_up
             else:
                 # contraction
-                Cc = 0.5
-                K = Cc * (1 - A_down/A_up)   # Cc ~ 0.2-0.7
+                K = self.Cc * (1 - A_down/A_up)
                 V = Q / A_down
                 
             h_trans += K * V**2 / (2*g)
@@ -633,20 +632,20 @@ class LumpedStorage:
             
         return dh_exp_dQ
     
-    def d_h_emp_dQ(self, Q, h, K_q):
+    def d_h_emp_dQ(self, Q, h):
         A_ent = h * self.widths[0]
         V = Q/A_ent
         dV_dQ = 1./A_ent
         
-        return K_q * 2*V*dV_dQ / (2*g)
+        return self.K_q * 2*V*dV_dQ / (2*g)
             
-    def dhl_dQ(self, Q, h, n, K_q=0):
+    def dhl_dQ(self, Q, h, n):
         if not self.capture_losses:
             return 0
         
         dhf_dQ = self.dhf_dQ(Q, h, n)
         d_h_exp_dQ = self.d_h_exp_dQ(Q, h)
-        d_h_emp_dQ = self.d_h_emp_dQ(Q, h, K_q)
+        d_h_emp_dQ = self.d_h_emp_dQ(Q, h)
         
         return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
             
