@@ -1,5 +1,6 @@
 from .boundary import Boundary
-from .utility import Hydraulics, compute_radii_curv
+from .utility import compute_radii_curv
+from . import hydraulics
 import numpy as np
 
 class Channel:
@@ -64,11 +65,11 @@ class Channel:
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
-        Sf = Hydraulics.Sf(A=A, Q=Q, n=n, B=B)
+        Sf = hydraulics.Sf(A=A, Q=Q, n=n, B=B)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            Sc = Hydraulics.Sc(A=A, Q=Q, n=n, B=B, rc=rc)
+            Sc = hydraulics.Sc(A=A, Q=Q, n=n, B=B, rc=rc)
         else:
             Sc = 0
             
@@ -78,11 +79,11 @@ class Channel:
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
-        dSf_dA = Hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B) + Hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
+        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B) + hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dA = Hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + Hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+            dSc_dA = hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
         else:
             dSc_dA = 0
         
@@ -92,11 +93,11 @@ class Channel:
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
-        dSf_dQ = Hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
+        dSf_dQ = hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dQ = Hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + Hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+            dSc_dQ = hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
         else:
             dSc_dQ = 0
                 
@@ -107,7 +108,7 @@ class Channel:
         B = self.width[i]
         S_0 = self.bed_slopes[i]
         
-        return Hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
+        return hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
     def normal_area(self, Q: float, i: int):
         B = self.width[i]
@@ -117,7 +118,7 @@ class Channel:
         n = self.get_n(A=A_guess, i=i)
         S_0 = self.bed_slopes[i]
         
-        return Hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
+        return hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
             
     def initialize_conditions(self, n_nodes: int) -> None:
         """
@@ -165,7 +166,7 @@ class Channel:
                 A, Q, B = self.width[i] * h, self.initial_flow_rate, self.width[i]
                 Sf = self.Se(A, Q, i)
                 
-                Fr = Hydraulics.froude_num(A, Q, B)
+                Fr = hydraulics.froude_num(A, Q, B)
                 denominator = 1 - Fr**2
                 
                 if abs(denominator) < 1e-6:
@@ -204,7 +205,7 @@ class Channel:
         wet_h = self.wet_depth(i)
         h = A / self.width[i]
         
-        return Hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=self.n_steepness)
+        return hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=self.n_steepness)
               
     def dn_dA(self, A: float, i: int):
         if self.dry_roughness is None:
@@ -213,7 +214,7 @@ class Channel:
         B = self.width[i]
         wet_h = self.wet_depth(i)
         
-        dn_dh = Hydraulics.dn_dh(depth=A/B,
+        dn_dh = hydraulics.dn_dh(depth=A/B,
                                  steepness=self.n_steepness,
                                  roughness=self.roughness,
                                  dry_roughness=self.dry_roughness,

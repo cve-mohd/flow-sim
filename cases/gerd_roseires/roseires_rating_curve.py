@@ -1,5 +1,5 @@
 import numpy as np
-from src.hydromodel.utility import RatingCurve
+from src.hydromodel.rating_curve import RatingCurve
 from pandas import read_csv
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
@@ -52,7 +52,7 @@ class RoseiresRatingCurve(RatingCurve):
 
     def fit_models(self):
             # Spillway:
-            df = read_csv("cases\\gerd_roseires\\input\\roseires_spillway_releases.csv", index_col=0)
+            df = read_csv("cases\\gerd_roseires\\data\\roseires_spillway_releases.csv", index_col=0)
             df.index.name = "stage"
 
             stages = df.index.to_numpy(dtype=float)
@@ -76,7 +76,7 @@ class RoseiresRatingCurve(RatingCurve):
             self.spillway_model.fit(X, y)
             
             # Sluice:
-            df = read_csv("cases\\gerd_roseires\\input\\roseires_deep_sluice_releases.csv", index_col=0)
+            df = read_csv("cases\\gerd_roseires\\data\\roseires_deep_sluice_releases.csv", index_col=0)
             df.index.name = "stage"
 
             stages = df.index.to_numpy(dtype=float)
