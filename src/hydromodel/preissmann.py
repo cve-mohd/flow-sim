@@ -126,7 +126,7 @@ class PreissmannSolver(Solver):
 
         return jacobian_matrix
 
-    def run(self, tolerance=1e-4, verbose=3) -> None:
+    def run(self, tolerance=1e-4, verbose=3, max_iter=100) -> None:
         """
         Run the simulation.
         """
@@ -148,7 +148,7 @@ class PreissmannSolver(Solver):
 
             while not converged:
                 iteration += 1
-                if iteration - 1 >= 100:
+                if iteration - 1 >= max_iter:
                     raise ValueError(f'Convergence within {iteration - 1} iterations couldn\'t be achieved.')
                 
                 self.update_guesses()
@@ -177,7 +177,7 @@ class PreissmannSolver(Solver):
             total_iterations += iteration
             
         super().finalize(verbose)
-        print(f'Total iterations = {total_iterations}')
+        #print(f'Total iterations = {total_iterations}')
     
     def update_guesses(self) -> None:
         """
@@ -761,7 +761,7 @@ class PreissmannSolver(Solver):
             dD_dQe = dD            
             return dD_dQe * self.dQe_dQ(i=-1)
       
-    def dAreg_dA(self, i, eps=1e-4):
+    def dAreg_dA(self, i):
         """
         Derivative of regularized area w.r.t. raw area.
         
@@ -784,7 +784,7 @@ class PreissmannSolver(Solver):
         
         return 0.5 * (
             1.0 + (A - A_min) / np.sqrt(
-                (A - A_min) ** 2 + eps ** 2
+                (A - A_min) ** 2 + self.eps ** 2
                 )
             )
         
@@ -796,8 +796,6 @@ class PreissmannSolver(Solver):
         ----------
         i : int
             Index of spatial node.
-        eps : float
-            Smoothing parameter.
 
         Returns
         -------

@@ -13,7 +13,8 @@ class Channel:
                  initial_flow: float,
                  roughness: float,
                  dry_roughness: float = None,
-                 interpolation_method: str = 'GVF_equation'):
+                 interpolation_method: str = 'GVF_equation',
+                 n_steepness: float = 0.15):
         """
         Initialized an instance.
         """
@@ -21,6 +22,7 @@ class Channel:
         self.initial_flow_rate = initial_flow
         self.roughness = roughness
         self.dry_roughness = dry_roughness
+        self.n_steepness = n_steepness
         
         self.width = np.array([width, width], dtype=np.float64)
         self.bed_level = np.array([upstream_boundary.bed_level,
@@ -195,16 +197,16 @@ class Channel:
         
         self.conditions_initialized = True
     
-    def get_n(self, A: float, i: int, steepness = 0.15):
+    def get_n(self, A: float, i: int):
         if self.dry_roughness is None or not self.conditions_initialized:
             return self.roughness
         
         wet_h = self.wet_depth(i)
         h = A / self.width[i]
         
-        return Hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=steepness)
+        return Hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=self.n_steepness)
               
-    def dn_dA(self, A: float, i: int, steepness = 0.15):
+    def dn_dA(self, A: float, i: int):
         if self.dry_roughness is None:
             return 0
         
@@ -212,7 +214,7 @@ class Channel:
         wet_h = self.wet_depth(i)
         
         dn_dh = Hydraulics.dn_dh(depth=A/B,
-                                 steepness=steepness,
+                                 steepness=self.n_steepness,
                                  roughness=self.roughness,
                                  dry_roughness=self.dry_roughness,
                                  wet_depth=wet_h)

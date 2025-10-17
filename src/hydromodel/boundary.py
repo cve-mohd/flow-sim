@@ -30,7 +30,6 @@ class Boundary:
     
     def set_lumped_storage(self, lumped_storage: LumpedStorage):
         self.lumped_storage = lumped_storage
-        self.lumped_storage.stage = self.initial_stage
     
     def condition_residual(self, time = None, depth = None, width = None, flow_rate = None, bed_slope = None, roughness = None,
                            duration = None, vol_in = None, Y_old = None):

@@ -53,6 +53,7 @@ class Solver:
         self.solved = False
         self.total_sim_duration = 0
         self.regularization = regularization
+        self.eps = 1e-4
 
     def fit_spatial_step(self):
         self.number_of_nodes = round(self.channel.length / self.spatial_step) + 1
@@ -197,44 +198,7 @@ class Solver:
             output_file.write(f'Median volume entry time = {seconds_to_hms(median_vol_entry_time)}\n')
             output_file.write(f'Median volume arrival time = {seconds_to_hms(median_vol_arrival_time)}\n')
             output_file.write(f'Median volume travel time = {seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
-            
-    def get_results(self, parameter: str, spatial_node: int = None, temporal_node: int = None):
-        """
-        Retrieves the whole or a part of the 2D list containing the computed values of the specified parameter.
-
-        Parameters
-        ----------
-        parameter : str
-            The name of the wanted parameter. It should be one of the following:
-            'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'.
-
-        Returns
-        -------
-        float | np.ndarray
-            The requested parameter(s).
-
-        """
-        
-        if not self.solved:
-            raise ValueError("Not solved yet.")
-        
-        if parameter not in ['area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity', 'outflow']:
-            raise ValueError(f"'parameter' should take one of these values: 'area', 'flow_rate', 'velocity', 'depth', 'level', 'wave_celerity'\nYou entered: {parameter}")
-        
-        reqursted = self.results[parameter]
-        
-        if spatial_node is not None:
-            if temporal_node is not None:
-                return float(reqursted[temporal_node, spatial_node])
-            else:
-                return reqursted[:, spatial_node]
-        
-        elif temporal_node is not None:
-            return reqursted[temporal_node, :]
-            
-        else:
-            return reqursted
-    
+                
     def finalize(self, verbose):
         self.solved = True
         self.total_sim_duration = self.time_level * self.time_step
@@ -301,7 +265,6 @@ class Solver:
                              Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
                              i=i)
     
-    
     def get_Y_old(self):
         if not self.channel.downstream_boundary.lumped_storage:
             Y_old = self.water_level_at(k=-1, i=-1)
@@ -316,7 +279,7 @@ class Solver:
                 Y_old = self.channel.downstream_boundary.lumped_storage.stage_hydrograph[self.time_level-2][1]
         return Y_old
     
-    def A_reg(self, A, eps=1e-4):
+    def A_reg(self, A):
         """
         Regularized wetted area.
         
@@ -338,7 +301,7 @@ class Solver:
         
         return A_min + 0.5 * (
             (A - A_min) + np.sqrt(
-                (A - A_min) ** 2 + eps ** 2
+                (A - A_min) ** 2 + self.eps ** 2
                 )
             )
         
