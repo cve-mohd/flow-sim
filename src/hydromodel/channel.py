@@ -16,8 +16,17 @@ class Channel:
                  dry_roughness: float = None,
                  interpolation_method: str = 'GVF_equation',
                  n_steepness: float = 0.15):
-        """
-        Initialized an instance.
+        """Initializes a Channel object.
+
+        Args:
+            upstream_boundary (Boundary): Upstream boundary object.
+            downstream_boundary (Boundary): Downstream boundary object.
+            width (float): Cross-sectional width.
+            initial_flow (float): Flow rate through the channel at t=0.
+            roughness (float): Manning's roughness coefficient.
+            dry_roughness (float, optional): Manning's roughness coefficient for initially-dry regions. Defaults to None.
+            interpolation_method (str, optional): Method of computing initial conditions. Defaults to 'GVF_equation'.
+            n_steepness (float, optional): Steepness of the n transition curve. Defaults to 0.15.
         """
         self.conditions_initialized = False
         self.initial_flow_rate = initial_flow
@@ -46,22 +55,16 @@ class Channel:
         self.coordinated = False
     
     def Se(self, A: float, Q: float, i: int) -> float:
+        """Computes the energy slope at a location.
+
+        Args:
+            A (float): Cross-sectional flow area.
+            Q (float): Flow rate.
+            i (int): Index of spatial node where Se is computed.
+
+        Returns:
+            float: Energy slope (Se)
         """
-        Computes the friction slope using Manning's equation.
-        
-        Parameters
-        ----------
-        A : float
-            The cross-sectional flow area.
-        Q : float
-            The discharge.
-            
-        Returns
-        -------
-        float
-            The computed friction slope.
-            
-        """       
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
@@ -76,6 +79,16 @@ class Channel:
         return Sf + Sc
     
     def dSe_dA(self, A: float, Q: float, i: int) -> float:
+        """Computes the derivative of the energy slope w.r.t. flow area.
+
+        Args:
+            A (float): Cross-sectional flow area.
+            Q (float): Flow rate.
+            i (int): Index of spatial node where Se is computed.
+
+        Returns:
+            float: dSe/dA
+        """
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
@@ -90,6 +103,16 @@ class Channel:
         return dSf_dA + dSc_dA
     
     def dSe_dQ(self, A: float, Q: float, i: int) -> float:
+        """Computes the derivative of the energy slope w.r.t. flow rate.
+
+        Args:
+            A (float): Cross-sectional flow area.
+            Q (float): Flow rate.
+            i (int): Index of spatial node where Se is computed.
+
+        Returns:
+            float: dSe/dQ
+        """
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         
@@ -103,14 +126,32 @@ class Channel:
                 
         return dSf_dQ + dSc_dQ
 
-    def normal_flow(self, A: float, i: int):
+    def normal_flow(self, A: float, i: int) -> float:
+        """Computes the normal flow rate for a given flow area at a given location.
+
+        Args:
+            A (float): Cross-sectional flow area.
+            i (int): Spatial node index.
+
+        Returns:
+            float: Normal flow rate.
+        """
         n = self.get_n(A=A, i=i)
         B = self.width[i]
         S_0 = self.bed_slopes[i]
         
         return hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
         
-    def normal_area(self, Q: float, i: int):
+    def normal_area(self, Q: float, i: int) -> float:
+        """Computes the normal flow area for a given flow rate at a given location.
+
+        Args:
+            Q (float): Flow rate.
+            i (int): Spatial node index.
+
+        Returns:
+            float: Normal flow area.
+        """
         B = self.width[i]
         h = self.downstream_boundary.initial_depth
         h = 1 if h is None else h
@@ -122,14 +163,12 @@ class Channel:
             
     def initialize_conditions(self, n_nodes: int) -> None:
         """
-        Computes the initial conditions.
-        Computes the initial values of the flow variables at each node
-        using the initial boundary values.
+        Computes the initial values of the flow variables (A, Q) at each node.
         
         Parameters
         ----------
         n_nodes : int
-            The number of spatial nodes along the channel, including the two boundaries.
+            Number of spatial nodes along the channel.
             
         Returns
         -------
@@ -198,16 +237,39 @@ class Channel:
         
         self.conditions_initialized = True
     
-    def get_n(self, A: float, i: int):
+    def get_n(self, A: float = None, i: int = None) -> float:
+        """Retrieves Manning's roughness coefficient.
+
+        Args:
+            A (float, optional): Cross-sectional flow area. Defaults to None.
+            i (int, optional): Index of spatial node. Defaults to None.
+
+        Returns:
+            float: n
+        """
+        
         if self.dry_roughness is None or not self.conditions_initialized:
             return self.roughness
+        
+        if A is None or i is None:
+            raise ValueError("Insufficient parameters.")
         
         wet_h = self.wet_depth(i)
         h = A / self.width[i]
         
         return hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=self.n_steepness)
               
-    def dn_dA(self, A: float, i: int):
+    def dn_dA(self, A: float, i: int) -> float:
+        """Computes the derivative of Manning's roughness coefficient w.r.t. flow area.
+
+        Args:
+            A (float): Cross-sectional flow area.
+            i (int): Index of spatial node.
+
+        Returns:
+            float: dn/dA
+        """
+        
         if self.dry_roughness is None:
             return 0
         
@@ -222,7 +284,13 @@ class Channel:
         # dn/dA = dn/dh * dh/dA, dh/dA = 1/B
         return dn_dh * 1./B
     
-    def set_coords(self, coords, chainages):
+    def set_coords(self, coords: list | np.ndarray, chainages: list | np.ndarray) -> None:
+        """Sets horizontal coordinates along the channel.
+
+        Args:
+            coords (list | np.ndarray): Coordinates (list of x,y pairs).
+            chainages (list | np.ndarray): Respective chainages along the channel.
+        """
         self.coords_chainages = np.asarray(chainages, dtype=np.float64)
         self.coords = np.asarray(coords, dtype=np.float64)
         
@@ -231,7 +299,13 @@ class Channel:
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
         
-    def set_intermediate_widths(self, widths, chainages):
+    def set_intermediate_widths(self, widths: list | np.ndarray, chainages: list | np.ndarray) -> None:
+        """Sets cross-sectional width values at positions along the channel.
+
+        Args:
+            widths (list | np.ndarray): Cross-sectional width values.
+            chainages (list | np.ndarray): Respective chainages along the channel.
+        """
         widths    = np.asarray(widths,    dtype=np.float64)
         chainages = np.asarray(chainages, dtype=np.float64)
         
@@ -246,7 +320,13 @@ class Channel:
         self.width = widths
         self.width_chainages = chainages
 
-    def set_intermediate_bed_levels(self, bed_levels, chainages):
+    def set_intermediate_bed_levels(self, bed_levels: list | np.ndarray, chainages: list | np.ndarray) -> None:
+        """Sets bed elevation values at positions along the channel.
+
+        Args:
+            bed_levels (list | np.ndarray): Bed elevation values.
+            chainages (list | np.ndarray): Respective chainages along the channel.
+        """
         bed_levels = np.asarray(bed_levels, dtype=np.float64)
         chainages  = np.asarray(chainages,  dtype=np.float64)
 
@@ -268,7 +348,12 @@ class Channel:
         self.bed_level = bed_levels
         self.level_chainages = chainages
 
-    def initialize_geometry(self, n_nodes):        
+    def initialize_geometry(self, n_nodes: int) -> None:
+        """Interpolates geometric attributes along the channel.
+
+        Args:
+            n_nodes (int): Number of spatial nodes along the channel.
+        """
         self.chainages = np.linspace(
             start=self.upstream_boundary.chainage,
             stop=self.downstream_boundary.chainage,
@@ -293,6 +378,14 @@ class Channel:
         self.bed_slopes = -np.gradient(self.bed_level, self.chainages)
         self.surface_area = np.trapezoid(self.width, self.chainages)
     
-    def wet_depth(self, i):
+    def wet_depth(self, i: int) -> float:
+        """Retrieves the depth value of the initially-submerged portion of the channel at a given location.
+
+        Args:
+            i (int): Spatial node index.
+
+        Returns:
+            float: Depth value.
+        """
         return self.initial_conditions[i, 0] / self.width[i]
     
