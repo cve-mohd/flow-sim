@@ -29,6 +29,7 @@ class LumpedStorage:
             return self.net_vol_change(Y_old, Y_new) - target_vol
 
         Y_target = brentq(f, self.Y_min, self.Y_max)
+                
         if Y_target < self.min_stage:
             Y_target = self.min_stage
 

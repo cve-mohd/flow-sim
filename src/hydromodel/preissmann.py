@@ -316,9 +316,8 @@ class PreissmannSolver(Solver):
                                                                    flow_rate=self.flow_at(i=-1),
                                                                    bed_slope=self.bed_slope_at(i=-1),
                                                                    roughness=self.channel.get_n(A=self.area_at(i=-1), i=-1),
-                                                                   duration=self.time_step,
                                                                    vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-                                                                   Y_old=self.get_Y_old())
+                                                                   duration=self.time_step)
             
     def dU_dA(self) -> int:
         """
@@ -723,7 +722,6 @@ class PreissmannSolver(Solver):
                 depth=self.depth_at(i=-1),
                 duration=self.time_step,
                 vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-                Y_old=self.get_Y_old(),
                 time=t
                 )
             
@@ -749,7 +747,6 @@ class PreissmannSolver(Solver):
             depth=self.depth_at(i=-1),
             duration=self.time_step,
             vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
-            Y_old=self.get_Y_old(),
             time=t
         )
         

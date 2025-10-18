@@ -58,8 +58,7 @@ class Boundary:
                            bed_slope: float = None,
                            roughness: float = None,
                            duration: int | float = None,
-                           vol_in: float = None,
-                           Y_old: float = None) -> float:
+                           vol_in: float = None) -> float:
         """Computes the residual of the boundary condition equation.
 
         Args:
@@ -71,7 +70,6 @@ class Boundary:
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
             duration (int | float, optional): Time step. Defaults to None.
             vol_in (float, optional): Water volume passing through the boundary. Defaults to None.
-            Y_old (float, optional): Water level at the boundary in the previous time level. Defaults to None.
 
         Returns:
             float: Residual
@@ -86,18 +84,21 @@ class Boundary:
         elif self.condition == 'fixed_depth':
             if depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
-            
-            head_loss_old = self.lumped_storage.energy_loss(
-                    Q=flow_rate, n=roughness, h=(Y_old-self.bed_level)
-                )
-            
-            Y_old_res = Y_old - head_loss_old
-            
-            if self.lumped_storage is not None:                    
+                        
+            if self.lumped_storage:
+                if roughness is None or duration is None or vol_in is None or time is None or flow_rate is None:
+                    raise ValueError("Insufficient arguments for boundary condition.")
+                
+                k = time//duration
+                if k == 1:
+                    Y_old = depth + self.bed_level
+                else:
+                    Y_old = self.lumped_storage.stage_hydrograph[k-2][1]
+                                    
                 reservoir_stage = self.lumped_storage.mass_balance(
                     duration=duration,
                     vol_in=vol_in,
-                    Y_old=Y_old_res,
+                    Y_old=Y_old,
                     time=time
                 )
                 head_loss = self.lumped_storage.energy_loss(
@@ -105,8 +106,8 @@ class Boundary:
                 )
                 
                 interface_stage = reservoir_stage + head_loss
-                interface_depth = interface_stage - self.bed_level                
-                
+                interface_depth = interface_stage - self.bed_level
+                                
                 if not self.lumped_storage.stage_hydrograph:
                     self.lumped_storage.stage_hydrograph.append([time, reservoir_stage])
                 elif self.lumped_storage.stage_hydrograph[-1][0] == time:
@@ -201,19 +202,16 @@ class Boundary:
               roughness: float = None,
               depth: float = None,
               duration: int | float = None,
-              vol_in: float = None,
-              Y_old: float = None,
-              time: int | float = None) -> float:
+              time: int | float = None,
+              vol_in: float = None) -> float:
         """Computes the derivative of the boundary condition equation with respect to flow rate.
 
         Args:
-            area (float, optional): Cross-sectional flow area at the boundary. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
             depth (float, optional): Current flow depth at the boundary. Defaults to None.
             duration (int | float, optional): Time step. Defaults to None.
             vol_in (float, optional): Water volume passing through the boundary. Defaults to None.
-            Y_old (float, optional): Water level at the boundary in the previous time level. Defaults to None.
             time (int | float, optional): Current temporal coordinate. Defaults to None.
 
         Returns:
@@ -225,8 +223,14 @@ class Boundary:
         elif self.condition == 'fixed_depth':
             if self.lumped_storage is not None:
                 if flow_rate is None or depth is None or roughness is None\
-                    or duration is None or vol_in is None or Y_old is None or time is None:
+                    or duration is None or time is None or vol_in is None:
                     raise ValueError("Insufficient arguments for boundary condition.")
+                
+                k = time//duration
+                if k == 1:
+                    Y_old = depth + self.bed_level
+                else:
+                    Y_old = self.lumped_storage.stage_hydrograph[k-2][1]
                 
                 dY_new_dvol = self.lumped_storage.dY_new_dvol_in(
                     duration=duration,
