@@ -741,11 +741,9 @@ class PreissmannSolver(Solver):
 
         """
         t = self.time_level * self.time_step
-        A = self.area_at(i=-1)
-        n = self.channel.get_n(A=A, i=-1)
+        n = self.channel.get_n(A=self.area_at(i=-1), i=-1)
         
         dD = self.channel.downstream_boundary.df_dQ(
-            area=A,
             flow_rate=self.flow_at(i=-1),
             roughness=n,
             depth=self.depth_at(i=-1),
