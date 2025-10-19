@@ -66,13 +66,14 @@ class Channel:
             float: Energy slope (Se)
         """
         n = self.get_n(A=A, i=i)
-        B = self.width[i]
+        h = self.depth_at(i=i, A=A)
+        R = self.hydraulic_radius(i=i, h=h)
         
-        Sf = hydraulics.Sf(A=A, Q=Q, n=n, B=B)
+        Sf = hydraulics.Sf(A=A, Q=Q, n=n, R=R)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            Sc = hydraulics.Sc(A=A, Q=Q, n=n, B=B, rc=rc)
+            Sc = hydraulics.Sc(h=h, A=A, Q=Q, n=n, R=R, rc=rc)
         else:
             Sc = 0
             
@@ -90,13 +91,16 @@ class Channel:
             float: dSe/dA
         """
         n = self.get_n(A=A, i=i)
-        B = self.width[i]
+        h = self.depth_at(i=i, A=A)
+        R = self.hydraulic_radius(i=i, h=h)
+        dR_dA = self.dR_dA(i=i, h=h)
+        T = self.top_width(i=i, h=h)
         
-        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, B=B) + hydraulics.dSf_dn(A=A, Q=Q, n=n, B=B) * self.dn_dA(A, i=i)
+        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R) + hydraulics.dSf_dn(A=A, Q=Q, n=n, R=R) * self.dn_dA(A=A, i=i)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dA = hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+            dSc_dA = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc) * self.dn_dA(A=A, i=i)
         else:
             dSc_dA = 0
         
@@ -114,13 +118,16 @@ class Channel:
             float: dSe/dQ
         """
         n = self.get_n(A=A, i=i)
-        B = self.width[i]
+        h = self.depth_at(i=i, A=A)
+        R = self.hydraulic_radius(i=i, h=h)
+        dR_dA = self.dR_dA(i=i, h=h)
+        T = self.top_width(i=i, h=h)
         
-        dSf_dQ = hydraulics.dSf_dQ(A=A, Q=Q, n=n, B=B)
+        dSf_dQ = hydraulics.dSf_dQ(A=A, Q=Q, n=n, R=R)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dQ = hydraulics.dSc_dA(A=A, Q=Q, n=n, B=B, rc=rc) + hydraulics.dSc_dn(A=A, Q=Q, n=n, B=B, rc=rc) * self.dn_dA(A, i=i)
+            dSc_dQ = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc) * self.dn_dA(A=A, i=i)
         else:
             dSc_dQ = 0
                 
@@ -137,10 +144,11 @@ class Channel:
             float: Normal flow rate.
         """
         n = self.get_n(A=A, i=i)
-        B = self.width[i]
+        h = self.depth_at(i=i, A=A)
+        R = self.hydraulic_radius(i=i, h=h)
         S_0 = self.bed_slopes[i]
         
-        return hydraulics.normal_flow(A=A, S_0=S_0, n=n, B=B)
+        return hydraulics.normal_flow(A=A, S_0=S_0, n=n, R=R)
         
     def normal_area(self, Q: float, i: int) -> float:
         """Computes the normal flow area for a given flow rate at a given location.
@@ -152,6 +160,8 @@ class Channel:
         Returns:
             float: Normal flow area.
         """
+        raise ValueError("channel.normal_area is WIP")
+        R = self.hydraulic_radius(i=i, h=h)
         B = self.width[i]
         h = self.downstream_boundary.initial_depth
         h = 1 if h is None else h
@@ -159,7 +169,7 @@ class Channel:
         n = self.get_n(A=A_guess, i=i)
         S_0 = self.bed_slopes[i]
         
-        return hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, B=B)
+        return hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, R=R)
             
     def initialize_conditions(self, n_nodes: int) -> None:
         """
@@ -179,14 +189,14 @@ class Channel:
         self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=np.float64)
         
         if self.interpolation_method == 'linear':
-            y_0 = self.upstream_boundary.initial_depth
-            y_n = self.downstream_boundary.initial_depth
+            h0 = self.upstream_boundary.initial_depth
+            hN = self.downstream_boundary.initial_depth
                     
             for i in range(n_nodes):
                 distance = self.length * i / (n_nodes-1)
                 
-                y = y_0 + (y_n - y_0) * distance / self.length
-                A, Q = y * self.width[i], self.initial_flow_rate
+                h = h0 + (hN - h0) * distance / self.length
+                A, Q = self.area_at(i=i, h=h), self.initial_flow_rate
                 
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
@@ -196,13 +206,13 @@ class Channel:
             h = self.downstream_boundary.initial_depth
             
             # Add last node
-            self.initial_conditions[n_nodes-1, 0] = h*self.width[-1]
+            self.initial_conditions[n_nodes-1, 0] = self.area_at(i=-1, h=h)
             self.initial_conditions[n_nodes-1, 1] = self.initial_flow_rate
 
             for i in reversed(range(n_nodes-1)):
                 distance = i * dx
     
-                A, Q, B = self.width[i] * h, self.initial_flow_rate, self.width[i]
+                A, Q, B = self.area_at(i=i, h=h), self.initial_flow_rate, self.width[i]
                 Sf = self.Se(A, Q, i)
                 
                 Fr = hydraulics.froude_num(A, Q, B)
@@ -389,3 +399,25 @@ class Channel:
         """
         return self.initial_conditions[i, 0] / self.width[i]
     
+    def area_at(self, i, h):
+        return self.width[i] * h
+    
+    def depth_at(self, i, A):
+        return A/self.width[i]
+
+    def hydraulic_radius(self, i, h):
+        return self.area_at(i, h) / self.wetted_perimeter(i, h)
+    
+    def wetted_perimeter(self, i, h):
+        return self.width[i] + 2 * h
+    
+    def dR_dA(self, i, h):
+        B = self.width[i]
+        A = self.area_at(i=i, h=h)
+        P = B + 2.0 * h
+        dP_dA = 2.0 / B
+
+        return (P - A * dP_dA) / (P**2)
+
+    def top_width(self, i, h):
+        return self.width[i]

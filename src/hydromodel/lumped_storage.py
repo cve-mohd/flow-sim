@@ -56,9 +56,8 @@ class LumpedStorage:
         head_loss = hf + h_exp + h_emp
         return head_loss
 
-    def friction_loss(self, Q, h, n):
-        A_ent = h * self.widths[0]
-        Sf = hydraulics.Sf(A=A_ent, Q=Q, n=n, B=self.widths[0])
+    def friction_loss(self, A_ent, Q, n, R):
+        Sf = hydraulics.Sf(A=A_ent, Q=Q, n=n, R=R)
         return Sf * self.reservoir_length
 
     def expansion_loss(self, Q, h):
@@ -81,17 +80,16 @@ class LumpedStorage:
         V = Q/A_ent
         return self.K_q * V**2 / (2*g)
     
-    def dhl_dn(self, Q, h, n):
+    def dhl_dn(self, Q, h, n, R):
         if not self.capture_losses:
             return 0
                 
         A_ent = h * self.widths[0]
-        dSf_dn = hydraulics.dSf_dn(A=A_ent, Q=Q, n=n, B=self.widths[0])
+        dSf_dn = hydraulics.dSf_dn(A=A_ent, Q=Q, n=n, R=R)
         return dSf_dn * self.reservoir_length
 
-    def dhf_dA(self, Q, h, n):
-        A_ent = h * self.widths[0]
-        dSf_dA = hydraulics.dSf_dA(A=A_ent, Q=Q, n=n, B=self.widths[0])
+    def dhf_dA(self, A_ent, Q, n, R, dR_dA):
+        dSf_dA = hydraulics.dSf_dA(A=A_ent, Q=Q, n=n, R=R, dR_dA=dR_dA)
         return dSf_dA * self.reservoir_length
     
     def d_h_exp_dA(self, Q, h):
@@ -136,9 +134,8 @@ class LumpedStorage:
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
 
-    def dhf_dQ(self, Q, h, n):
-        A_ent = self.widths[0] * h
-        dSf_dQ = hydraulics.dSf_dQ(A=A_ent, Q=Q, n=n, B=self.widths[0])
+    def dhf_dQ(self, A_ent, Q, n, R):
+        dSf_dQ = hydraulics.dSf_dQ(A=A_ent, Q=Q, n=n, R=R)
         return dSf_dQ * self.reservoir_length
 
     def d_h_exp_dQ(self, Q, h):
