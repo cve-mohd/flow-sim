@@ -13,7 +13,6 @@ class LumpedStorage:
         self.stage_hydrograph = []
         self.area_curve = None
         self.reservoir_length = None
-        self.widths = None
         self.capture_losses = False
         self.Cc = 0.5    # Cc ~ 0.2-0.7
         self.K_q = 0
@@ -27,7 +26,7 @@ class LumpedStorage:
             Q_out = 0.5 * (self.rating_curve.discharge(Y_old, time) + self.rating_curve.discharge(Y_new, time)) if self.rating_curve else 0.0
             target_vol = vol_in - Q_out * duration
             return self.net_vol_change(Y_old, Y_new) - target_vol
-
+        
         Y_target = brentq(f, self.Y_min, self.Y_max)
                 
         if Y_target < self.min_stage:
@@ -45,13 +44,13 @@ class LumpedStorage:
         
         return 1/self.area_at(Y_new)
     
-    def energy_loss(self, Q, n, h):
+    def energy_loss(self, A_ent, Q, n, R, A_str = None):
         if not self.capture_losses:
             return 0
                 
-        hf = self.friction_loss(Q, h, n)
-        h_exp = self.expansion_loss(Q, h)
-        h_emp = self.empirical_loss(Q, h)
+        hf = self.friction_loss(A_ent=A_ent, Q=Q, n=n, R=R)
+        h_exp = self.expansion_loss(A_ent=A_ent, A_str=A_str, Q=Q)
+        h_emp = self.empirical_loss(A_ent=A_ent, Q=Q)
         
         head_loss = hf + h_exp + h_emp
         return head_loss
@@ -60,31 +59,23 @@ class LumpedStorage:
         Sf = hydraulics.Sf(A=A_ent, Q=Q, n=n, R=R)
         return Sf * self.reservoir_length
 
-    def expansion_loss(self, Q, h):
-        h_trans = 0.0
-        for i in range(len(self.widths)-1):
-            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
-            if A_down > A_up:
-                K = (1 - A_up/A_down)**2
-                V = Q / A_up
-            else:
-                # contraction
-                K = self.Cc * (1 - A_down/A_up)
-                V = Q / A_down
-            h_trans += K * V**2 / (2*g)
+    def expansion_loss(self, A_ent, Q, A_str = None):
+        if A_str is None:
+            return 0
+        
+        K = (1 - A_ent/A_str)**2
+        V = Q / A_ent
             
-        return h_trans
+        return K * V**2 / (2*g)
     
-    def empirical_loss(self, Q, h):
-        A_ent = h * self.widths[0]
+    def empirical_loss(self, Q, A_ent):
         V = Q/A_ent
         return self.K_q * V**2 / (2*g)
     
-    def dhl_dn(self, Q, h, n, R):
+    def dhl_dn(self, A_ent, Q, n, R):
         if not self.capture_losses:
             return 0
                 
-        A_ent = h * self.widths[0]
         dSf_dn = hydraulics.dSf_dn(A=A_ent, Q=Q, n=n, R=R)
         return dSf_dn * self.reservoir_length
 
@@ -92,45 +83,31 @@ class LumpedStorage:
         dSf_dA = hydraulics.dSf_dA(A=A_ent, Q=Q, n=n, R=R, dR_dA=dR_dA)
         return dSf_dA * self.reservoir_length
     
-    def d_h_exp_dA(self, Q, h):
-        dh_exp_dh = 0.0
-        h_trans = 0.0
-        for i in range(len(self.widths)-1):
-            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
-            if A_down > A_up:
-                K = (1 - A_up/A_down)**2
-                V = Q / A_up
-                dV_dA_up = -Q / A_up**2
-                dA_up_dh = self.widths[i]
-                dV_dh = dV_dA_up * dA_up_dh
-            else:
-                # contraction
-                K = self.Cc * (1 - A_down/A_up)
-                V = Q / A_down
-                dV_dA_down = -Q / A_down**2
-                dA_down_dh = self.widths[i+1]
-                dV_dh = dV_dA_down * dA_down_dh
-                
-            h_trans += K * V**2 / (2*g)
-            dh_exp_dh += K * 2*V*dV_dh / (2*g)
+    def d_h_exp_dA(self, A_ent, Q, A_str = None):
+        if A_str is None:
+            return 0
+        
+        K = (1 - A_ent/A_str)**2
+        V = Q / A_ent
+        
+        dK_dA = 2*(1 - A_ent/A_str) * (-1/A_str)
+        dV_dA = -Q / A_ent**2
             
-        dh_dA = 1/self.widths[0]
-        return dh_exp_dh * dh_dA
+        return (K * 2*V*dV_dA + V**2 * dK_dA) / (2*g)
     
-    def d_h_emp_dA(self, Q, h):
-        A_ent = h * self.widths[0]
+    def d_h_emp_dA(self, A_ent, Q):
         V = Q/A_ent
         dV_dA = -Q/(A_ent**2)
         
         return self.K_q * 2*V*dV_dA / (2*g)
 
-    def dhl_dA(self, Q, h, n):
+    def dhl_dA(self, A_ent, Q, n, R, dR_dA, A_str = None):
         if not self.capture_losses:
             return 0
                 
-        dhf_dA = self.dhf_dA(Q, h, n)
-        d_h_exp_dA = self.d_h_exp_dA(Q, h)
-        d_h_emp_dA = self.d_h_emp_dA(Q, h)
+        dhf_dA = self.dhf_dA(A_ent=A_ent, Q=Q, n=n, R=R, dR_dA=dR_dA)
+        d_h_exp_dA = self.d_h_exp_dA(A_ent=A_ent, Q=Q, A_str=A_str)
+        d_h_emp_dA = self.d_h_emp_dA(A_ent=A_ent, Q=Q)
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
 
@@ -138,39 +115,30 @@ class LumpedStorage:
         dSf_dQ = hydraulics.dSf_dQ(A=A_ent, Q=Q, n=n, R=R)
         return dSf_dQ * self.reservoir_length
 
-    def d_h_exp_dQ(self, Q, h):
-        dh_exp_dQ = 0.0
-        h_trans = 0.0
-        for i in range(len(self.widths)-1):
-            A_up = (h-h_trans) * self.widths[i]; A_down = (h-h_trans) * self.widths[i+1]
-            if A_down > A_up:
-                K = (1 - A_up/A_down)**2
-                V = Q / A_up
-            else:
-                # contraction
-                K = self.Cc * (1 - A_down/A_up)
-                V = Q / A_down
-                
-            h_trans += K * V**2 / (2*g)
-            dV_dQ = V / Q
-            dh_exp_dQ += K * 2*V*dV_dQ / (2*g)
+    def d_h_exp_dQ(self, A_ent, Q, A_str = None):
+        if A_str is None:
+            return 0
+        
+        K = (1 - A_ent/A_str)**2
+        V = Q / A_ent
+        
+        dV_dQ = -Q / A_ent**2
             
-        return dh_exp_dQ
+        return K * 2*V*dV_dQ / (2*g)
     
-    def d_h_emp_dQ(self, Q, h):
-        A_ent = h * self.widths[0]
+    def d_h_emp_dQ(self, A_ent, Q):
         V = Q/A_ent
         dV_dQ = 1./A_ent
         
         return self.K_q * 2*V*dV_dQ / (2*g)
             
-    def dhl_dQ(self, Q, h, n):
+    def dhl_dQ(self, A_ent, Q, n, R, A_str = None):
         if not self.capture_losses:
             return 0
         
-        dhf_dQ = self.dhf_dQ(Q, h, n)
-        d_h_exp_dQ = self.d_h_exp_dQ(Q, h)
-        d_h_emp_dQ = self.d_h_emp_dQ(Q, h)
+        dhf_dQ = self.dhf_dQ(A_ent=A_ent, Q=Q, n=n, R=R)
+        d_h_exp_dQ = self.d_h_exp_dQ(A_ent=A_ent, Q=Q, A_str=A_str)
+        d_h_emp_dQ = self.d_h_emp_dQ(A_ent=A_ent, Q=Q)
         
         return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
             

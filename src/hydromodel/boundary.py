@@ -103,7 +103,7 @@ class Boundary:
                     time=time
                 )
                 head_loss = self.lumped_storage.energy_loss(
-                    Q=flow_rate, n=roughness, h=depth
+                    A_ent=depth*width, Q=flow_rate, n=roughness, R=hydraulic_radius
                 )
                 
                 interface_stage = reservoir_stage + head_loss
@@ -174,7 +174,7 @@ class Boundary:
             if self.lumped_storage is not None:
                 if flow_rate is None or area is None or roughness is None:
                     raise ValueError("Insufficient arguments for boundary condition.")
-                dhl_dA = self.lumped_storage.dhl_dA(Q=flow_rate, n=roughness, h=area/width)
+                dhl_dA = self.lumped_storage.dhl_dA(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
             else:
                 dhl_dA = 0
             
@@ -203,7 +203,10 @@ class Boundary:
             dh_dA = 1/width
             return dh_dA
         
-    def df_dQ(self, flow_rate: float = None,
+    def df_dQ(self,
+              area: float = None,
+              hydraulic_radius: float = None,
+              flow_rate: float = None,
               roughness: float = None,
               depth: float = None,
               duration: int | float = None,
@@ -245,7 +248,7 @@ class Boundary:
                 )
                 dvol_dQ = 0.5 * duration
                 
-                dhl_dQ = self.lumped_storage.dhl_dQ(Q=flow_rate, n=roughness, h=depth)
+                dhl_dQ = self.lumped_storage.dhl_dQ(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius)
                 
                 return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)
             else:
@@ -289,7 +292,7 @@ class Boundary:
             if flow_rate is None or roughness is None or depth is None or hydraulic_radius is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            dhl_dn = self.lumped_storage.dhl_dn(Q=flow_rate, n=roughness, h=depth, R=hydraulic_radius)
+            dhl_dn = self.lumped_storage.dhl_dn(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius)
             return 0 - (0 + dhl_dn)
                 
         else:

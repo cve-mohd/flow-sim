@@ -96,7 +96,7 @@ class Channel:
         dR_dA = self.dR_dA(i=i, h=h)
         T = self.top_width(i=i, h=h)
         
-        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R) + hydraulics.dSf_dn(A=A, Q=Q, n=n, R=R) * self.dn_dA(A=A, i=i)
+        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R, dR_dA=dR_dA) + hydraulics.dSf_dn(A=A, Q=Q, n=n, R=R) * self.dn_dA(A=A, i=i)
         
         if self.coordinated:
             rc = self.radii_curv[i]

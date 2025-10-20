@@ -70,10 +70,12 @@ class Solver:
         self.peak_amplitude = deviation.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
+            R = self.channel.hydraulic_radius(i=-1, h=self.depth_at(k=0, i=-1))
             initial_storage_stage = self.water_level_at(k=0, i=-1) - self.channel.downstream_boundary.lumped_storage.energy_loss(
+                A_ent=self.area_at(k=0, i=-1),
                 Q=self.flow_at(k=0, i=-1),
-                h=self.depth_at(k=0, i=-1),
-                n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1)
+                n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1),
+                R=R
             )
             self.channel.downstream_boundary.lumped_storage.stage_hydrograph.insert(0, [0, initial_storage_stage])
             self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)

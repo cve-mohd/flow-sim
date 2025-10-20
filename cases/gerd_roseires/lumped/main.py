@@ -35,17 +35,16 @@ def run(
 
     roseires_storage = LumpedStorage(min_stage=initial_roseires_level,
                                     #rating_curve=RoseiresRatingCurve(),
-                                    rating_curve=used_roseires_rc,
-                                    solution_boundaries=None)
+                                     rating_curve=used_roseires_rc,
+                                     solution_boundaries=None)
     
     roseires_storage.set_area_curve(table=import_area_curve(input_dir + 'roseires_storage_curve.csv'))
     roseires_storage.reservoir_length = rep_length_fraction*(total_system_length - ds_chainage)
     roseires_storage.capture_losses = True
-    roseires_storage.widths = [widths[-1, 1], 7075, 6222, 8400, 5000, 8550, 13800]
     roseires_storage.Cc = Cc
     roseires_storage.K_q = K_q
 
-    ds_depth_ = recalc_ds_h(ds_depth, wet_n, roseires_storage)
+    ds_depth_ = recalc_ds_h(width=widths[-1, 1], ds_depth=ds_depth, wet_n=wet_n, roseires_storage=roseires_storage)
         
     GERD = Boundary(condition='flow_hydrograph',
                     bed_level=gerd_bed_level,
@@ -99,19 +98,28 @@ def run(
     
     return attenuation, us_peak_amp, ds_peak_amp
 
-def recalc_ds_h(ds_depth, wet_n, roseires_storage: LumpedStorage):
+def recalc_ds_h(width, ds_depth, wet_n, roseires_storage: LumpedStorage):
+    A = width * ds_depth
+    P = width + 2 * ds_depth
+    R = A/P
     while True:
         new_ds_depth = initial_roseires_level - ds_bed_level + roseires_storage.energy_loss(
+            A_ent=A,
             Q=inflow_hyd.get_at(0),
-            h=ds_depth,
-            n=wet_n
+            n=wet_n,
+            R=R
         )
         
         diff = ds_depth - new_ds_depth
         ds_depth = new_ds_depth
         
+        A = width * ds_depth
+        P = width + 2 * ds_depth
+        R = A/P
+        
         if abs(diff) < 1e-6:
             break
+        
     return ds_depth
 
 if __name__ == '__main__':
