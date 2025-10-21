@@ -68,12 +68,13 @@ class Channel:
         n = self.get_n(A=A, i=i)
         h = self.depth_at(i=i, A=A)
         R = self.hydraulic_radius(i=i, h=h)
+        T = self.top_width(i=i, h=h)
         
         Sf = hydraulics.Sf(A=A, Q=Q, n=n, R=R)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            Sc = hydraulics.Sc(h=h, A=A, Q=Q, n=n, R=R, rc=rc)
+            Sc = hydraulics.Sc(h=h, T=T, A=A, Q=Q, n=n, R=R, rc=rc)
         else:
             Sc = 0
             
@@ -100,7 +101,7 @@ class Channel:
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dA = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc) * self.dn_dA(A=A, i=i)
+            dSc_dA = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc, T=T) * self.dn_dA(A=A, i=i)
         else:
             dSc_dA = 0
         
@@ -127,7 +128,8 @@ class Channel:
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dQ = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc) * self.dn_dA(A=A, i=i)
+            # WTFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+            dSc_dQ = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc, T=T) * self.dn_dA(A=A, i=i)
         else:
             dSc_dQ = 0
                 
@@ -213,9 +215,10 @@ class Channel:
                 distance = i * dx
     
                 A, Q, B = self.area_at(i=i, h=h), self.initial_flow_rate, self.width[i]
+                T = self.top_width(i=i, h=h)
                 Sf = self.Se(A, Q, i)
                 
-                Fr = hydraulics.froude_num(A, Q, B)
+                Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
                 denominator = 1 - Fr**2
                 
                 if abs(denominator) < 1e-6:
