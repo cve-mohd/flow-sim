@@ -70,10 +70,12 @@ class Solver:
         self.peak_amplitude = deviation.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
+            R = self.channel.hydraulic_radius(i=-1, h=self.depth_at(k=0, i=-1))
             initial_storage_stage = self.water_level_at(k=0, i=-1) - self.channel.downstream_boundary.lumped_storage.energy_loss(
+                A_ent=self.area_at(k=0, i=-1),
                 Q=self.flow_at(k=0, i=-1),
-                h=self.depth_at(k=0, i=-1),
-                n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1)
+                n=self.channel.get_n(A=self.area_at(k=0, i=-1), i=-1),
+                R=R
             )
             self.channel.downstream_boundary.lumped_storage.stage_hydrograph.insert(0, [0, initial_storage_stage])
             self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)
@@ -259,16 +261,17 @@ class Solver:
         return self.channel.bed_level[i] + self.depth_at(k=k, i=i, regularization=regularization)
     
     def wet_depth_at(self, i):
-        return self.channel.initial_conditions[i, 0] / self.width_at(i=i)
+        return self.depth_at(k=0, i=i)
     
     def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
         return self.channel.Se(A=self.area_at(k=k, i=i, regularization=regularization),
-                             Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
-                             i=i)
+                               Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
+                               i=i)
     
     def get_Y_old(self):
         if not self.channel.downstream_boundary.lumped_storage:
             Y_old = self.water_level_at(k=-1, i=-1)
+            
         else:
             if self.time_level <= 1:
                 Y_old = self.water_level_at(k=0, i=-1) - self.channel.downstream_boundary.lumped_storage.energy_loss(
@@ -278,6 +281,7 @@ class Solver:
                 )
             else:
                 Y_old = self.channel.downstream_boundary.lumped_storage.stage_hydrograph[self.time_level-2][1]
+                
         return Y_old
     
     def A_reg(self, A):

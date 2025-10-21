@@ -54,6 +54,7 @@ class Boundary:
     def condition_residual(self, time: int | float = None,
                            depth: float = None,
                            width: float = None,
+                           hydraulic_radius: float = None,
                            flow_rate: float = None,
                            bed_slope: float = None,
                            roughness: float = None,
@@ -102,7 +103,7 @@ class Boundary:
                     time=time
                 )
                 head_loss = self.lumped_storage.energy_loss(
-                    Q=flow_rate, n=roughness, h=depth
+                    A_ent=depth*width, Q=flow_rate, n=roughness, R=hydraulic_radius
                 )
                 
                 interface_stage = reservoir_stage + head_loss
@@ -122,10 +123,11 @@ class Boundary:
                 return depth - self.initial_depth
         
         elif self.condition == 'normal_depth':
-            if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None:
+            if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None\
+                or hydraulic_radius is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            Qn = normal_flow(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            Qn = normal_flow(A=width*depth, S_0=bed_slope, n=roughness, R=hydraulic_radius)
             return flow_rate - Qn
         
         elif self.condition == 'rating_curve':
@@ -143,6 +145,8 @@ class Boundary:
         
     def df_dA(self, area: float = None,
               flow_rate: float = None,
+              hydraulic_radius: float = None,
+              dR_dA: float = None,
               width: float = None,
               bed_slope: float = None,
               roughness: float = None,
@@ -170,7 +174,7 @@ class Boundary:
             if self.lumped_storage is not None:
                 if flow_rate is None or area is None or roughness is None:
                     raise ValueError("Insufficient arguments for boundary condition.")
-                dhl_dA = self.lumped_storage.dhl_dA(Q=flow_rate, n=roughness, h=area/width)
+                dhl_dA = self.lumped_storage.dhl_dA(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
             else:
                 dhl_dA = 0
             
@@ -178,10 +182,11 @@ class Boundary:
             return dh_dA - dhl_dA
         
         elif self.condition == 'normal_depth':
-            if width is None or area is None or bed_slope is None or roughness is None:
+            if width is None or area is None or bed_slope is None or roughness is None\
+                or hydraulic_radius is None or dR_dA is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return 0 - dQn_dA(A=area, S=bed_slope, n=roughness, B=width)
+            return 0 - dQn_dA(A=area, S=bed_slope, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
         
         elif self.condition == 'rating_curve':
             if width is None or area is None:
@@ -198,7 +203,10 @@ class Boundary:
             dh_dA = 1/width
             return dh_dA
         
-    def df_dQ(self, flow_rate: float = None,
+    def df_dQ(self,
+              area: float = None,
+              hydraulic_radius: float = None,
+              flow_rate: float = None,
               roughness: float = None,
               depth: float = None,
               duration: int | float = None,
@@ -240,7 +248,7 @@ class Boundary:
                 )
                 dvol_dQ = 0.5 * duration
                 
-                dhl_dQ = self.lumped_storage.dhl_dQ(Q=flow_rate, n=roughness, h=depth)
+                dhl_dQ = self.lumped_storage.dhl_dQ(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius)
                 
                 return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)
             else:
@@ -255,10 +263,12 @@ class Boundary:
         elif self.condition == 'stage_hydrograph':
             return 0
     
-    def df_dn(self, depth: float,
-              roughness: float,
-              width: float,
-              bed_slope: float,
+    def df_dn(self,
+              area: float = None,
+              depth: float = None,
+              roughness: float = None,
+              hydraulic_radius: float = None,
+              bed_slope: float = None,
               flow_rate: float = None) -> float:
         """Computes the derivative of the boundary condition equation with respect to Manning's roughness.
 
@@ -273,16 +283,16 @@ class Boundary:
             float: df/dn
         """
         if self.condition == 'normal_depth':
-            if width is None or depth is None or bed_slope is None or roughness is None:
+            if area is None or bed_slope is None or roughness is None or hydraulic_radius is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            return 0 - dQn_dn(A=width*depth, S_0=bed_slope, n=roughness, B=width)
+            return 0 - dQn_dn(A=area, S_0=bed_slope, n=roughness, R=hydraulic_radius)
         
         elif self.condition == 'fixed_depth' and self.lumped_storage:
-            if flow_rate is None or roughness is None or depth is None:
+            if flow_rate is None or roughness is None or depth is None or hydraulic_radius is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            dhl_dn = self.lumped_storage.dhl_dn(Q=flow_rate, n=roughness, h=depth)
+            dhl_dn = self.lumped_storage.dhl_dn(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius)
             return 0 - (0 + dhl_dn)
                 
         else:
