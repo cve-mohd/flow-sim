@@ -51,7 +51,9 @@ class Boundary:
         """
         self.lumped_storage = lumped_storage
     
-    def condition_residual(self, time: int | float = None,
+    def condition_residual(self,
+                           area: float = None,
+                           time: int | float = None,
                            depth: float = None,
                            width: float = None,
                            hydraulic_radius: float = None,
@@ -63,9 +65,11 @@ class Boundary:
         """Computes the residual of the boundary condition equation.
 
         Args:
+            area (float, optional): Current flow area at the boundary. Defaults to None.
             time (int | float, optional): Current temporal coordinate. Defaults to None.
             depth (float, optional): Current flow depth at the boundary. Defaults to None.
             width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
+            hydraulic_radius (float, optional): Hydraulic radius. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
             bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
@@ -75,18 +79,33 @@ class Boundary:
         Returns:
             float: Residual
         """
+        unknown = flow_rate if self.condition_type() else depth
+        if unknown is None:
+            raise ValueError("Insufficient arguments for boundary condition.")
+        
         if self.condition == 'flow_hydrograph':
-            if time is None or flow_rate is None:
+            if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            Q_t = self.hydrograph.get_at(time=time)
-            return flow_rate - Q_t
+            target = self.hydrograph.get_at(time=time)
+        
+        elif self.condition == 'normal_depth':
+            if area is None or bed_slope is None or roughness is None or hydraulic_radius is None:
+                raise ValueError("Insufficient arguments for boundary condition.")
             
-        elif self.condition == 'fixed_depth':
+            target = normal_flow(A=area, S_0=bed_slope, n=roughness, R=hydraulic_radius)
+        
+        elif self.condition == 'rating_curve':
             if depth is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
-                        
-            if self.lumped_storage:
+            
+            target = self.rating_curve.discharge(stage=self.bed_level+depth, time=time)
+        
+        elif self.condition == 'fixed_depth':
+            if self.lumped_storage is None:
+                target = self.initial_depth
+                
+            else:
                 if roughness is None or duration is None or vol_in is None or time is None or flow_rate is None:
                     raise ValueError("Insufficient arguments for boundary condition.")
                 
@@ -107,7 +126,6 @@ class Boundary:
                 )
                 
                 interface_stage = reservoir_stage + head_loss
-                interface_depth = interface_stage - self.bed_level
                                 
                 if not self.lumped_storage.stage_hydrograph:
                     self.lumped_storage.stage_hydrograph.append([time, reservoir_stage])
@@ -115,39 +133,24 @@ class Boundary:
                     self.lumped_storage.stage_hydrograph[-1][1] = reservoir_stage
                 else:
                     self.lumped_storage.stage_hydrograph.append([time, reservoir_stage])
-
-                return depth - interface_depth
-            else:
-                if self.initial_depth is None:
-                    raise ValueError("Fixed depth is not defined.")
-                return depth - self.initial_depth
-        
-        elif self.condition == 'normal_depth':
-            if width is None or depth is None or flow_rate is None or bed_slope is None or roughness is None\
-                or hydraulic_radius is None:
-                raise ValueError("Insufficient arguments for boundary condition.")
-            
-            Qn = normal_flow(A=width*depth, S_0=bed_slope, n=roughness, R=hydraulic_radius)
-            return flow_rate - Qn
-        
-        elif self.condition == 'rating_curve':
-            if depth is None or flow_rate is None:
-                raise ValueError("Insufficient arguments for boundary condition.")
-            
-            return flow_rate - self.rating_curve.discharge(stage=self.bed_level + depth, time=time)
+                
+                target = interface_stage - self.bed_level
             
         if self.condition == 'stage_hydrograph':
-            if time is None or depth is None:
+            if time is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            stage_t = self.hydrograph.get_at(time=time)
-            return self.bed_level + depth - stage_t
+            target = self.hydrograph.get_at(time=time) - self.bed_level
         
-    def df_dA(self, area: float = None,
+        return unknown - target
+        
+    def df_dA(self,
+              depth: float = None,
+              area: float = None,
               flow_rate: float = None,
               hydraulic_radius: float = None,
               dR_dA: float = None,
-              width: float = None,
+              top_width: float = None,
               bed_slope: float = None,
               roughness: float = None,
               time: int | float = None) -> float:
@@ -156,7 +159,7 @@ class Boundary:
         Args:
             area (float, optional): Cross-sectional flow area at the boundary. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
-            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
+            top_width (float, optional): Top width at the boundary. Defaults to None.
             bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
             time (int | float, optional): Current temporal coordinate. Defaults to None.
@@ -168,7 +171,7 @@ class Boundary:
             return 0
             
         elif self.condition == 'fixed_depth':
-            if width is None:
+            if top_width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             if self.lumped_storage is not None:
@@ -178,29 +181,29 @@ class Boundary:
             else:
                 dhl_dA = 0
             
-            dh_dA = 1/width
+            dh_dA = 1/top_width
             return dh_dA - dhl_dA
         
         elif self.condition == 'normal_depth':
-            if width is None or area is None or bed_slope is None or roughness is None\
+            if area is None or bed_slope is None or roughness is None\
                 or hydraulic_radius is None or dR_dA is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             return 0 - dQn_dA(A=area, S=bed_slope, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
         
         elif self.condition == 'rating_curve':
-            if width is None or area is None:
+            if top_width is None or area is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            stage = self.bed_level + area/width
-            dh_dA = 1/width
+            stage = self.bed_level + depth
+            dh_dA = 1/top_width
             return 0 - self.rating_curve.dQ_dz(stage, time=time) * dh_dA
             
         elif self.condition == 'stage_hydrograph':
-            if width is None:
+            if top_width is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            dh_dA = 1/width
+            dh_dA = 1/top_width
             return dh_dA
         
     def df_dQ(self,
@@ -225,7 +228,7 @@ class Boundary:
         Returns:
             float: df/dQ
         """
-        if self.condition == 'flow_hydrograph':
+        if self.condition_type():
             return 1
             
         elif self.condition == 'fixed_depth':
@@ -253,13 +256,7 @@ class Boundary:
                 return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)
             else:
                 return 0
-        
-        elif self.condition == 'normal_depth':
-            return 1
-        
-        elif self.condition == 'rating_curve':
-            return 1
-        
+                
         elif self.condition == 'stage_hydrograph':
             return 0
     
@@ -289,7 +286,7 @@ class Boundary:
             return 0 - dQn_dn(A=area, S_0=bed_slope, n=roughness, R=hydraulic_radius)
         
         elif self.condition == 'fixed_depth' and self.lumped_storage:
-            if flow_rate is None or roughness is None or depth is None or hydraulic_radius is None:
+            if area is None or flow_rate is None or roughness is None or hydraulic_radius is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             dhl_dn = self.lumped_storage.dhl_dn(A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius)
