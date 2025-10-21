@@ -40,15 +40,7 @@ class Solver:
 
         self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
         self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        
-        self.velocity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.depth = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.level = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.wave_celerity = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.storage_outflow = np.empty(shape=(self.max_timelevels), dtype=np.float64)
-        self.peak_amplitude = np.zeros(shape=(self.number_of_nodes), dtype=np.float64)
-        
-        self.initial_depths = None
+                
         self.type = None
         self.solved = False
         self.total_sim_duration = 0
@@ -81,6 +73,7 @@ class Solver:
             self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)
             self.storage_stage = self.storage_stage[:, 1].flatten()
             
+            self.storage_outflow = np.empty(shape=(self.max_timelevels), dtype=np.float64)
             if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
                 self.storage_outflow[0] = 0
             else:
