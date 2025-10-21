@@ -121,15 +121,13 @@ class Channel:
         n = self.get_n(A=A, i=i)
         h = self.depth_at(i=i, A=A)
         R = self.hydraulic_radius(i=i, h=h)
-        dR_dA = self.dR_dA(i=i, h=h)
         T = self.top_width(i=i, h=h)
         
         dSf_dQ = hydraulics.dSf_dQ(A=A, Q=Q, n=n, R=R)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            # WTFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-            dSc_dQ = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc, T=T) * self.dn_dA(A=A, i=i)
+            dSc_dQ = hydraulics.dSc_dQ(h=h, T=T, A=A, Q=Q, n=n, R=R, rc=rc)
         else:
             dSc_dQ = 0
                 
