@@ -43,7 +43,7 @@ def Sf(A: float, Q: float, n: float, R: float) -> float:
     """
     return n**2 * A**-2 * R**(-4/3) * Q * np.abs(Q)
 
-def Sc(h: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
+def Sc(h: float, T: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
     """
     Computes the energy gradient due to transverse circulation.
     
@@ -60,7 +60,7 @@ def Sc(h: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
         The computed slope.
         
     """
-    Fr = froude_num(h=h, A=A, Q=Q)
+    Fr = froude_num(T=T, A=A, Q=Q)
     f = darcey_weisbach_f(n=n, R=R)
     
     numerator = (2.86 * np.sqrt(f) + 2.07 * f) * h**2 * Fr**2
@@ -68,28 +68,14 @@ def Sc(h: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
     Sc = numerator/denominator
     return Sc
 
-def darcey_weisbach_f(n: float, R: float):
-    """Computes Darcey-Weisbach's friction factor.
-
-    Args:
-        n (float): Manning's roughness coefficient.
-        R (float): Hydraulic radius.
-
-    Returns:
-        float: Darcey-Weisbach's friction factor.
-    """
-    C = R**(1/6) / n
-    f = 8 * g / C**2
-    return f
-
 def dSc_dA(h, A, Q, n, R, rc, dR_dA, T):
-    Fr = froude_num(h=h, A=A, Q=Q)
+    Fr = froude_num(T=T, A=A, Q=Q)
     
     C = R**(1/6) / n
     f = 8 * g / C**2
     
     dh_dA = 1./T
-    dFr_dA_ = dFr_dA(h=h, A=A, Q=Q, T=T)
+    dFr_dA_ = dFr_dA(A=A, Q=Q, T=T)
     df_dA = -(8.0/3.0) * g * n**2 * R**(-4.0/3.0) * dR_dA
     
     sqrtf = np.sqrt(f)
@@ -102,12 +88,12 @@ def dSc_dA(h, A, Q, n, R, rc, dR_dA, T):
     
     return (dnum_dA*den - num*dden_dA) / (den**2)
 
-def dSc_dQ(h, A, Q, n, R, rc):
-    Fr = froude_num(h=h, A=A, Q=Q)
+def dSc_dQ(h, T, A, Q, n, R, rc):
+    Fr = froude_num(T=T, A=A, Q=Q)
     C = R**(1/6) / n
     f = 8 * g / C**2
     
-    dFr_dQ_ = dFr_dQ(h=h, A=A, Q=Q)
+    dFr_dQ_ = dFr_dQ(T=T, A=A)
     
     sqrtf = np.sqrt(f)
     num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
@@ -118,36 +104,74 @@ def dSc_dQ(h, A, Q, n, R, rc):
     
     return (dnum_dQ*den - num*dden_dQ) / (den**2)
 
-def dSc_dn(h, A, Q, n, R, rc):
-    Fr = froude_num(h=h, A=A, Q=Q)
-    C = R**(1/6) / n
-    f = 8 * g / C**2
-    
-    df_dn = 16.0 * g * n / R**(1/3)
+def dSc_dn(h, A, Q, n, R, rc, T):
+    Fr = froude_num(T=T, A=A, Q=Q)
+
+    f = darcey_weisbach_f(n=n, R=R)    
+    df_dn_ = df_dn(n, R)
     
     sqrtf = np.sqrt(f)
     num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
     den = (0.565 + sqrtf) * rc**2
     
-    dnum_dn = (2.86/(2*sqrtf)*df_dn + 2.07*df_dn) * h**2 * Fr**2
-    dden_dn = (1.0/(2*sqrtf) * df_dn) * rc**2
+    dnum_dn = (2.86/(2*sqrtf)*df_dn_ + 2.07*df_dn_) * h**2 * Fr**2
+    dden_dn = (1.0/(2*sqrtf) * df_dn_) * rc**2
     
     return (dnum_dn*den - num*dden_dn) / (den**2)
 
-def froude_num(h: float, A: float, Q: float):
-    V = Q/A
-    return V / np.sqrt(g*h)
+def df_dn(n, R):
+    return 16.0 * g * n / R**(1/3)
 
-def dFr_dA(h: float, A: float, Q: float, T: float):
-    V = Q/A
-    dFr_dh = -0.5 * V * (g*h)**(-1.5) * g
-    dh_dA = 1./T
-    return dFr_dh * dh_dA
+def froude_num(T: float, A: float, Q: float):
+    """Computes the Froude number.
 
-def dFr_dQ(h: float, A: float, Q: float):
-    dFr_dV = 1. / np.sqrt(g*h)
-    dV_dQ = 1./A
-    return dFr_dV * dV_dQ
+    Args:
+        T (float): Top width.
+        A (float): Flow area.
+        Q (float): Flow rate.
+
+    Returns:
+        float: The Froude number.
+    """
+    V = Q/A
+    D = A/T
+    return V / np.sqrt(g*D)
+
+def dFr_dA(T: float, A: float, Q: float) -> float:
+    """Computes the derivative of the Froude number w.r.t. flow area.
+
+    Args:
+        T (float): Top width.
+        A (float): Flow area.
+        Q (float): Flow rate.
+
+    Returns:
+        float: dFr/dA.
+    """
+    V = Q/A
+    D = A/T
+    
+    dV_dA = - Q / A**2
+    dD_dA = 1.0 / T
+    
+    return -0.5 * V * (g*D)**(-1.5) * g*dD_dA + dV_dA * (g*D)**(-0.5)
+
+def dFr_dQ(T: float, A: float):
+    """Computes the derivative of the Froude number w.r.t. flow rate.
+
+    Args:
+        T (float): Top width.
+        A (float): Flow area.
+        Q (float): Flow rate.
+
+    Returns:
+        float: dFr/dQ.
+    """
+    D = A/T
+    
+    dV_dQ = 1.0 / A
+    
+    return dV_dQ * (g*D)**(-0.5)
 
 def dSf_dA(A: float, Q: float, n: float, R: float, dR_dA: float) -> float:
     """Computes the partial derivative of Sf w.r.t. A.
@@ -207,3 +231,17 @@ def dQn_dn(A, S_0, n, R):
         dQn_dn = -dQn_dn
         
     return dQn_dn
+
+def darcey_weisbach_f(n: float, R: float):
+    """Computes Darcey-Weisbach's friction factor.
+
+    Args:
+        n (float): Manning's roughness coefficient.
+        R (float): Hydraulic radius.
+
+    Returns:
+        float: Darcey-Weisbach's friction factor.
+    """
+    C = R**(1/6) / n
+    f = 8 * g / C**2
+    return f
