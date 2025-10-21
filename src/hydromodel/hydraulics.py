@@ -30,25 +30,20 @@ def effective_roughness(depth: float, wet_depth: float, wet_roughness: float, dr
         return wet_roughness + (dry_roughness - wet_roughness) * (depth - wet_depth) / transition_depth
     
 def Sf(A: float, Q: float, n: float, R: float) -> float:
-    """
-    Computes the friction slope using Manning's equation.
-    
-    Parameters
-    ----------
-    A : float
-        The cross-sectional flow area.
-    Q : float
-        The discharge.
-        
-    Returnsr
-    -------
-    float
-        The computed friction slope.
-        
+    """Computes friction slope using Manning's equation.
+
+    Args:
+        A (float): Cross-sectional flow area.
+        Q (float): Flow rate
+        n (float): Manning's roughness coefficient.
+        R (float): Hydraulic radius.
+
+    Returns:
+        float: Friction slope.
     """
     return n**2 * A**-2 * R**(-4/3) * Q * np.abs(Q)
 
-def Sc(h:float, A: float, Q: float, n: float, R: float, rc: float) -> float:
+def Sc(h: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
     """
     Computes the energy gradient due to transverse circulation.
     
@@ -62,17 +57,30 @@ def Sc(h:float, A: float, Q: float, n: float, R: float, rc: float) -> float:
     Returns
     -------
     float
-        The computed friction slope.
+        The computed slope.
         
     """
     Fr = froude_num(h=h, A=A, Q=Q)
-    C = R**(1/6) / n
-    f = 8 * g / C**2
+    f = darcey_weisbach_f(n=n, R=R)
     
     numerator = (2.86 * np.sqrt(f) + 2.07 * f) * h**2 * Fr**2
     denominator = (0.565 + np.sqrt(f)) * rc**2
     Sc = numerator/denominator
     return Sc
+
+def darcey_weisbach_f(n: float, R: float):
+    """Computes Darcey-Weisbach's friction factor.
+
+    Args:
+        n (float): Manning's roughness coefficient.
+        R (float): Hydraulic radius.
+
+    Returns:
+        float: Darcey-Weisbach's friction factor.
+    """
+    C = R**(1/6) / n
+    f = 8 * g / C**2
+    return f
 
 def dSc_dA(h, A, Q, n, R, rc, dR_dA, T):
     Fr = froude_num(h=h, A=A, Q=Q)
