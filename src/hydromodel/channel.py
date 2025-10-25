@@ -187,6 +187,7 @@ class Channel:
         """
         self.initialize_geometry(n_nodes=n_nodes)
         self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=np.float64)
+        Q = self.initial_flow_rate
         
         if self.interpolation_method == 'linear':
             h0 = self.upstream_boundary.initial_depth
@@ -196,7 +197,7 @@ class Channel:
                 distance = self.length * i / (n_nodes-1)
                 
                 h = h0 + (hN - h0) * distance / self.length
-                A, Q = self.area_at(i=i, h=h), self.initial_flow_rate
+                A = self.area_at(i=i, h=h)
                 
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
@@ -207,12 +208,12 @@ class Channel:
             
             # Add last node
             self.initial_conditions[n_nodes-1, 0] = self.area_at(i=-1, h=h)
-            self.initial_conditions[n_nodes-1, 1] = self.initial_flow_rate
+            self.initial_conditions[n_nodes-1, 1] = Q
 
             for i in reversed(range(n_nodes-1)):
                 distance = i * dx
     
-                A, Q, B = self.area_at(i=i, h=h), self.initial_flow_rate, self.width[i]
+                A = self.area_at(i=i, h=h)
                 T = self.top_width(i=i, h=h)
                 Sf = self.Se(A, Q, i)
                 
@@ -220,24 +221,24 @@ class Channel:
                 denominator = 1 - Fr**2
                 
                 if abs(denominator) < 1e-6:
-                    dhdx = 0.0
+                    dh_dx = 0.0
                 else:
-                    S0 = -(self.bed_level[i+1]-self.bed_level[i]) / dx
-                    dhdx = (S0 - Sf) / denominator
+                    dz = self.bed_level_at(i+1) - self.bed_level_at(i)
+                    S0 = -dz/dx
+                    dh_dx = (S0 - Sf) / denominator
 
-                h -= dhdx * dx
+                h -= dh_dx * dx
 
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = h * B
+                A = self.area_at(i=i, h=h)
                     
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
         
         elif self.interpolation_method == 'steady-state':
             for i in range(n_nodes):
-                Q = self.initial_flow_rate
                 A = self.normal_area(Q, i)
                 
                 self.initial_conditions[i, 0] = A
@@ -422,3 +423,6 @@ class Channel:
 
     def top_width(self, i, h):
         return self.width[i]
+    
+    def bed_level_at(self, i):
+        return self.bed_level[i]

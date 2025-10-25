@@ -356,7 +356,7 @@ class PreissmannSolver(Solver):
                                                   flow_rate=Q,
                                                   hydraulic_radius=R,
                                                   dR_dA=dR_dA,
-                                                  width=B,
+                                                  top_width=B,
                                                   bed_slope=S_0,
                                                   roughness=n,
                                                   time=t) + dU_dn * self.channel.dn_dA(A=A, i=0)
@@ -749,7 +749,7 @@ class PreissmannSolver(Solver):
                                                     flow_rate=Q,
                                                     hydraulic_radius=R,
                                                     dR_dA=dR_dA,
-                                                    width=B,
+                                                    top_width=B,
                                                     bed_slope=S_0,
                                                     roughness=n,
                                                     time=t) + dD_dn * dn_dA
