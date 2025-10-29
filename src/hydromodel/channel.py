@@ -2,6 +2,7 @@ from .boundary import Boundary
 from .utility import compute_radii_curv
 from . import hydraulics
 import numpy as np
+from .cross_section import CrossSection
 
 class Channel:
     """
@@ -34,13 +35,10 @@ class Channel:
         self.dry_roughness = dry_roughness
         self.n_steepness = n_steepness
         
-        self.width = np.array([width, width], dtype=np.float64)
-        self.bed_level = np.array([upstream_boundary.bed_level,
-                                    downstream_boundary.bed_level], dtype=np.float64)
-        self.level_chainages = np.array([upstream_boundary.chainage,
-                                         downstream_boundary.chainage], dtype=np.float64)
-        self.width_chainages = np.array([upstream_boundary.chainage,
-                                         downstream_boundary.chainage], dtype=np.float64)
+        #
+        us_xs = CrossSection(width=width, bed=  upstream_boundary.bed_level)
+        ds_xs = CrossSection(width=width, bed=downstream_boundary.bed_level)
+        #
         
         self.length = downstream_boundary.chainage - upstream_boundary.chainage
         self.upstream_boundary = upstream_boundary
@@ -53,6 +51,17 @@ class Channel:
         
         self.initial_conditions = None
         self.coordinated = False
+        
+        self.xs_chainages = [upstream_boundary.chainage, downstream_boundary.chainage]         # station coordinates [m]
+        self.input_xs = [us_xs, ds_xs]          # list of cross_section objects
+        self.ch_at_node = None    # spatial grid along the channel
+        self.xs_at_node = None          # interpolated cross_section at each node
+        self.hw_grid = None           # elevation grid for lookup tables
+        self.A_table = None
+        self.P_table = None
+        self.T_table = None
+        self.wet_depth = None
+        self.bed_level = None
     
     def Se(self, A: float, Q: float, i: int) -> float:
         """Computes the energy slope at a location.
@@ -66,7 +75,7 @@ class Channel:
             float: Energy slope (Se)
         """
         n = self.get_n(A=A, i=i)
-        h = self.depth_at(i=i, A=A)
+        h = self.depth_at(i=i, A_target=A)
         R = self.hydraulic_radius(i=i, h=h)
         T = self.top_width(i=i, h=h)
         
@@ -92,7 +101,7 @@ class Channel:
             float: dSe/dA
         """
         n = self.get_n(A=A, i=i)
-        h = self.depth_at(i=i, A=A)
+        h = self.depth_at(i=i, A_target=A)
         R = self.hydraulic_radius(i=i, h=h)
         dR_dA = self.dR_dA(i=i, h=h)
         T = self.top_width(i=i, h=h)
@@ -119,7 +128,7 @@ class Channel:
             float: dSe/dQ
         """
         n = self.get_n(A=A, i=i)
-        h = self.depth_at(i=i, A=A)
+        h = self.depth_at(i=i, A_target=A)
         R = self.hydraulic_radius(i=i, h=h)
         T = self.top_width(i=i, h=h)
         
@@ -144,7 +153,7 @@ class Channel:
             float: Normal flow rate.
         """
         n = self.get_n(A=A, i=i)
-        h = self.depth_at(i=i, A=A)
+        h = self.depth_at(i=i, A_target=A)
         R = self.hydraulic_radius(i=i, h=h)
         S_0 = self.bed_slopes[i]
         
@@ -187,6 +196,7 @@ class Channel:
         """
         self.initialize_geometry(n_nodes=n_nodes)
         self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=np.float64)
+        self.wet_depth = np.zeros(shape=(n_nodes), dtype=np.float64)
         Q = self.initial_flow_rate
         
         if self.interpolation_method == 'linear':
@@ -199,6 +209,7 @@ class Channel:
                 h = h0 + (hN - h0) * distance / self.length
                 A = self.area_at(i=i, h=h)
                 
+                self.wet_depth[i] = h
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
                 
@@ -211,12 +222,10 @@ class Channel:
             self.initial_conditions[n_nodes-1, 1] = Q
 
             for i in reversed(range(n_nodes-1)):
-                distance = i * dx
-    
                 A = self.area_at(i=i, h=h)
                 T = self.top_width(i=i, h=h)
-                Sf = self.Se(A, Q, i)
-                
+                Sf = self.Se(A=A, Q=Q, i=i)
+                                
                 Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
                 denominator = 1 - Fr**2
                 
@@ -232,8 +241,7 @@ class Channel:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
-                A = self.area_at(i=i, h=h)
-                    
+                self.wet_depth[i] = h
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
         
@@ -266,8 +274,8 @@ class Channel:
         if A is None or i is None:
             raise ValueError("Insufficient parameters.")
         
-        wet_h = self.wet_depth(i)
-        h = A / self.width[i]
+        wet_h = self.wet_depth_at(i)
+        h = self.depth_at(i=i, A_target=A)
         
         return hydraulics.effective_roughness(depth=h, wet_roughness=self.roughness, dry_roughness=self.dry_roughness, wet_depth=wet_h, steepness=self.n_steepness)
               
@@ -285,16 +293,16 @@ class Channel:
         if self.dry_roughness is None:
             return 0
         
-        B = self.width[i]
-        wet_h = self.wet_depth(i)
+        wet_h = self.wet_depth_at(i)
+        h = self.depth_at(i=i, A_target=A)
         
-        dn_dh = hydraulics.dn_dh(depth=A/B,
+        dn_dh = hydraulics.dn_dh(depth=h,
                                  steepness=self.n_steepness,
                                  roughness=self.roughness,
                                  dry_roughness=self.dry_roughness,
                                  wet_depth=wet_h)
         # dn/dA = dn/dh * dh/dA, dh/dA = 1/B
-        return dn_dh * 1./B
+        return dn_dh * self.dh_dA(i=i, h=h)
     
     def set_coords(self, coords: list | np.ndarray, chainages: list | np.ndarray) -> None:
         """Sets horizontal coordinates along the channel.
@@ -310,87 +318,136 @@ class Channel:
         self.downstream_boundary.chainage = self.coords_chainages[-1]
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
-        
-    def set_intermediate_widths(self, widths: list | np.ndarray, chainages: list | np.ndarray) -> None:
-        """Sets cross-sectional width values at positions along the channel.
-
-        Args:
-            widths (list | np.ndarray): Cross-sectional width values.
-            chainages (list | np.ndarray): Respective chainages along the channel.
-        """
-        widths    = np.asarray(widths,    dtype=np.float64)
-        chainages = np.asarray(chainages, dtype=np.float64)
-        
-        if widths.shape != chainages.shape:
-            raise ValueError("Widths and chainages must have the same length.")
-
-        # prepend upstream values if needed
-        if chainages[0] > self.upstream_boundary.chainage:
-            widths    = np.insert(widths,    0, self.width[0])
-            chainages = np.insert(chainages, 0, self.upstream_boundary.chainage)
-
-        self.width = widths
-        self.width_chainages = chainages
-
-    def set_intermediate_bed_levels(self, bed_levels: list | np.ndarray, chainages: list | np.ndarray) -> None:
-        """Sets bed elevation values at positions along the channel.
-
-        Args:
-            bed_levels (list | np.ndarray): Bed elevation values.
-            chainages (list | np.ndarray): Respective chainages along the channel.
-        """
-        bed_levels = np.asarray(bed_levels, dtype=np.float64)
-        chainages  = np.asarray(chainages,  dtype=np.float64)
-
-        if bed_levels.shape != chainages.shape:
-            raise ValueError("Bed levels and chainages must have the same length.")
-                            
-        if chainages[0] > self.upstream_boundary.chainage:
-            bed_levels = np.insert(bed_levels, 0, self.upstream_boundary.bed_level)
-            chainages  = np.insert(chainages,  0, self.upstream_boundary.chainage)
-        else:
-            self.upstream_boundary.bed_level = bed_levels[0]
-        
-        if chainages[-1] < self.downstream_boundary.chainage:
-            bed_levels = np.append(bed_levels, self.downstream_boundary.bed_level)
-            chainages = np.append(chainages, self.downstream_boundary.chainage)
-        else:
-            self.downstream_boundary.bed_level = bed_levels[-1]
-        
-        self.bed_level = bed_levels
-        self.level_chainages = chainages
-
-    def initialize_geometry(self, n_nodes: int) -> None:
-        """Interpolates geometric attributes along the channel.
-
-        Args:
-            n_nodes (int): Number of spatial nodes along the channel.
-        """
-        self.chainages = np.linspace(
-            start=self.upstream_boundary.chainage,
-            stop=self.downstream_boundary.chainage,
-            num=n_nodes
-        )
-
-        if self.coordinated:
-            x = np.interp(self.chainages, self.coords_chainages, self.coords[:, 0])
-            y = np.interp(self.chainages, self.coords_chainages, self.coords[:, 1])
-            self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
-
-        self.width = np.interp(
-            self.chainages,
-            np.array(self.width_chainages, dtype=np.float64),
-            np.array(self.width, dtype=np.float64)
-        )
-        self.bed_level = np.interp(
-            self.chainages,
-            np.array(self.level_chainages, dtype=np.float64),
-            np.array(self.bed_level, dtype=np.float64)
-        )
-        self.bed_slopes = -np.gradient(self.bed_level, self.chainages)
-        self.surface_area = np.trapezoid(self.width, self.chainages)
     
-    def wet_depth(self, i: int) -> float:
+    def set_cross_sections(self, chainages, sections):
+        """
+        Register base cross-sections and their station coordinates.
+
+        Parameters
+        ----------
+        chainages : 1D array-like
+            Distances along the channel centerline [m], increasing downstream.
+        sections : list of cross_section
+            Cross-section objects at those chainages.
+        """
+        chainages = np.asarray(chainages, dtype=float)
+        if len(chainages) != len(sections):
+            raise ValueError("chainages and sections must have same length")
+        if not np.all(np.diff(chainages) > 0):
+            raise ValueError("chainages must be strictly increasing")
+
+        self.xs_chainages = chainages
+        self.input_xs = sections
+
+    def initialize_geometry(self, n_nodes: int, n_hw: int = 201, dx_interp: float = 0.5):
+        """
+        Precompute interpolated cross-sections and stage tables
+        for each computational node.
+
+        Parameters
+        ----------
+        n_nodes : int
+            Number of spatial nodes along the channel.
+        n_hw : int, optional
+            Number of water-surface elevations for lookup tables.
+        dx_interp : float, optional
+            Lateral spacing (m) used when interpolating between sections.
+        """
+        if self.xs_chainages is None or self.input_xs is None:
+            raise RuntimeError("set_cross_sections must be called first")
+
+        n_nodes = n_nodes
+        ch_us, ch_ds = self.upstream_boundary.chainage, self.downstream_boundary.chainage
+        self.ch_at_node = np.linspace(ch_us, ch_ds, n_nodes)
+
+        # determine elevation range across all sections
+        z_min = min(cs.bed for cs in self.input_xs)
+        z_max = max(cs.bed for cs in self.input_xs)
+        self.hw_grid = np.linspace(z_min, z_max + 5.0, n_hw)
+
+        # precompute interpolated cross-sections at each node
+        self.xs_at_node = []
+        for s in self.ch_at_node:
+            # find bounding sections
+            if s <= self.xs_chainages[0]:
+                self.xs_at_node.append(self.input_xs[0])
+                continue
+            if s >= self.xs_chainages[-1]:
+                self.xs_at_node.append(self.input_xs[-1])
+                continue
+
+            j = np.searchsorted(self.xs_chainages, s) - 1
+            ch_left = self.xs_chainages[j]
+            ch_right = self.xs_chainages[j + 1]
+            alpha = (s - ch_left) / (ch_right - ch_left)
+
+            xs_left = self.input_xs[j]
+            xs_right = self.input_xs[j + 1]
+
+            # interpolate geometry
+            if xs_left._is_rect and xs_right._is_rect:
+                width = (1 - alpha) * xs_left.width + alpha * xs_right.width
+                bed = (1 - alpha) * xs_left.bed + alpha * xs_right.bed
+                cs_interp = CrossSection(width=width, bed=bed)
+            else:
+                x_min = min(0 if xs_left._is_rect else xs_left.x[0], 0 if xs_right._is_rect else xs_right.x[0])
+                x_max = max(xs_left.width if xs_left._is_rect else xs_left.x[-1], xs_right if xs_right._is_rect else xs_right.x[-1])
+                dx1 = xs_left.width if xs_left._is_rect else np.min(xs_left.x[1:] - xs_left.x[:-1])
+                dx2 = xs_right.width if xs_right._is_rect else np.min(xs_right.x[1:] - xs_right.x[:-1])
+                dx = min(dx1, dx2)
+                X = np.arange(x_min, x_max + dx, dx)
+
+                z1 = xs_left.bed * np.ones_like(X) if xs_left._is_rect else np.interp(X, xs_left.x, xs_left.z, left=xs_left.z[0], right=xs_left.z[-1])
+                z2 = xs_right.bed * np.ones_like(X) if xs_right._is_rect else np.interp(X, xs_right.x, xs_right.z, left=xs_right.z[0], right=xs_right.z[-1])
+                Z = (1 - alpha) * z1 + alpha * z2
+
+                cs_interp = CrossSection(x=X, z=Z)
+                
+            self.xs_at_node.append(cs_interp)
+
+        # build lookup tables for A, P, T
+        self.A_table = np.empty((n_nodes, n_hw), dtype=float)
+        self.P_table = np.empty_like(self.A_table)
+        self.T_table = np.empty_like(self.A_table)
+        
+        for i, cs in enumerate(self.xs_at_node):
+            for j, hw in enumerate(self.hw_grid):
+                A, P, R, T = cs.properties(hw)
+                self.A_table[i, j] = A
+                self.P_table[i, j] = P
+                self.T_table[i, j] = T
+                
+        self.bed_level = np.array(object=[xs.bed for xs in self.xs_at_node], dtype=np.float64)
+
+    def _lookup(self, table, i, h):
+        """
+        Generic table lookup by node index and flow depth h (m).
+        Depth is converted to water-surface elevation.
+        """
+        cs = self.xs_at_node[i]
+        hw = cs.bed + h
+        idx = np.searchsorted(self.hw_grid, hw, side="right")
+        idx0 = max(0, idx - 1)
+        idx1 = min(len(self.hw_grid) - 1, idx)
+        h0 = self.hw_grid[idx0]
+        h1 = self.hw_grid[idx1]
+        if h1 == h0:
+            return table[i, idx0]
+        t = (hw - h0) / (h1 - h0)
+        return (1 - t) * table[i, idx0] + t * table[i, idx1]
+
+    def area_at(self, i, h):
+        return self._lookup(self.A_table, i, h)
+
+    def hydraulic_radius(self, i, h):
+        A = self._lookup(self.A_table, i, h)
+        P = self._lookup(self.P_table, i, h)
+        return A / P if P > 0 else 0.0
+
+    def top_width(self, i, h):
+        return self._lookup(self.T_table, i, h)
+    
+    def wet_depth_at(self, i: int) -> float:
         """Retrieves the depth value of the initially-submerged portion of the channel at a given location.
 
         Args:
@@ -399,30 +456,62 @@ class Channel:
         Returns:
             float: Depth value.
         """
-        return self.initial_conditions[i, 0] / self.width[i]
+        return self.wet_depth[i]
     
-    def area_at(self, i, h):
-        return self.width[i] * h
-    
-    def depth_at(self, i, A):
-        return A/self.width[i]
+    def depth_at(self, i, A_target, h_min=None, h_max=None, tol=1e-6, max_iter=30):
+        """
+        Compute flow depth h at node i given target flow area A_target.
+        Uses bisection search on precomputed cross-section geometry.
+        """
+        cs = self.xs_at_node[i]
+        
+        # Default search bounds
+        if h_min is None:
+            h_min = 0.0
+        if h_max is None:
+            base = 0 if cs._is_rect else (max(cs.z) - min(cs.z))
+            h_max = base + 50.0  # large enough upper bound
+            A_high = cs.area(h_max)
+            
+            while A_high <= A_target:
+                h_max = h_max * A_target/A_high + 0.1
+                A_high = cs.area(h_max)
 
-    def hydraulic_radius(self, i, h):
-        return self.area_at(i, h) / self.wetted_perimeter(i, h)
-    
-    def wetted_perimeter(self, i, h):
-        return self.width[i] + 2 * h
-    
-    def dR_dA(self, i, h):
-        B = self.width[i]
-        A = self.area_at(i=i, h=h)
-        P = B + 2.0 * h
-        dP_dA = 2.0 / B
+        A_low = cs.area(h_min)
 
-        return (P - A * dP_dA) / (P**2)
+        # Check monotonicity
+        if not (A_low <= A_target <= A_high):
+            raise ValueError("A_target outside valid area range for this cross-section")
 
-    def top_width(self, i, h):
-        return self.width[i]
+        # Bisection iteration
+        for _ in range(max_iter):
+            h_mid = 0.5 * (h_min + h_max)
+            A_mid = cs.area(h_mid)
+
+            if abs(A_mid - A_target) < tol:
+                return h_mid
+            if A_mid < A_target:
+                h_min = h_mid
+            else:
+                h_max = h_mid
+
+        # Fallback if not converged
+        return 0.5 * (h_min + h_max)
     
+    def dR_dA(self, i, h, dh=1e-3):
+        cs = self.xs_at_node[i]
+        A1 = cs.area(h - dh)
+        A2 = cs.area(h + dh)
+        R1 = cs.area(h - dh) / cs.wetted_perimeter(h - dh)
+        R2 = cs.area(h + dh) / cs.wetted_perimeter(h + dh)
+        return (R2 - R1) / (A2 - A1)
+
     def bed_level_at(self, i):
         return self.bed_level[i]
+    
+    def dh_dA(self, i, h, dh=1e-3):
+        cs = self.xs_at_node[i]
+        A1 = cs.area(h - dh)
+        A2 = cs.area(h + dh)
+                
+        return 2 * dh / (A2 - A1)

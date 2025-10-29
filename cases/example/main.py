@@ -25,20 +25,20 @@ def trapzoid_hydrograph(t):
     else:
         flow = initial_flow
         
-    return flow
+    return initial_flow
     
 us = Boundary(condition='flow_hydrograph',
-              bed_level=5,
+              bed_level=0.5,
               chainage=0,
               hydrograph=Hydrograph(function=trapzoid_hydrograph))
 
 ds = Boundary(condition='fixed_depth',
               initial_depth=5,
               bed_level=0,
-              chainage=20000)
+              chainage=2000)
 
-ss = LumpedStorage(surface_area=5000*250, min_stage=5, solution_boundaries=(0, 200))
-ds.set_lumped_storage(ss)
+ss = LumpedStorage(surface_area=50000*250, min_stage=5, solution_boundaries=(0, 200))
+#ds.set_lumped_storage(ss)
 
 example_channel = Channel(width = 250,
                           initial_flow = us.hydrograph.get_at(0),
@@ -55,10 +55,12 @@ p_solver = PreissmannSolver(channel=example_channel,
                             spatial_step=1000,
                             simulation_time=24*3600)
 
-p_solver.run(verbose=0)
+#print(example_channel.initial_conditions)
+
+p_solver.run(verbose=1, max_iter=10)
 p_solver.save_results(folder_path='cases\\example\\results\\preissmann')
 print('Finished Preissmann.')
-
+"""
 example_channel = Channel(width = 250,
                           initial_flow = us.hydrograph.get_at(0),
                           roughness = 0.027,
@@ -75,3 +77,5 @@ l_solver = LaxSolver(channel=example_channel,
 l_solver.run(verbose=0)
 l_solver.save_results(folder_path='cases\\example\\results\\lax')
 print('Finished Lax-Friedrich.')
+# py -m cases.example.main
+"""

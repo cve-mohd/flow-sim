@@ -39,7 +39,8 @@ class Solver:
         self.num_celerity = self.spatial_step / self.time_step
 
         self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.flow = np.empty_like(self.area)
+        self.depth = np.empty_like(self.area)
                 
         self.type = None
         self.solved = False
@@ -53,7 +54,6 @@ class Solver:
         
     def prepare_results(self) -> None:
         self.velocity = self.flow / self.area
-        self.depth = self.area / self.channel.width
         self.level = self.depth + self.channel.bed_level
         self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
         
@@ -136,7 +136,7 @@ class Solver:
             df_peak.to_excel(writer, sheet_name="Peak amplitude")
 
             # Width (row with distance headers)
-            df_width = pd.DataFrame([self.channel.width], columns=distance)
+            df_width = pd.DataFrame([np.array(object=[xs.width for xs in self.channel.xs_at_node], dtype=np.float64)], columns=distance)
             df_width.index = ["Width"]
             df_width.columns.name = "Distance"
             df_width.to_excel(writer, sheet_name="Width")
@@ -216,7 +216,7 @@ class Solver:
         
         if regularization:
             h_min = 1e-4
-            A_min = self.width_at(i=i) * h_min
+            A_min = self.channel.area_at(i=i, h=h_min)
             A = self.A_reg(A, A_min)
         
         return A
@@ -234,24 +234,35 @@ class Solver:
         if chi_scaling:
             A_reg = self.area_at(k=k, i=i, regularization=True)
             h_min = 1e-4
-            A_min = self.width_at(i=i) * h_min
+            A_min = self.channel.area_at(i=i, h=h_min)
             
             chi = A_reg / (A_reg + A_min)
             Q = Q * chi
             
         return Q
     
-    def width_at(self, i):
-        return self.channel.width[i]
-    
     def bed_slope_at(self, i):
-        return self.channel.bed_slopes[i]
+        if i == 0:
+            z1, z2 = self.channel.bed_level_at(i=0), self.channel.bed_level_at(i=1)
+            S_0 = (z1 - z2) / self.spatial_step
+        elif i == self.number_of_nodes-1 or i == -1:
+            z1, z2 = self.channel.bed_level_at(i=-2), self.channel.bed_level_at(i=-1)
+            S_0 = (z1 - z2) / self.spatial_step
+        else:
+            z1, z2 = self.channel.bed_level_at(i=i-1), self.channel.bed_level_at(i=i+1)
+            S_0 = (z1 - z2) / (2*self.spatial_step)
+            
+        return S_0
     
     def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
-        return self.area_at(k=k, i=i, regularization=regularization) / self.width_at(i)
+        if i is None:
+            raise ValueError("Spatial node must be specified.")
+        
+        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
+        return self.depth[k, i]
     
     def water_level_at(self, k: int = None, i: int = None, regularization: bool = None):
-        return self.channel.bed_level[i] + self.depth_at(k=k, i=i, regularization=regularization)
+        return self.channel.bed_level_at(i=i) + self.depth_at(k=k, i=i, regularization=regularization)
     
     def wet_depth_at(self, i):
         return self.depth_at(k=0, i=i)
@@ -295,7 +306,7 @@ class Solver:
             
         """
         h_min = 1e-4
-        A_min = self.width_at(i=0) * h_min
+        A_min = self.channel.area_at(i=0, h=h_min)
         
         return A_min + 0.5 * (
             (A - A_min) + np.sqrt(
@@ -305,7 +316,7 @@ class Solver:
         
     def Q_eff(self, Q, A_reg):
         h_min = 1e-4
-        A_min = self.width_at(i=0) * h_min
+        A_min = self.channel.area_at(i=0, h=h_min)
         
         chi = A_reg / (A_reg + A_min)
         return Q * chi

@@ -55,7 +55,6 @@ class Boundary:
                            area: float = None,
                            time: int | float = None,
                            depth: float = None,
-                           width: float = None,
                            hydraulic_radius: float = None,
                            flow_rate: float = None,
                            bed_slope: float = None,
@@ -68,7 +67,6 @@ class Boundary:
             area (float, optional): Current flow area at the boundary. Defaults to None.
             time (int | float, optional): Current temporal coordinate. Defaults to None.
             depth (float, optional): Current flow depth at the boundary. Defaults to None.
-            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
             hydraulic_radius (float, optional): Hydraulic radius. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
             bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
@@ -122,7 +120,7 @@ class Boundary:
                     time=time
                 )
                 head_loss = self.lumped_storage.energy_loss(
-                    A_ent=depth*width, Q=flow_rate, n=roughness, R=hydraulic_radius
+                    A_ent=area, Q=flow_rate, n=roughness, R=hydraulic_radius
                 )
                 
                 interface_stage = reservoir_stage + head_loss
@@ -150,7 +148,7 @@ class Boundary:
               flow_rate: float = None,
               hydraulic_radius: float = None,
               dR_dA: float = None,
-              top_width: float = None,
+              dh_dA: float = None,
               bed_slope: float = None,
               roughness: float = None,
               time: int | float = None) -> float:
@@ -159,7 +157,6 @@ class Boundary:
         Args:
             area (float, optional): Cross-sectional flow area at the boundary. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
-            top_width (float, optional): Top width at the boundary. Defaults to None.
             bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
             time (int | float, optional): Current temporal coordinate. Defaults to None.
@@ -171,7 +168,7 @@ class Boundary:
             return 0
             
         elif self.condition == 'fixed_depth':
-            if top_width is None:
+            if dh_dA is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             if self.lumped_storage is not None:
@@ -181,7 +178,6 @@ class Boundary:
             else:
                 dhl_dA = 0
             
-            dh_dA = 1/top_width
             return dh_dA - dhl_dA
         
         elif self.condition == 'normal_depth':
@@ -192,18 +188,16 @@ class Boundary:
             return 0 - dQn_dA(A=area, S=bed_slope, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
         
         elif self.condition == 'rating_curve':
-            if top_width is None or area is None:
+            if dh_dA is None or area is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
             stage = self.bed_level + depth
-            dh_dA = 1/top_width
             return 0 - self.rating_curve.dQ_dz(stage, time=time) * dh_dA
             
         elif self.condition == 'stage_hydrograph':
-            if top_width is None:
+            if dh_dA is None:
                 raise ValueError("Insufficient arguments for boundary condition.")
             
-            dh_dA = 1/top_width
             return dh_dA
         
     def df_dQ(self,
@@ -272,7 +266,6 @@ class Boundary:
         Args:
             depth (float, optional): Current flow depth at the boundary. Defaults to None.
             roughness (float, optional): Manning's roughness coefficient. Defaults to None.
-            width (float, optional): Cross-sectional width of the channel at the boundary. Defaults to None.
             bed_slope (float, optional): Bed slope at the boundary. Defaults to None.
             flow_rate (float, optional): Flow rate at the boundary. Defaults to None.
 

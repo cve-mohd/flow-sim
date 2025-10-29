@@ -119,7 +119,7 @@ class LaxSolver(Solver):
         
     def compute_upstream_node(self):
         ghost_A, ghost_Q, ghost_Y, ghost_Se = self.us_ghost_node()
-        if self.channel.upstream_boundary.df_dQ():
+        if self.channel.upstream_boundary.condition_type():
             A = self.new_area(A_im1=ghost_A,
                               A_ip1=self.area_at(k=-1, i=1),
                               Q_im1=ghost_Q,

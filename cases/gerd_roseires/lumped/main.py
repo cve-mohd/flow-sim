@@ -66,9 +66,8 @@ def run(
                                    downstream_boundary=Roseires,
                                    n_steepness=n_steepness)
 
-    GERD_Roseires_system.set_coords(coords=coords[:, 1:], chainages=coords[:, 0])
-    GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=bed_profile[:, 1], chainages=bed_profile[:, 0])
-    GERD_Roseires_system.set_intermediate_widths(widths=widths[:, 1], chainages=widths[:, 0])
+    # GERD_Roseires_system.set_coords(coords=coords[:, 1:], chainages=coords[:, 0])
+    # INSERT CROSS-SECTIONS HERE
 
     solver = PreissmannSolver(channel=GERD_Roseires_system,
                               theta=theta,
