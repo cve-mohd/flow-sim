@@ -16,11 +16,11 @@ ds = Boundary(condition='normal_depth',
               chainage=length)
 
 example_channel = Channel(width=width,
-                        initial_flow=initial_flow,
-                        roughness=roughness,
-                        upstream_boundary=us,
-                        downstream_boundary=ds,
-                        interpolation_method='steady-state')
+                          initial_flow=initial_flow,
+                          roughness=roughness,
+                          upstream_boundary=us,
+                          downstream_boundary=ds,
+                          interpolation_method='steady-state')
 
 solver = PreissmannSolver(channel=example_channel,
                           theta=theta,

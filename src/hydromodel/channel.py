@@ -14,9 +14,7 @@ class Channel:
                  width: float,
                  initial_flow: float,
                  roughness: float,
-                 dry_roughness: float = None,
-                 interpolation_method: str = 'GVF_equation',
-                 n_steepness: float = 0.15):
+                 interpolation_method: str = 'GVF_equation'):
         """Initializes a Channel object.
 
         Args:
@@ -32,12 +30,10 @@ class Channel:
         self.conditions_initialized = False
         self.initial_flow_rate = initial_flow
         self.roughness = roughness
-        self.dry_roughness = dry_roughness
-        self.n_steepness = n_steepness
         
         #
-        us_xs = CrossSection(width=width, bed=  upstream_boundary.bed_level)
-        ds_xs = CrossSection(width=width, bed=downstream_boundary.bed_level)
+        us_xs = CrossSection(width=width, bed=  upstream_boundary.bed_level, n=roughness)
+        ds_xs = CrossSection(width=width, bed=downstream_boundary.bed_level, n=roughness)
         #
         
         self.length = downstream_boundary.chainage - upstream_boundary.chainage
@@ -51,6 +47,7 @@ class Channel:
         
         self.initial_conditions = None
         self.coordinated = False
+        self.radii_curv = None
         
         self.xs_chainages = [upstream_boundary.chainage, downstream_boundary.chainage]         # station coordinates [m]
         self.input_xs = [us_xs, ds_xs]          # list of cross_section objects
@@ -60,7 +57,6 @@ class Channel:
         self.A_table = None
         self.P_table = None
         self.T_table = None
-        self.wet_depth = None
         self.bed_level = None
     
     def Se(self, A: float, Q: float, i: int) -> float:
@@ -106,11 +102,11 @@ class Channel:
         dR_dA = self.dR_dA(i=i, h=h)
         T = self.top_width(i=i, h=h)
         
-        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R, dR_dA=dR_dA) + hydraulics.dSf_dn(A=A, Q=Q, n=n, R=R) * self.dn_dA(A=A, i=i)
+        dSf_dA = hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R, dR_dA=dR_dA)
         
         if self.coordinated:
             rc = self.radii_curv[i]
-            dSc_dA = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T) + hydraulics.dSc_dn(h=h, A=A, Q=Q, n=n, R=R, rc=rc, T=T) * self.dn_dA(A=A, i=i)
+            dSc_dA = hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=rc, dR_dA=dR_dA, T=T)
         else:
             dSc_dA = 0
         
@@ -152,6 +148,7 @@ class Channel:
         Returns:
             float: Normal flow rate.
         """
+        raise ValueError("channel.normal_flow is WIP")
         n = self.get_n(A=A, i=i)
         h = self.depth_at(i=i, A_target=A)
         R = self.hydraulic_radius(i=i, h=h)
@@ -196,7 +193,6 @@ class Channel:
         """
         self.initialize_geometry(n_nodes=n_nodes)
         self.initial_conditions = np.zeros(shape=(n_nodes, 2), dtype=np.float64)
-        self.wet_depth = np.zeros(shape=(n_nodes), dtype=np.float64)
         Q = self.initial_flow_rate
         
         if self.interpolation_method == 'linear':
@@ -209,7 +205,6 @@ class Channel:
                 h = h0 + (hN - h0) * distance / self.length
                 A = self.area_at(i=i, h=h)
                 
-                self.wet_depth[i] = h
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
                 
@@ -240,7 +235,6 @@ class Channel:
                     raise ValueError("GVF failed.")
 
                 A = self.area_at(i=i, h=h)
-                self.wet_depth[i] = h
                 
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
@@ -257,6 +251,49 @@ class Channel:
         
         self.conditions_initialized = True
     
+    def get_equivalent_n(self, i, h):
+        """
+        Compute equivalent Manning's n for node i at flow depth h.
+        Uses separate roughness values for left floodplain, main channel, and right floodplain.
+        """
+        cs: CrossSection = self.xs_at_node[i]
+        hw = cs.bed + h  # water surface elevation
+
+        # Helper to compute subsection properties within x-range
+        def subsection_props(x_min, x_max, n_value):
+            mask = (cs.x >= x_min) & (cs.x <= x_max)
+            if mask.sum() < 2:
+                return 0.0, 0.0, 0.0
+            xs, zs = cs.x[mask], cs.z[mask]
+            sub_cs = CrossSection(x=xs, z=zs)
+            A = sub_cs.area(hw)
+            P = sub_cs.wetted_perimeter(hw)
+            if A <= 0 or P <= 0:
+                return 0.0, 0.0, 0.0
+            R = sub_cs.hydraulic_radius(hw)
+            K = (1.0 / n_value) * A * (R ** (2.0 / 3.0))
+            return A, R, K
+
+        # Subsections
+        left_A, left_R, left_K = subsection_props(cs.x[0], cs.left_fp_limit, cs.n_left)
+        main_A, main_R, main_K = subsection_props(cs.left_fp_limit, cs.right_fp_limit, cs.n_main)
+        right_A, right_R, right_K = subsection_props(cs.right_fp_limit, cs.x[-1], cs.n_right)
+
+        # Total area and hydraulic radius
+        A_total = left_A + main_A + right_A
+        P_total = cs.wetted_perimeter(hw)
+        if A_total <= 0 or P_total <= 0:
+            return cs.n_main  # fallback
+
+        R_total = A_total / P_total
+
+        # Combine conveyances
+        K_total = (left_K**1.5 + main_K**1.5 + right_K**1.5) ** (2.0 / 3.0)
+
+        # Equivalent Manning's n
+        n_eq = (A_total * (R_total ** (2.0 / 3.0))) / K_total
+        return n_eq
+
     def get_n(self, A: float = None, i: int = None) -> float:
         """Retrieves Manning's roughness coefficient.
 
@@ -267,7 +304,8 @@ class Channel:
         Returns:
             float: n
         """
-        
+        h = self.depth_at(i=i, A_target=A)
+        return self.get_equivalent_n(i=i, h=h)
         if self.dry_roughness is None or not self.conditions_initialized:
             return self.roughness
         
@@ -289,7 +327,7 @@ class Channel:
         Returns:
             float: dn/dA
         """
-        
+        return 0
         if self.dry_roughness is None:
             return 0
         
@@ -381,8 +419,8 @@ class Channel:
             ch_right = self.xs_chainages[j + 1]
             alpha = (s - ch_left) / (ch_right - ch_left)
 
-            xs_left = self.input_xs[j]
-            xs_right = self.input_xs[j + 1]
+            xs_left: CrossSection = self.input_xs[j]
+            xs_right: CrossSection = self.input_xs[j + 1]
 
             # interpolate geometry
             if xs_left._is_rect and xs_right._is_rect:
@@ -424,7 +462,7 @@ class Channel:
         Generic table lookup by node index and flow depth h (m).
         Depth is converted to water-surface elevation.
         """
-        cs = self.xs_at_node[i]
+        cs: CrossSection = self.xs_at_node[i]
         hw = cs.bed + h
         idx = np.searchsorted(self.hw_grid, hw, side="right")
         idx0 = max(0, idx - 1)
@@ -455,18 +493,7 @@ class Channel:
         hw = h + cs.bed
         return cs.top_width(hw)
         return self._lookup(self.T_table, i, h)
-    
-    def wet_depth_at(self, i: int) -> float:
-        """Retrieves the depth value of the initially-submerged portion of the channel at a given location.
-
-        Args:
-            i (int): Spatial node index.
-
-        Returns:
-            float: Depth value.
-        """
-        return self.wet_depth[i]
-    
+        
     def depth_at(self, i, A_target, h_min=0.0, h_max=None, tol=1e-8, max_iter=30):
         """
         Compute depth h for node i given target flow area A_target.

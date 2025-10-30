@@ -19,7 +19,7 @@ class CrossSection:
     The implementation is vectorized and precomputes segment geometry for speed.
     """
 
-    def __init__(self, x=None, z=None, width=None, bed=None):
+    def __init__(self, x=None, z=None, width=None, bed=None, n=None):
         # Rectangular shortcut
         if width is not None and bed is not None:
             self._is_rect = True
@@ -66,6 +66,20 @@ class CrossSection:
         self._z0 = self.z[:-1]
         self._z1 = self.z[1:]
         self._denom = self._z1 - self._z0        # used for intersection param t
+        
+        # Composite n        
+        self.n_left = None   # Manning's n for left floodplain
+        self.n_main = None   # Manning's n for main channel
+        self.n_right = None  # Manning's n for right floodplain
+        self.left_fp_limit = None   # x-coordinate dividing left floodplain and main channel
+        self.right_fp_limit = None  # x-coordinate dividing main channel and right floodplain
+        
+        if n is not None:
+            self.n_left = n
+            self.n_main = n
+            self.n_right = n
+            self.left_fp_limit = 0
+            self.right_fp_limit = self.width
 
         # cache
         self._last_hw = None

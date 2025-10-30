@@ -16,11 +16,11 @@ ds = Boundary(condition='normal_depth',
               chainage=length)
 
 example_channel = Channel(width=width,
-                        initial_flow=initial_flow,
-                        roughness=roughness,
-                        upstream_boundary=us,
-                        downstream_boundary=ds,
-                        interpolation_method='steady-state')
+                          initial_flow=initial_flow,
+                          roughness=roughness,
+                          upstream_boundary=us,
+                          downstream_boundary=ds,
+                          interpolation_method='steady-state')
 
 solver = LaxSolver(channel=example_channel,
                    time_step=lax_dt,
