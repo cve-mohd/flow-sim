@@ -377,6 +377,21 @@ class Channel:
         self.xs_chainages = chainages
         self.input_xs = sections
 
+    def set_coords(self, coords: list | np.ndarray, chainages: list | np.ndarray) -> None:
+        """Sets horizontal coordinates along the channel.
+
+        Args:
+            coords (list | np.ndarray): Coordinates (list of x,y pairs).
+            chainages (list | np.ndarray): Respective chainages along the channel.
+        """
+        self.coords_chainages = np.asarray(chainages, dtype=np.float64)
+        self.coords = np.asarray(coords, dtype=np.float64)
+        
+        self.upstream_boundary.chainage = self.coords_chainages[0]
+        self.downstream_boundary.chainage = self.coords_chainages[-1]
+        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
+        self.coordinated = True
+        
     def initialize_geometry(self, n_nodes: int, n_hw: int = 201, dx_interp: float = 0.5):
         """
         Precompute interpolated cross-sections and stage tables
@@ -397,6 +412,11 @@ class Channel:
         n_nodes = n_nodes
         ch_us, ch_ds = self.upstream_boundary.chainage, self.downstream_boundary.chainage
         self.ch_at_node = np.linspace(ch_us, ch_ds, n_nodes)
+        
+        if self.coordinated:
+            x = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 0])
+            y = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 1])
+            self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
 
         # determine elevation range across all sections
         z_min = min(cs.bed for cs in self.input_xs)
