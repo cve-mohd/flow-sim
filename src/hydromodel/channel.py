@@ -55,7 +55,7 @@ class Channel:
         self.xs_chainages = [upstream_boundary.chainage, downstream_boundary.chainage]         # station coordinates [m]
         self.input_xs = [us_xs, ds_xs]          # list of cross_section objects
         self.ch_at_node = None    # spatial grid along the channel
-        self.xs_at_node = None          # interpolated cross_section at each node
+        self.xs_at_node: list[CrossSection] = None          # interpolated cross_section at each node
         self.hw_grid = None           # elevation grid for lookup tables
         self.A_table = None
         self.P_table = None
@@ -218,15 +218,12 @@ class Channel:
             h = self.downstream_boundary.initial_depth
             
             # Add last node
-            self.initial_conditions[n_nodes-1, 0] = self.area_at(i=-1, h=h)
+            A = self.area_at(i=-1, h=h)
+            self.initial_conditions[n_nodes-1, 0] = A
             self.initial_conditions[n_nodes-1, 1] = Q
 
             for i in reversed(range(n_nodes-1)):
-                A = self.area_at(i=i, h=h)
-                T = self.top_width(i=i, h=h)
-                Sf = self.Se(A=A, Q=Q, i=i)
-                                
-                Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
+                Fr = hydraulics.froude_num(T=self.top_width(i=i, h=h), A=A, Q=Q)
                 denominator = 1 - Fr**2
                 
                 if abs(denominator) < 1e-6:
@@ -234,6 +231,7 @@ class Channel:
                 else:
                     dz = self.bed_level_at(i+1) - self.bed_level_at(i)
                     S0 = -dz/dx
+                    Sf = self.Se(A=A, Q=Q, i=i)
                     dh_dx = (S0 - Sf) / denominator
 
                 h -= dh_dx * dx
@@ -241,7 +239,9 @@ class Channel:
                 if h < 0:
                     raise ValueError("GVF failed.")
 
+                A = self.area_at(i=i, h=h)
                 self.wet_depth[i] = h
+                
                 self.initial_conditions[i, 0] = A
                 self.initial_conditions[i, 1] = Q
         
@@ -319,7 +319,7 @@ class Channel:
         self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
     
-    def set_cross_sections(self, chainages, sections):
+    def set_cross_sections(self, chainages, sections: list[CrossSection]):
         """
         Register base cross-sections and their station coordinates.
 
@@ -406,7 +406,7 @@ class Channel:
             self.xs_at_node.append(cs_interp)
 
         # build lookup tables for A, P, T
-        self.A_table = np.empty((n_nodes, n_hw), dtype=float)
+        """self.A_table = np.empty((n_nodes, n_hw), dtype=float)
         self.P_table = np.empty_like(self.A_table)
         self.T_table = np.empty_like(self.A_table)
         
@@ -415,7 +415,7 @@ class Channel:
                 A, P, R, T = cs.properties(hw)
                 self.A_table[i, j] = A
                 self.P_table[i, j] = P
-                self.T_table[i, j] = T
+                self.T_table[i, j] = T"""
                 
         self.bed_level = np.array(object=[xs.bed for xs in self.xs_at_node], dtype=np.float64)
 
@@ -437,14 +437,23 @@ class Channel:
         return (1 - t) * table[i, idx0] + t * table[i, idx1]
 
     def area_at(self, i, h):
+        cs: CrossSection = self.xs_at_node[i]
+        hw = h + cs.bed
+        return cs.area(hw)
         return self._lookup(self.A_table, i, h)
 
     def hydraulic_radius(self, i, h):
+        cs: CrossSection = self.xs_at_node[i]
+        hw = h + cs.bed
+        return cs.hydraulic_radius(hw)
         A = self._lookup(self.A_table, i, h)
         P = self._lookup(self.P_table, i, h)
         return A / P if P > 0 else 0.0
 
     def top_width(self, i, h):
+        cs: CrossSection = self.xs_at_node[i]
+        hw = h + cs.bed
+        return cs.top_width(hw)
         return self._lookup(self.T_table, i, h)
     
     def wet_depth_at(self, i: int) -> float:
@@ -458,7 +467,40 @@ class Channel:
         """
         return self.wet_depth[i]
     
-    def depth_at(self, i, A_target, h_min=None, h_max=None, tol=1e-6, max_iter=30):
+    def depth_at(self, i, A_target, h_min=0.0, h_max=None, tol=1e-8, max_iter=30):
+        """
+        Compute depth h for node i given target flow area A_target.
+        Evaluates A(h) directly from the cross_section.area() function.
+        """
+        cs: CrossSection = self.xs_at_node[i]
+
+        # Set default upper bound (covers all likely depths)
+        if h_max is None:
+            base = 0 if cs._is_rect else (max(cs.z) - min(cs.z))
+            h_max = base + 100.0  # large enough upper bound
+            A_high = self.area_at(i, h_max)
+
+        A_low = self.area_at(i, h_min)
+        A_high = self.area_at(i, h_max)
+
+        if not (A_low <= A_target <= A_high):
+            raise ValueError("A_target outside valid area range for this cross-section")
+
+        for _ in range(max_iter):
+            h_mid = 0.5 * (h_min + h_max)
+            A_mid = self.area_at(i, h_mid)
+
+            if abs(A_mid - A_target) < tol:
+                return h_mid
+
+            if A_mid < A_target:
+                h_min = h_mid
+            else:
+                h_max = h_mid
+
+        # Return midpoint if not converged
+        return 0.5 * (h_min + h_max)
+
         """
         Compute flow depth h at node i given target flow area A_target.
         Uses bisection search on precomputed cross-section geometry.
@@ -498,20 +540,22 @@ class Channel:
         # Fallback if not converged
         return 0.5 * (h_min + h_max)
     
-    def dR_dA(self, i, h, dh=1e-3):
-        cs = self.xs_at_node[i]
-        A1 = cs.area(h - dh)
-        A2 = cs.area(h + dh)
-        R1 = cs.area(h - dh) / cs.wetted_perimeter(h - dh)
-        R2 = cs.area(h + dh) / cs.wetted_perimeter(h + dh)
+    def dR_dA(self, i, h, dh=1e-6):
+        cs: CrossSection = self.xs_at_node[i]
+        hw = h + cs.bed
+        A1 = cs.area(hw - dh)
+        A2 = cs.area(hw + dh)
+        R1 = cs.hydraulic_radius(hw - dh)
+        R2 = cs.hydraulic_radius(hw + dh)
         return (R2 - R1) / (A2 - A1)
 
     def bed_level_at(self, i):
         return self.bed_level[i]
     
-    def dh_dA(self, i, h, dh=1e-3):
-        cs = self.xs_at_node[i]
-        A1 = cs.area(h - dh)
-        A2 = cs.area(h + dh)
+    def dh_dA(self, i, h, dh=1e-6):
+        cs: CrossSection = self.xs_at_node[i]
+        hw = h + cs.bed
+        A1 = cs.area(hw - dh)
+        A2 = cs.area(hw + dh)
                 
         return 2 * dh / (A2 - A1)

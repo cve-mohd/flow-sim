@@ -191,3 +191,6 @@ class CrossSection:
 
     def top_width(self, hw):
         return self.properties(hw)[3]
+    
+    def hydraulic_radius(self, hw):
+        return self.properties(hw)[2]

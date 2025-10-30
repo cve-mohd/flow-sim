@@ -25,20 +25,21 @@ def trapzoid_hydrograph(t):
     else:
         flow = initial_flow
         
-    return initial_flow
+    return flow
+    #return initial_flow
     
 us = Boundary(condition='flow_hydrograph',
-              bed_level=0.5,
+              bed_level=5,
               chainage=0,
               hydrograph=Hydrograph(function=trapzoid_hydrograph))
 
 ds = Boundary(condition='fixed_depth',
               initial_depth=5,
               bed_level=0,
-              chainage=2000)
+              chainage=20000)
 
-ss = LumpedStorage(surface_area=50000*250, min_stage=5, solution_boundaries=(0, 200))
-#ds.set_lumped_storage(ss)
+ss = LumpedStorage(surface_area=5000*250, min_stage=5, solution_boundaries=(0, 200))
+ds.set_lumped_storage(ss)
 
 example_channel = Channel(width = 250,
                           initial_flow = us.hydrograph.get_at(0),
@@ -57,7 +58,7 @@ p_solver = PreissmannSolver(channel=example_channel,
 
 #print(example_channel.initial_conditions)
 
-p_solver.run(verbose=1, max_iter=10)
+p_solver.run(verbose=1, max_iter=100)
 p_solver.save_results(folder_path='cases\\example\\results\\preissmann')
 print('Finished Preissmann.')
 """
