@@ -39,8 +39,8 @@ GERD_Roseires_system = Channel(width=widths[0, 1],
                                downstream_boundary=Roseires)
 
 GERD_Roseires_system.set_coords(coords=coords[:, 1:], chainages=coords[:, 0])
-GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=bed_profile[:, 1], chainages=bed_profile[:, 0])
-GERD_Roseires_system.set_intermediate_widths(widths=widths[:, 1], chainages=widths[:, 0])
+#GERD_Roseires_system.set_intermediate_bed_levels(bed_levels=bed_profile[:, 1], chainages=bed_profile[:, 0])
+#GERD_Roseires_system.set_intermediate_widths(widths=widths[:, 1], chainages=widths[:, 0])
 
 solver = PreissmannSolver(channel=GERD_Roseires_system,
                           theta=theta,

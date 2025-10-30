@@ -376,21 +376,6 @@ class Channel:
 
         self.xs_chainages = chainages
         self.input_xs = sections
-
-    def set_coords(self, coords: list | np.ndarray, chainages: list | np.ndarray) -> None:
-        """Sets horizontal coordinates along the channel.
-
-        Args:
-            coords (list | np.ndarray): Coordinates (list of x,y pairs).
-            chainages (list | np.ndarray): Respective chainages along the channel.
-        """
-        self.coords_chainages = np.asarray(chainages, dtype=np.float64)
-        self.coords = np.asarray(coords, dtype=np.float64)
-        
-        self.upstream_boundary.chainage = self.coords_chainages[0]
-        self.downstream_boundary.chainage = self.coords_chainages[-1]
-        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
-        self.coordinated = True
         
     def initialize_geometry(self, n_nodes: int, n_hw: int = 201, dx_interp: float = 0.5):
         """
@@ -419,9 +404,9 @@ class Channel:
             self.curv, self.radii_curv = compute_radii_curv(x_coords=x, y_coords=y)
 
         # determine elevation range across all sections
-        z_min = min(cs.bed for cs in self.input_xs)
-        z_max = max(cs.bed for cs in self.input_xs)
-        self.hw_grid = np.linspace(z_min, z_max + 5.0, n_hw)
+        # z_min = min(cs.bed for cs in self.input_xs)
+        # z_max = max(cs.bed for cs in self.input_xs)
+        # self.hw_grid = np.linspace(z_min, z_max + 5.0, n_hw)
 
         # precompute interpolated cross-sections at each node
         self.xs_at_node = []
@@ -448,18 +433,36 @@ class Channel:
                 bed = (1 - alpha) * xs_left.bed + alpha * xs_right.bed
                 cs_interp = CrossSection(width=width, bed=bed)
             else:
-                x_min = min(0 if xs_left._is_rect else xs_left.x[0], 0 if xs_right._is_rect else xs_right.x[0])
-                x_max = max(xs_left.width if xs_left._is_rect else xs_left.x[-1], xs_right if xs_right._is_rect else xs_right.x[-1])
-                dx1 = xs_left.width if xs_left._is_rect else np.min(xs_left.x[1:] - xs_left.x[:-1])
-                dx2 = xs_right.width if xs_right._is_rect else np.min(xs_right.x[1:] - xs_right.x[:-1])
+                x_min = min(0 if xs_left._is_rect else xs_left.x[0],
+                            0 if xs_right._is_rect else xs_right.x[0])
+                x_max = max(xs_left.width if xs_left._is_rect else xs_left.x[-1],
+                            xs_right if xs_right._is_rect else xs_right.x[-1])
+                
+                dx1 = x_max - x_min if xs_left._is_rect else np.min(xs_left.x[1:] - xs_left.x[:-1])
+                dx2 = x_max - x_min if xs_right._is_rect else np.min(xs_right.x[1:] - xs_right.x[:-1])
+                
                 dx = min(dx1, dx2)
                 X = np.arange(x_min, x_max + dx, dx)
 
                 z1 = xs_left.bed * np.ones_like(X) if xs_left._is_rect else np.interp(X, xs_left.x, xs_left.z, left=xs_left.z[0], right=xs_left.z[-1])
                 z2 = xs_right.bed * np.ones_like(X) if xs_right._is_rect else np.interp(X, xs_right.x, xs_right.z, left=xs_right.z[0], right=xs_right.z[-1])
                 Z = (1 - alpha) * z1 + alpha * z2
+                
+                n_left  = (1 - alpha) * xs_left.n_left  + alpha * xs_right.n_left
+                n_main  = (1 - alpha) * xs_left.n_main  + alpha * xs_right.n_main
+                n_right = (1 - alpha) * xs_left.n_right + alpha * xs_right.n_right
 
+                # interpolate floodplain limits
+                left_fp_limit  = (1 - alpha) * xs_left.left_fp_limit  + alpha * xs_right.left_fp_limit
+                right_fp_limit = (1 - alpha) * xs_left.right_fp_limit + alpha * xs_right.right_fp_limit
+
+                # construct interpolated cross-section
                 cs_interp = CrossSection(x=X, z=Z)
+                cs_interp.n_left = n_left
+                cs_interp.n_main = n_main
+                cs_interp.n_right = n_right
+                cs_interp.left_fp_limit = left_fp_limit
+                cs_interp.right_fp_limit = right_fp_limit
                 
             self.xs_at_node.append(cs_interp)
 
