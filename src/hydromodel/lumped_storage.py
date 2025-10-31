@@ -44,13 +44,13 @@ class LumpedStorage:
         
         return 1/self.area_at(Y_new)
     
-    def energy_loss(self, A_ent, Q, n, R, A_str = None):
+    def energy_loss(self, entry_area, flow, roughness, hydraulic_radius, A_str = None):
         if not self.capture_losses:
             return 0
                 
-        hf = self.friction_loss(A_ent=A_ent, Q=Q, n=n, R=R)
-        h_exp = self.expansion_loss(A_ent=A_ent, A_str=A_str, Q=Q)
-        h_emp = self.empirical_loss(A_ent=A_ent, Q=Q)
+        hf = self.friction_loss(A_ent=entry_area, Q=flow, n=roughness, R=hydraulic_radius)
+        h_exp = self.expansion_loss(A_ent=entry_area, A_str=A_str, Q=flow)
+        h_emp = self.empirical_loss(A_ent=entry_area, Q=flow)
         
         head_loss = hf + h_exp + h_emp
         return head_loss
@@ -101,13 +101,13 @@ class LumpedStorage:
         
         return self.K_q * 2*V*dV_dA / (2*g)
 
-    def dhl_dA(self, A_ent, Q, n, R, dR_dA, A_str = None):
+    def dhl_dA(self, entry_area, flow, roughness, hydraulic_radius, dR_dA, A_str = None):
         if not self.capture_losses:
             return 0
                 
-        dhf_dA = self.dhf_dA(A_ent=A_ent, Q=Q, n=n, R=R, dR_dA=dR_dA)
-        d_h_exp_dA = self.d_h_exp_dA(A_ent=A_ent, Q=Q, A_str=A_str)
-        d_h_emp_dA = self.d_h_emp_dA(A_ent=A_ent, Q=Q)
+        dhf_dA = self.dhf_dA(A_ent=entry_area, Q=flow, n=roughness, R=hydraulic_radius, dR_dA=dR_dA)
+        d_h_exp_dA = self.d_h_exp_dA(A_ent=entry_area, Q=flow, A_str=A_str)
+        d_h_emp_dA = self.d_h_emp_dA(A_ent=entry_area, Q=flow)
         
         return dhf_dA + d_h_exp_dA + d_h_emp_dA
 
@@ -132,13 +132,13 @@ class LumpedStorage:
         
         return self.K_q * 2*V*dV_dQ / (2*g)
             
-    def dhl_dQ(self, A_ent, Q, n, R, A_str = None):
+    def dhl_dQ(self, entry_area, flow, roughness, hydraulic_radius, A_str = None):
         if not self.capture_losses:
             return 0
         
-        dhf_dQ = self.dhf_dQ(A_ent=A_ent, Q=Q, n=n, R=R)
-        d_h_exp_dQ = self.d_h_exp_dQ(A_ent=A_ent, Q=Q, A_str=A_str)
-        d_h_emp_dQ = self.d_h_emp_dQ(A_ent=A_ent, Q=Q)
+        dhf_dQ = self.dhf_dQ(A_ent=entry_area, Q=flow, n=roughness, R=hydraulic_radius)
+        d_h_exp_dQ = self.d_h_exp_dQ(A_ent=entry_area, Q=flow, A_str=A_str)
+        d_h_emp_dQ = self.d_h_emp_dQ(A_ent=entry_area, Q=flow)
         
         return dhf_dQ + d_h_exp_dQ + d_h_emp_dQ
             

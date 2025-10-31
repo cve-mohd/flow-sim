@@ -46,7 +46,6 @@ def compute_radii_curv(x_coords, y_coords):
 
     # Curvature κ = |x' y'' - y' x''| / (x'^2 + y'^2)^(3/2)
     kappa = (dx * ddy - dy * ddx) / (dx**2 + dy**2)**1.5
-    radii = np.where(kappa != 0, 1/kappa, np.inf)
     
-    return kappa, radii
+    return kappa
     

@@ -176,7 +176,7 @@ class PreissmannSolver(Solver):
                 
             total_iterations += iteration
             
-        super().finalize(verbose)
+        super()._finalize(verbose)
         #print(f'Total iterations = {total_iterations}')
     
     def update_guesses(self) -> None:
@@ -212,17 +212,10 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        time = self.time_level * self.time_step
-        h = self.depth_at(i=0)
-        R = self.channel.hydraulic_radius(i=0, h=h)
-        
+        time = self.time_level * self.time_step        
         return self.channel.upstream_boundary.condition_residual(area=self.area_at(i=0),
-                                                                 time=time,
-                                                                 depth=h,
-                                                                 hydraulic_radius=R,
-                                                                 flow_rate=self.flow_at(i=0),
-                                                                 bed_slope=self.bed_slope_at(i=0),
-                                                                 roughness=self.channel.get_n(A=self.area_at(i=0), i=0))
+                                                                 flow=self.flow_at(i=0),
+                                                                 time=time)
 
     def continuity_residual(self, i) -> float:
         """
@@ -317,18 +310,13 @@ class PreissmannSolver(Solver):
             The computed residual.
 
         """
-        time = self.time_level * self.time_step        
-        h = self.depth_at(i=-1)
-        R = self.channel.hydraulic_radius(i=-1, h=h)
+        time = self.time_level * self.time_step
+        volume = 0.5 * (self.flow_at(k=-1, i=-1) + self.flow_at(i=-1)) * self.time_step
         
         return self.channel.downstream_boundary.condition_residual(area=self.area_at(i=-1),
+                                                                   flow=self.flow_at(i=-1),
                                                                    time=time,
-                                                                   depth=h,
-                                                                   hydraulic_radius=R,
-                                                                   flow_rate=self.flow_at(i=-1),
-                                                                   bed_slope=self.bed_slope_at(i=-1),
-                                                                   roughness=self.channel.get_n(A=self.area_at(i=-1), i=-1),
-                                                                   vol_in=0.5*(self.flow_at(k=-1, i=-1) + self.flow_at(i=-1))*self.time_step,
+                                                                   vol_in=volume,
                                                                    duration=self.time_step)
             
     def dU_dA(self) -> int:
@@ -342,42 +330,23 @@ class PreissmannSolver(Solver):
 
         """
         A = self.area_at(i=0)
-        n = self.channel.get_n(A=A, i=0)
-        S_0 = self.bed_slope_at(i=0)
         t = self.time_level * self.time_step
-        h = self.depth_at(i=0)
         Q = self.flow_at(i=0)
-        R = self.channel.hydraulic_radius(i=0, h=h)
-        dR_dA = self.channel.dR_dA(i=0, h=h)
-                    
-        dU_dn = self.channel.upstream_boundary.df_dn(area=A,
-                                                     depth=h,
-                                                     hydraulic_radius=R,
-                                                     bed_slope=S_0,
-                                                     roughness=n,
-                                                     flow_rate=Q)
-        
-        dU = self.channel.upstream_boundary.df_dA(depth=h,
-                                                  area=A,
+                            
+        dU = self.channel.upstream_boundary.df_dA(area=A,
                                                   flow_rate=Q,
-                                                  hydraulic_radius=R,
-                                                  dR_dA=dR_dA,
-                                                  dh_dA=self.channel.dh_dA(i=0, h=h),
-                                                  bed_slope=S_0,
-                                                  roughness=n,
-                                                  time=t) + dU_dn * self.channel.dn_dA(A=A, i=0)
+                                                  time=t)
         if not self.regularization:
             return dU
         else:
             dU_dAreg = dU            
+            volume = 0.5 * (Q + self.flow_at(k=-1, i=0))
+            
             dU_dQe = self.channel.upstream_boundary.df_dQ(area=A,
                                                           flow_rate=Q,
-                                                          hydraulic_radius=R,
-                                                          roughness=n,
-                                                          depth=h,
                                                           duration=self.time_step,
                                                           time=t,
-                                                          vol_in=0.5*(Q+self.flow_at(k=-1, i=0)))
+                                                          vol_in=volume)
                         
             return dU_dAreg * self.dAreg_dA(i=0) + dU_dQe * self.dQe_dA(i=0)
     
@@ -391,22 +360,17 @@ class PreissmannSolver(Solver):
             dU/dQ
 
         """
-        n = self.channel.get_n(A=self.area_at(i=0), i=0)
         t = self.time_level * self.time_step
-        h = self.depth_at(i=0)
         Q = self.flow_at(i=0)
-        A = self.area_at(i=-1)
-        R = self.channel.hydraulic_radius(i=-1, h=h)
+        A = self.area_at(i=0)
+        volume = 0.5 * (Q + self.flow_at(k=-1, i=0))
         
         dU = self.channel.upstream_boundary.df_dQ(
             area=A,
-            hydraulic_radius=R,
             flow_rate=Q,
-            roughness=n,
-            depth=h,
             duration=self.time_step,
             time=t,
-            vol_in=0.5*(Q+self.flow_at(k=-1, i=0))
+            vol_in=volume
         )
         
         if not self.regularization:
@@ -742,40 +706,23 @@ class PreissmannSolver(Solver):
         """
         A = self.area_at(i=-1)
         Q = self.flow_at(i=-1)
-        n = self.channel.get_n(A=A, i=-1)
-        S_0 = self.bed_slope_at(i=-1)
         t = self.time_level * self.time_step
-        h = self.depth_at(i=-1)
-        R = self.channel.hydraulic_radius(i=-1, h=h)
-        dR_dA = self.channel.dR_dA(i=-1, h=h)
-                
-        dD_dn = self.channel.downstream_boundary.df_dn(area=A, hydraulic_radius=R, flow_rate=Q, depth=h, bed_slope=S_0, roughness=n)
-        dn_dA = self.channel.dn_dA(A=A, i=-1)
-        
-        dD = self.channel.downstream_boundary.df_dA(depth=h,
-                                                    area=A,
+                                
+        dD = self.channel.downstream_boundary.df_dA(area=A,
                                                     flow_rate=Q,
-                                                    hydraulic_radius=R,
-                                                    dR_dA=dR_dA,
-                                                    dh_dA=self.channel.dh_dA(i=-1, h=h),
-                                                    bed_slope=S_0,
-                                                    roughness=n,
-                                                    time=t) + dD_dn * dn_dA
+                                                    time=t)
         if not self.regularization:
             return dD
-            
         else:
             dD_dAreg = dD
             
+            volume = 0.5 * (self.flow_at(k=-1, i=-1) + Q) * self.time_step
             dD_dQe = self.channel.downstream_boundary.df_dQ(
                 area=A,
-                hydraulic_radius=R,
                 flow_rate=Q,
-                roughness=n,
-                depth=h,
                 duration=self.time_step,
                 time=t,
-                vol_in=0.5*(self.flow_at(k=-1, i=-1) + Q)*self.time_step
+                vol_in=volume
                 )
             
             return dD_dAreg * self.dAreg_dA(i=-1) + dD_dQe * self.dQe_dA(i=-1)
@@ -793,19 +740,14 @@ class PreissmannSolver(Solver):
         """
         t = self.time_level * self.time_step
         A = self.area_at(i=-1)
-        h = self.depth_at(i=-1)
-        R = self.channel.hydraulic_radius(i=-1, h=h)
-        n = self.channel.get_n(A=A, i=-1)
         Q = self.flow_at(i=-1)
+        volume = 0.5 * (self.flow_at(k=-1, i=-1) + Q) * self.time_step
         
         dD = self.channel.downstream_boundary.df_dQ(
             area=A,
-            hydraulic_radius=R,
             flow_rate=Q,
-            roughness=n,
-            depth=h,
             duration=self.time_step,
-            vol_in=0.5*(self.flow_at(k=-1, i=-1) + Q)*self.time_step,
+            vol_in=volume,
             time=t
         )
         

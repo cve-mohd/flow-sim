@@ -1,21 +1,21 @@
 import numpy as np
 from scipy.constants import g
 
-def normal_flow(A, S_0, n, R):
-    Q = A * R**(2/3) * np.abs(S_0)**0.5 / n
-    if S_0 < 0:
+def normal_flow(area, bed_slope, roughness, hydraulic_radius):
+    Q = area * hydraulic_radius**(2/3) * np.abs(bed_slope)**0.5 / roughness
+    if bed_slope < 0:
         Q = -Q
                     
     return Q
     
 def normal_area(Q, A_guess, S_0, n, R, tolerance = 1e-3):
     raise ValueError("hydraulics.normal_area is WIP.")
-    Q_guess = normal_flow(A=A_guess, S_0=S_0, n=n, R=R)
+    Q_guess = normal_flow(area=A_guess, bed_slope=S_0, roughness=n, hydraulic_radius=R)
         
     while abs(Q_guess - Q) >= tolerance:
         error = (Q_guess - Q) / Q
         A_guess -= 0.1 * error * A_guess
-        Q_guess = normal_flow(A=A_guess, S_0=S_0, n=n, R=R)
+        Q_guess = normal_flow(area=A_guess, bed_slope=S_0, roughness=n, hydraulic_radius=R)
         
     return A_guess
 

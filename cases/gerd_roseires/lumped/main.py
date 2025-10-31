@@ -103,10 +103,10 @@ def recalc_ds_h(width, ds_depth, wet_n, roseires_storage: LumpedStorage):
     R = A/P
     while True:
         new_ds_depth = initial_roseires_level - ds_bed_level + roseires_storage.energy_loss(
-            A_ent=A,
-            Q=inflow_hyd.get_at(0),
-            n=wet_n,
-            R=R
+            entry_area=A,
+            flow=inflow_hyd.get_at(0),
+            roughness=wet_n,
+            hydraulic_radius=R
         )
         
         diff = ds_depth - new_ds_depth

@@ -89,7 +89,7 @@ class LaxSolver(Solver):
                         
             self.check_cfl_all()
         
-        super().finalize(verbose=verbose)
+        super()._finalize(verbose=verbose)
         
     def us_ghost_node(self):
         if self.secondary_BC[0] == 'constant':
@@ -129,7 +129,7 @@ class LaxSolver(Solver):
                 time=self.time_level*self.time_step,
                 depth=A/self.width_at(i=0),
                 width=self.width_at(i=0),
-                flow_rate=0,
+                flow=0,
                 bed_slope=self.bed_slope_at(i=0),
                 roughness=self.channel.get_n(A=A, i=0)
             )
@@ -186,7 +186,7 @@ class LaxSolver(Solver):
                 time=self.time_level*self.time_step,
                 depth=A/self.width_at(i=-1),
                 width=self.width_at(i=-1),
-                flow_rate=0,
+                flow=0,
                 bed_slope=self.bed_slope_at(i=-1),
                 roughness=self.channel.get_n(A=A, i=-1)
             )
