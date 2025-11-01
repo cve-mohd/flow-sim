@@ -61,7 +61,7 @@ class Channel:
         Returns:
             float: Energy slope (Se)
         """
-        h = self.depth_at(i=i, A_target=A)
+        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
         Sf = xs.friction_slope(h=h, Q=Q)
@@ -80,7 +80,7 @@ class Channel:
         Returns:
             float: dSe/dA
         """
-        h = self.depth_at(i=i, A_target=A)
+        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
         dSf_dA = xs.dSf_dA(h=h, Q=Q)
@@ -99,52 +99,13 @@ class Channel:
         Returns:
             float: dSe/dQ
         """
-        h = self.depth_at(i=i, A_target=A)
+        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
         dSf_dQ = xs.dSf_dQ(h=h, Q=Q)
         dSc_dQ = xs.dSc_dQ(h=h, Q=Q)
             
         return dSf_dQ + dSc_dQ
-
-    def normal_flow(self, A: float, i: int) -> float:
-        """Computes the normal flow rate for a given flow area at a given location.
-
-        Args:
-            A (float): Cross-sectional flow area.
-            i (int): Spatial node index.
-
-        Returns:
-            float: Normal flow rate.
-        """
-        raise ValueError("channel.normal_flow is WIP")
-        n = self.get_n(A=A, i=i)
-        h = self.depth_at(i=i, A_target=A)
-        R = self.hydraulic_radius(i=i, h=h)
-        S_0 = self.bed_slopes[i]
-        
-        return hydraulics.normal_flow(area=A, bed_slope=S_0, roughness=n, hydraulic_radius=R)
-        
-    def normal_area(self, Q: float, i: int) -> float:
-        """Computes the normal flow area for a given flow rate at a given location.
-
-        Args:
-            Q (float): Flow rate.
-            i (int): Spatial node index.
-
-        Returns:
-            float: Normal flow area.
-        """
-        raise ValueError("channel.normal_area is WIP")
-        R = self.hydraulic_radius(i=i, h=h)
-        B = self.width[i]
-        h = self.downstream_boundary.initial_depth
-        h = 1 if h is None else h
-        A_guess = h * B
-        n = self.get_n(A=A_guess, i=i)
-        S_0 = self.bed_slopes[i]
-        
-        return hydraulics.normal_area(Q=Q, A_guess=A_guess, S_0=S_0, n=n, R=R)
             
     def initialize_conditions(self, n_nodes: int) -> None:
         """
@@ -229,13 +190,13 @@ class Channel:
         hw = h + xs.bed
         return xs.top_width(hw)
         
-    def depth_at(self, i, A_target):
+    def depth_at(self, i, area):
         """
         Compute depth h for node i given target flow area A_target.
         Evaluates A(h) directly from the cross_section.area() function.
         """
         xs: CrossSection = self.xs_at_node[i]
-        return xs.depth_at(A_target=A_target)
+        return xs.depth_at(A_target=area)
 
     def bed_level_at(self, i):
         xs: CrossSection = self.xs_at_node[i]
@@ -328,6 +289,7 @@ class Channel:
             cs_interp.left_fp_limit = left_fp_limit
             cs_interp.right_fp_limit = right_fp_limit
             cs_interp.curvature = curvatures[i]
+            cs_interp.bed_slope = (xs_right.bed - xs_left.bed) / (ch_left - ch_right)
                 
             self.xs_at_node.append(cs_interp)
 
@@ -356,7 +318,8 @@ class Channel:
 
     def _steady_conditions(self, n_nodes, Q):
         for i in range(n_nodes):
-            A = self.normal_area(Q, i)
+            xs: CrossSection = self.xs_at_node[i]
+            A = xs.normal_area(Q_target=Q)
                 
             self.initial_conditions[i, 0] = A
             self.initial_conditions[i, 1] = Q

@@ -32,3 +32,4 @@ solver = PreissmannSolver(channel=example_channel,
 solver.run(verbose=0, tolerance=tolerance)
 solver.save_results(folder_path='cases\\akbari_firoozi\\results\\preissmann')
 print('Simulation finished successfuly.')
+# py -m cases.akbari_firoozi.main_preissmann

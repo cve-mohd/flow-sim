@@ -7,17 +7,6 @@ def normal_flow(area, bed_slope, roughness, hydraulic_radius):
         Q = -Q
                     
     return Q
-    
-def normal_area(Q, A_guess, S_0, n, R, tolerance = 1e-3):
-    raise ValueError("hydraulics.normal_area is WIP.")
-    Q_guess = normal_flow(area=A_guess, bed_slope=S_0, roughness=n, hydraulic_radius=R)
-        
-    while abs(Q_guess - Q) >= tolerance:
-        error = (Q_guess - Q) / Q
-        A_guess -= 0.1 * error * A_guess
-        Q_guess = normal_flow(area=A_guess, bed_slope=S_0, roughness=n, hydraulic_radius=R)
-        
-    return A_guess
 
 def effective_roughness(depth: float, wet_depth: float, wet_roughness: float, dry_roughness: float, steepness: float):
     transition_depth = steepness * wet_depth

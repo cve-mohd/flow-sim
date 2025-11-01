@@ -42,8 +42,9 @@ class Solver:
         self.flow = np.empty_like(self.area)
         self.depth = np.empty_like(self.area)
                 
-        self.type = None
-        self.solved = False
+        self._type = None
+        self._solved = False
+        self._new_time_level = False
         self.total_sim_duration = 0
         self.regularization = regularization
         self.eps = 1e-4
@@ -125,7 +126,7 @@ class Solver:
                 df_out.index.name = "Time"
                 df_out.to_excel(writer, sheet_name="Outflow")
                 
-                if self.type=='preissmann':
+                if self._type=='preissmann':
                     df_stage = pd.DataFrame({"stage": self.storage_stage}, index=time)
                     df_stage.index.name = "Time"
                     df_stage.to_excel(writer, sheet_name="Reservoir stage")
@@ -157,7 +158,7 @@ class Solver:
             output_file.write(f'Time step = {self.time_step} s\n')
             
             # Theta
-            if self.type == 'preissmann':
+            if self._type == 'preissmann':
                 output_file.write(f'Theta = {self.theta}\n')
             
             # Simulation duration
@@ -197,7 +198,7 @@ class Solver:
             output_file.write(f'Median volume travel time = {seconds_to_hms(median_vol_arrival_time - median_vol_entry_time)}\n')
                 
     def _finalize(self, verbose):
-        self.solved = True
+        self._solved = True
         self.total_sim_duration = self.time_level * self.time_step
         
         self.prepare_results()

@@ -1,5 +1,6 @@
 import numpy as np
 from . import hydraulics
+from scipy.optimize import brentq
 
 class CrossSection:
     """
@@ -383,3 +384,36 @@ class CrossSection:
         A2 = self.area(hw + dh)
                 
         return 2 * dh / (A2 - A1)
+    
+    def normal_flow(self, hw: float) -> float:
+        """Computes the normal flow rate for a given water level.
+
+        Args:
+            A (float): Water level.
+
+        Returns:
+            float: Normal flow rate.
+        """
+        A = self.area(hw=hw)
+        R = self.hydraulic_radius(hw=hw)
+        n = self.get_equivalent_n(hw=hw)
+        
+        return hydraulics.normal_flow(area=A, bed_slope=self.bed_slope, roughness=n, hydraulic_radius=R)
+    
+    def normal_area(self, Q_target: float, hw_max = None) -> float:
+        """Computes the normal flow area for a given flow rate.
+
+        Args:
+            Q (float): Flow rate.
+
+        Returns:
+            float: Normal flow area.
+        """
+        if hw_max is None:
+            hw_max = self.bed + 100
+            
+        def f(hw):
+            return Q_target - self.normal_flow(hw=hw)
+        
+        hw = brentq(f, self.bed, hw_max)
+        return self.area(hw=hw)

@@ -135,6 +135,7 @@ class PreissmannSolver(Solver):
         
         while running:
             self.time_level += 1
+            self._new_time_level = True
             if self.time_level >= self.max_timelevels:
                 running = False
                 self.time_level = self.max_timelevels-1
@@ -170,6 +171,8 @@ class PreissmannSolver(Solver):
                     print(f">> Iteration #{iteration}: Error = {error}")    
                 if error < tolerance:
                     converged = True
+                else:
+                    self._new_time_level = False
                                 
             if verbose==2:
                 print(f'>> {iteration} iterations.')
@@ -191,11 +194,16 @@ class PreissmannSolver(Solver):
         k = self.time_level
         self.area[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
+        self.depth[k] = np.array(
+            object=[self.channel.depth_at(i=i, area=self.area_at(i=i)) for i in range(self.number_of_nodes)],
+            dtype=np.float64
+        )
         
-        for i in range(self.number_of_nodes):
-            self.depth[k, i] = self.channel.depth_at(i=i, A_target=self.area_at(i=i))
-            if k == 1:
-                self.depth[0, i] = self.channel.depth_at(i=i, A_target=self.area_at(i=i, k=0))
+        if self._new_time_level:
+            self.depth[k-1] = np.array(
+                object=[self.channel.depth_at(i=i, area=self.area_at(i=i, k=k-1)) for i in range(self.number_of_nodes)],
+                dtype=np.float64
+            )
         
     def upstream_residual(self) -> float:
         """
