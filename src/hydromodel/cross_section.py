@@ -236,16 +236,18 @@ class CrossSection:
         if self._last_hw_n is not None and hw == self._last_hw_n:
             return self._last_n
         
+        if self._is_rect:
+            n_eq = self.n_main
+            self._last_hw_n = hw
+            self._last_n = n_eq
+            return n_eq
+        
         def subsection_props(x_min, x_max, n_value):
-            if self._is_rect:
-                width = x_max - x_min
-                sub_xs = CrossSection(width=width, bed=self.bed)
-            else:
-                mask = (self.x >= x_min) & (self.x <= x_max)
-                if mask.sum() < 2:
-                    return 0.0, 0.0, 0.0
-                xs, zs = self.x[mask], self.z[mask]
-                sub_xs = CrossSection(x=xs, z=zs)
+            mask = (self.x >= x_min) & (self.x <= x_max)
+            if mask.sum() < 2:
+                return 0.0, 0.0, 0.0
+            xs, zs = self.x[mask], self.z[mask]
+            sub_xs = CrossSection(x=xs, z=zs)
                 
             A = sub_xs.area(hw)
             P = sub_xs.wetted_perimeter(hw)
@@ -256,9 +258,9 @@ class CrossSection:
             return A, R, K
 
         # Subsections
-        left_A, left_R, left_K = subsection_props(0 if self._is_rect else self.x[0], self.left_fp_limit, self.n_left)
+        left_A, left_R, left_K = subsection_props(self.x[0], self.left_fp_limit, self.n_left)
         main_A, main_R, main_K = subsection_props(self.left_fp_limit, self.right_fp_limit, self.n_main)
-        right_A, right_R, right_K = subsection_props(self.right_fp_limit, self.width if self._is_rect else self.x[-1], self.n_right)
+        right_A, right_R, right_K = subsection_props(self.right_fp_limit, self.x[-1], self.n_right)
 
         # Total area and hydraulic radius
         A_total = left_A + main_A + right_A
@@ -326,6 +328,16 @@ class CrossSection:
         return hydraulics.dSc_dQ(h=h, T=T, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature))
 
     def dR_dA(self, hw, dh=1e-6):
+        if self._is_rect:
+            A = self.area(hw=hw)
+            P = self.wetted_perimeter(hw=hw)
+            
+            dR_dA = 1.0/P
+            dR_dP = -A / P**2
+            dP_dA = 2 * self.dh_dA(hw=hw)
+            
+            return dR_dA + dR_dP * dP_dA
+            
         A1 = self.area(hw - dh)
         A2 = self.area(hw + dh)
         R1 = self.hydraulic_radius(hw - dh)
@@ -338,9 +350,11 @@ class CrossSection:
         Evaluates A(h) directly from the cross_section.area() function.
         """
         # Set default upper bound (covers all likely depths)
+        if self._is_rect:
+            return A_target / self.width
+        
         if h_max is None:
-            base = 0 if self._is_rect else (max(self.z) - min(self.z))
-            h_max = base + 100.0  # large enough upper bound
+            h_max = max(self.z) - min(self.z) + 100.0  # large enough upper bound
             A_high = self.area(hw=self.bed+h_max)
 
         A_low = self.area(hw=self.bed+h_min)

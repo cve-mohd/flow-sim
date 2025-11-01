@@ -99,7 +99,6 @@ class Boundary:
         elif self.condition == 'fixed_depth':
             if self.lumped_storage is None:
                 target = self.initial_depth
-                
             else:
                 if duration is None or vol_in is None or time is None:
                     raise ValueError("Insufficient arguments for boundary condition.")

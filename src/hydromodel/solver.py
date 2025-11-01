@@ -90,6 +90,13 @@ class Solver:
                 avg_outflow = avg_inflow - vol_change / self.time_step
                 
                 self.storage_outflow[k] = avg_outflow * self.flow_at(k=k, i=-1) / avg_inflow
+                
+                if k == 1:
+                    print(f'Avg. inflow = {avg_inflow} m^3/s\n\
+                        Stage = {Y1} -> {Y2} m\n\
+                            Volume change = {vol_change} m^3\n\
+                                Avg. outflow = {avg_outflow} m^3/s\n\
+                                    Outflow = {self.storage_outflow[k]} m^3/s')
     
     def save_results(self, folder_path):
         """
