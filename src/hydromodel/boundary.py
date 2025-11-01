@@ -9,8 +9,8 @@ class Boundary:
     """
     def __init__(self,
                  condition: str,
-                 bed_level: float,
                  chainage: int | float,
+                 bed_level: float = None,
                  initial_depth: float = None,
                  rating_curve: RatingCurve = None,
                  hydrograph: Hydrograph = None):

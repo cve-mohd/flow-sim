@@ -11,9 +11,9 @@ class Channel:
     def __init__(self,
                  upstream_boundary: Boundary,
                  downstream_boundary: Boundary,
-                 width: float,
                  initial_flow: float,
-                 roughness: float,
+                 roughness: float = None,
+                 width: float = None,
                  interpolation_method: str = 'GVF_equation'):
         """Initializes a Channel object.
 
@@ -266,6 +266,7 @@ class Channel:
                 dx2 = x_max - x_min if xs_right._is_rect else np.min(xs_right.x[1:] - xs_right.x[:-1])
                 
                 dx = min(dx1, dx2)
+                dx = max(dx, (x_max-x_min)*1e-4, 0.01)
                 X = np.arange(x_min, x_max + dx, dx)
 
                 z1 = xs_left.bed * np.ones_like(X) if xs_left._is_rect else np.interp(X, xs_left.x, xs_left.z, left=xs_left.z[0], right=xs_left.z[-1])
@@ -293,6 +294,9 @@ class Channel:
                 
             self.xs_at_node.append(cs_interp)
 
+        self.upstream_boundary.cross_section = self.xs_at_node[0]
+        self.downstream_boundary.cross_section = self.xs_at_node[-1]
+        
     def _calc_curvature(self):
         x = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 0])
         y = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 1])

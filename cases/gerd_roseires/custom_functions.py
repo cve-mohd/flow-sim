@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from src.hydromodel.cross_section import CrossSection
+from pandas import read_csv
 
 def reconstruct_centerline(chainages, curvature, x0, y0, theta0):
     """
@@ -95,9 +98,7 @@ def export_banks(left_x, left_y, right_x, right_y,
     gdf.to_file(outfile, driver="ESRI Shapefile")
     return gdf
 
-def import_area_curve(path: str) -> np.ndarray:
-    from pandas import read_csv
-    
+def import_area_curve(path: str) -> np.ndarray:    
     table = read_csv(path, skiprows=[1])
     table = table.astype(np.float64).sort_values(by="stage")
     
@@ -106,9 +107,7 @@ def import_area_curve(path: str) -> np.ndarray:
     
     return area_curve
 
-def import_hydrograph(path: str) -> np.ndarray:
-    from pandas import read_csv
-    
+def import_hydrograph(path: str) -> np.ndarray:  
     table = read_csv(path, skiprows=[1])
     table = table.astype(np.float64).sort_values(by="time")
     
@@ -118,10 +117,60 @@ def import_hydrograph(path: str) -> np.ndarray:
     return area_curve
 
 def import_table(path: str, header: bool = True, sort_by: str = None):
-    from pandas import read_csv
     table = read_csv(path, header=(0 if header else None)).dropna(axis=1, how="all").dropna()
     
     if sort_by is not None:
         table = table.astype(np.float64).sort_values(by=sort_by)
     
     return table.to_numpy(dtype=np.float64)
+
+def load_cross_sections(xs_folder: str, info_csv: str):
+    """
+    Loads cross-section geometry and properties, returning:
+        chainages  -> numpy array of chainage values [m]
+        sections   -> list of CrossSection objects
+
+    Parameters
+    ----------
+    xs_folder : str
+        Path to folder containing .csv files named by xs_id (e.g., "1.csv", "2.csv", ...).
+    info_csv : str
+        Path to CSV file containing metadata with columns:
+        xs_id, chainage, left_fp_limit, right_fp_limit, n_left, n_main, n_right
+    """
+    # Load the metadata
+    info = read_csv(info_csv)
+    chainages = []
+    sections = []
+
+    for _, row in info.iterrows():
+        xs_id = int(row["xs_id"])
+        fname = os.path.join(xs_folder, f"{xs_id}.csv")
+        if not os.path.exists(fname):
+            # Skip missing files but keep warning
+            print(f"Warning: cross-section {xs_id} not found at {fname}")
+            continue
+
+        # Read x, z pairs
+        data = np.loadtxt(fname, delimiter=",", skiprows=1)
+        if data.ndim == 1 or data.shape[1] < 2:
+            raise ValueError(f"Invalid data in {fname}. Expected two columns (x, z).")
+        x, z = data[:, 0], data[:, 1]
+        
+        # Create the CrossSection object
+        cs = CrossSection(x=x, z=z)
+        cs.left_fp_limit = float(row["left_fp_limit"])
+        cs.right_fp_limit = float(row["right_fp_limit"])
+        cs.n_left = float(row["n_left"])
+        cs.n_main = float(row["n_main"])
+        cs.n_right = float(row["n_right"])
+
+        # Append to lists
+        chainages.append(float(row["chainage"]))
+        sections.append(cs)
+
+    order = np.argsort(chainages)
+    chainages = np.array(chainages)[order]
+    sections = [sections[i] for i in order]
+
+    return np.array(chainages), sections

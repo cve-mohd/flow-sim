@@ -395,7 +395,7 @@ class CrossSection:
         R2 = self.hydraulic_radius(hw + dh)
         return (R2 - R1) / (A2 - A1)
     
-    def depth_at(self, A_target, h_min=0.0, h_max=None, tol=1e-8, max_iter=30):
+    def depth_at(self, A_target, h_min=0.0, h_max=None, tol=1e-8, max_iter=300):
         """
         Compute depth h for node i given target flow area A_target.
         Evaluates A(h) directly from the cross_section.area() function.
@@ -427,6 +427,7 @@ class CrossSection:
                 h_max = h_mid
 
         # Return midpoint if not converged
+        print(f'not converged')
         return 0.5 * (h_min + h_max)
     
     def dh_dA(self, hw, dh=1e-6):
