@@ -206,15 +206,85 @@ class CrossSection:
     
     def hydraulic_radius(self, hw):
         return self.properties(hw)[2]
-
+    
     def friction_slope(self, h, Q):
-        hw = h+self.bed
+        hw = h + self.bed
         
-        n = self.get_equivalent_n(hw=hw)
-        R = self.hydraulic_radius(hw=hw)
-        A = self.area(hw=hw)
+        if not self._is_rect:
+            subchs = self.get_subchannels(hw)
+            _n = len(subchs)
+        else:
+            _n = 1
+            
+        if _n == 1:
+            K = self.conveyance(hw=hw)
+            return hydraulics.Sf(Q=Q, K=K)
+
+        # multiple subchannels
+        K_sum = 0.0
+        for sc in subchs:
+            xs = CrossSection(x=sc["x"], z=sc["z"])
+            xs.set_roughness_para(parameters=self.get_roughness_para())
+                        
+            K_j = xs.conveyance(hw)
+            K_sum += K_j ** 1.5
         
-        return hydraulics.Sf(A=A, Q=Q, n=n, R=R)
+        K_total = K_sum ** (2 / 3)
+        return hydraulics.Sf(K=K_total, Q=Q)
+    
+    def dSf_dA(self, h, Q):
+        hw = h + self.bed
+        
+        if not self._is_rect:
+            subchs = self.get_subchannels(hw)
+            _n = len(subchs)
+        else:
+            _n = 1
+            
+        if _n == 1:
+            K = self.conveyance(hw=hw)
+            dK_dA = self.dK_dA(hw=hw)
+            return hydraulics.dSf_dA(Q=Q, K=K, dK_dA=dK_dA)
+
+        K_sum = 0.0
+        dK_dA_sum = 0.0
+        for sc in subchs:
+            xs = CrossSection(x=sc["x"], z=sc["z"])
+            xs.set_roughness_para(parameters=self.get_roughness_para())
+                        
+            K_j = xs.conveyance(hw=hw)
+            K_sum += K_j ** 1.5
+            dK_dA_j = xs.dK_dA(hw=hw)
+            dK_dA_sum += 1.5 * (K_j ** 0.5) * dK_dA_j
+
+        K_eq = K_sum ** (2 / 3)
+        dK_dA_eq = (2 / 3) * K_sum ** (-1 / 3) * dK_dA_sum
+        
+        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq)
+    
+    def dSf_dQ(self, h: float, Q: float) -> float:
+        hw = h + self.bed
+        
+        if not self._is_rect:
+            subchs = self.get_subchannels(hw)
+            _n = len(subchs)
+        else:
+            _n = 1
+            
+        if _n == 1:
+            K = self.conveyance(hw=hw)
+            return hydraulics.dSf_dQ(Q=Q, K=K)
+
+        K_sum = 0.0
+        for sc in subchs:
+            xs = CrossSection(x=sc["x"], z=sc["z"])
+            xs.set_roughness_para(parameters=self.get_roughness_para())
+            K_j = xs.conveyance(hw=hw)
+            
+            K_sum += K_j ** 1.5
+
+        K_eq = K_sum ** (2 / 3)
+        return hydraulics.dSf_dQ(Q=Q, K=K_eq)
     
     def curvature_slope(self, h: float, Q: float) -> float:
         if self.curvature == 0:
@@ -251,11 +321,10 @@ class CrossSection:
             sub_xs = CrossSection(x=xs, z=zs)
                 
             A = sub_xs.area(hw)
-            P = sub_xs.wetted_perimeter(hw)
-            if A <= 0 or P <= 0:
+            if A <= 0:
                 return 0.0, 0.0, 0.0
             R = sub_xs.hydraulic_radius(hw)
-            K = (1.0 / n_value) * A * (R ** (2.0 / 3.0))
+            K = hydraulics.conveyance(A=A, n=n_value, R=R)
             return A, R, K
 
         # Subsections
@@ -282,16 +351,6 @@ class CrossSection:
         
         return n_eq
 
-    def dSf_dA(self, h: float, Q: float) -> float:
-        hw = h+self.bed
-        
-        n = self.get_equivalent_n(hw=hw)
-        R = self.hydraulic_radius(hw=hw)
-        A = self.area(hw=hw)
-        dR_dA = self.dR_dA(hw=hw)
-        
-        return hydraulics.dSf_dA(A=A, Q=Q, n=n, R=R, dR_dA=dR_dA)
-    
     def dSc_dA(self, h: float, Q: float) -> float:
         if self.curvature == 0:
             return 0.0
@@ -306,15 +365,6 @@ class CrossSection:
         
         return hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature), dR_dA=dR_dA, T=T)
         
-    def dSf_dQ(self, h: float, Q: float) -> float:
-        hw = h+self.bed
-        
-        n = self.get_equivalent_n(hw=hw)
-        R = self.hydraulic_radius(hw=hw)
-        A = self.area(hw=hw)
-        
-        return hydraulics.dSf_dQ(A=A, Q=Q, n=n, R=R)
-    
     def dSc_dQ(self, h: float, Q: float) -> float:
         if self.curvature == 0:
             return 0.0
@@ -417,3 +467,64 @@ class CrossSection:
         
         hw = brentq(f, self.bed, hw_max)
         return self.area(hw=hw)
+
+    def get_subchannels(self, h):
+        """
+        Identify contiguous wetted regions (subchannels) in the cross-section.
+        Each subchannel is defined by consecutive x,z points where z < h.
+        Returns a list of dicts, each containing x and z arrays for the segment.
+        """
+        wet = self.z < h
+        subchannels = []
+        i = 0
+        n = len(wet)
+
+        while i < n:
+            # skip dry zones
+            if not wet[i]:
+                i += 1
+                continue
+
+            # start of a wetted segment
+            start = i
+            while i < n and wet[i]:
+                i += 1
+            end = i  # one past last wet index
+
+            # include boundary points for accurate integration
+            x_seg = self.x[start:end]
+            z_seg = self.z[start:end]
+            # optional: add intersection points with water surface at edges
+            if start > 0 and z_seg[0] > h:
+                x0 = np.interp(h, [self.z[start-1], self.z[start]], [self.x[start-1], self.x[start]])
+                x_seg = np.insert(x_seg, 0, x0)
+                z_seg = np.insert(z_seg, 0, h)
+            if end < n and self.z[end-1] < h and self.z[end] > h:
+                x1 = np.interp(h, [self.z[end-1], self.z[end]], [self.x[end-1], self.x[end]])
+                x_seg = np.append(x_seg, x1)
+                z_seg = np.append(z_seg, h)
+
+            subchannels.append({"x": x_seg, "z": z_seg})
+
+        return subchannels
+
+    def conveyance(self, hw):
+        A = self.area(hw=hw)
+        n = self.get_equivalent_n(hw=hw)
+        R = self.hydraulic_radius(hw=hw)
+        
+        return hydraulics.conveyance(A=A, n=n, R=R)
+    
+    def dK_dA(self, hw):
+        A = self.area(hw=hw)
+        n = self.get_equivalent_n(hw=hw)
+        R = self.hydraulic_radius(hw=hw)
+        dR_dA = self.dR_dA(hw=hw)
+        
+        return hydraulics.dK_dA_(A=A, n=n, R=R, dR_dA=dR_dA)
+    
+    def get_roughness_para(self):
+        return (self.n_left, self.n_main, self.n_right, self.left_fp_limit, self.right_fp_limit)
+    
+    def set_roughness_para(self, parameters: tuple):
+        self.n_left, self.n_main, self.n_right, self.left_fp_limit, self.right_fp_limit = parameters

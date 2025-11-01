@@ -1,24 +1,45 @@
 import numpy as np
 from scipy.constants import g
 
-def normal_flow(area, bed_slope, roughness, hydraulic_radius):
-    Q = area * hydraulic_radius**(2/3) * np.abs(bed_slope)**0.5 / roughness
+def normal_flow(bed_slope, area: float = None, roughness: float = None, hydraulic_radius: float = None, K: float = None):
+    if K is None:
+        K = conveyance(A=area, n=roughness, R=hydraulic_radius)
+        
+    Q = K * np.abs(bed_slope)**0.5
+    
     if bed_slope < 0:
         Q = -Q
                     
     return Q
 
-def effective_roughness(depth: float, wet_depth: float, wet_roughness: float, dry_roughness: float, steepness: float):
-    transition_depth = steepness * wet_depth
+def conveyance(A: float, n: float, R: float) -> float:
+    """Computes conveyance.
+
+    Args:
+        A (float): Flow area.
+        n (float): Roughness.
+        R (float): Hydraulic radius.
+
+    Returns:
+        float: K
+    """
+    return A * R**(2/3) / n
+
+def dK_dA_(A, n, R, dR_dA):
+    """Derivative of conveyance w.r.t. flow area.
+
+    Args:
+        A (float): Flow area.
+        n (float): Roughness.
+        R (float): Hydraulic radius.
+        dR_dA (float): dR/dA.
+
+    Returns:
+        float: dK/dA
+    """
+    return (R**(2/3) + A * 2./3. * R**(2/3-1) * dR_dA) / n
     
-    if depth <= wet_depth:
-        return wet_roughness
-    if transition_depth == 0 or depth - wet_depth > transition_depth:
-        return dry_roughness
-    else:
-        return wet_roughness + (dry_roughness - wet_roughness) * (depth - wet_depth) / transition_depth
-    
-def Sf(A: float, Q: float, n: float, R: float) -> float:
+def Sf(Q: float, A: float = None, n: float = None, R: float = None, K: float = None) -> float:
     """Computes friction slope using Manning's equation.
 
     Args:
@@ -30,7 +51,45 @@ def Sf(A: float, Q: float, n: float, R: float) -> float:
     Returns:
         float: Friction slope.
     """
-    return n**2 * A**-2 * R**(-4/3) * Q * np.abs(Q)
+    if K is None:
+        K = conveyance(A=A, n=n, R=R)
+        
+    return Q * np.abs(Q) / K**2
+    
+def dSf_dA(Q: float, A: float = None, n: float = None, R: float = None, dR_dA: float = None, K: float = None, dK_dA: float = None) -> float:
+    """Computes the partial derivative of Sf w.r.t. A.
+
+    Args:
+        A (float): Cross-sectional flow area
+        Q (float): Flow rate
+        n (float): Manning's coefficient
+        B (float): Cross-sectional width
+
+    Returns:
+        float: dSf/dA
+    """
+    if K is None or dK_dA is None:
+        K = conveyance(A=A, n=n, R=R)
+        dK_dA = dK_dA_(A=A, n=n, R=R, dR_dA=dR_dA)
+        
+    return -2 * Sf(Q=Q, K=K) * (dK_dA / K)
+
+def dSf_dQ(Q: float, A: float = None, n: float = None, R: float = None, K: float = None) -> float:
+    """Computes the partial derivative of Sf w.r.t. Q.
+
+    Args:
+        A (float): Cross-sectional flow area
+        Q (float): Flow rate
+        n (float): Manning's coefficient
+        B (float): Cross-sectional width
+
+    Returns:
+        float: dSf/dQ
+    """
+    if K is None:
+        K = conveyance(A=A, n=n, R=R)
+        
+    return 2 * abs(Q) / K**2
 
 def Sc(h: float, T: float, A: float, Q: float, n: float, R: float, rc: float) -> float:
     """
@@ -93,24 +152,6 @@ def dSc_dQ(h, T, A, Q, n, R, rc):
     
     return (dnum_dQ*den - num*dden_dQ) / (den**2)
 
-def dSc_dn(h, A, Q, n, R, rc, T):
-    Fr = froude_num(T=T, A=A, Q=Q)
-
-    f = darcey_weisbach_f(n=n, R=R)    
-    df_dn_ = df_dn(n, R)
-    
-    sqrtf = np.sqrt(f)
-    num = (2.86*sqrtf + 2.07*f) * h**2 * Fr**2
-    den = (0.565 + sqrtf) * rc**2
-    
-    dnum_dn = (2.86/(2*sqrtf)*df_dn_ + 2.07*df_dn_) * h**2 * Fr**2
-    dden_dn = (1.0/(2*sqrtf) * df_dn_) * rc**2
-    
-    return (dnum_dn*den - num*dden_dn) / (den**2)
-
-def df_dn(n, R):
-    return 16.0 * g * n / R**(1/3)
-
 def froude_num(T: float, A: float, Q: float):
     """Computes the Froude number.
 
@@ -161,48 +202,6 @@ def dFr_dQ(T: float, A: float):
     dV_dQ = 1.0 / A
     
     return dV_dQ * (g*D)**(-0.5)
-
-def dSf_dA(A: float, Q: float, n: float, R: float, dR_dA: float) -> float:
-    """Computes the partial derivative of Sf w.r.t. A.
-
-    Args:
-        A (float): Cross-sectional flow area
-        Q (float): Flow rate
-        n (float): Manning's coefficient
-        B (float): Cross-sectional width
-
-    Returns:
-        float: dSf/dA
-    """
-    dSf_dA = -2 * n**2 * A**-3 * R**(-4/3) * Q * abs(Q)
-    dSf_dR = (-4/3) * n**2 * A**-2 * R**(-4/3 - 1) * Q * abs(Q)
-
-    return dSf_dA + dSf_dR * dR_dA
-
-def dSf_dQ(A: float, Q: float, n: float, R: float) -> float:
-    """Computes the partial derivative of Sf w.r.t. Q.
-
-    Args:
-        A (float): Cross-sectional flow area
-        Q (float): Flow rate
-        n (float): Manning's coefficient
-        B (float): Cross-sectional width
-
-    Returns:
-        float: dSf/dQ
-    """
-    return 2 * abs(Q) * (n / (A * R**(2/3)))**2
-    
-def dSf_dn(A, Q, n, R):
-    return 2 * n * A**-2 * R**(-4/3) * Q * abs(Q)
-
-def dn_dh(depth: float, steepness: float, roughness: float, dry_roughness: float, wet_depth: float):
-    transition_depth = steepness * wet_depth
-    
-    if depth <= wet_depth or depth - wet_depth > transition_depth:
-        return 0
-    else:
-        return (dry_roughness - roughness) / transition_depth
     
 def dQn_dA(A, S, n, R, dR_dA):
     dQn_dR = (2/3) * A * R**(2/3 - 1) * abs(S)**0.5 / n
@@ -212,14 +211,6 @@ def dQn_dA(A, S, n, R, dR_dA):
         dQn_dA = -dQn_dA
         
     return dQn_dA
-
-def dQn_dn(A, S_0, n, R):
-    dQn_dn = -1 * A * R**(2/3) * abs(S_0)**0.5 * n**-2
-    
-    if S_0 < 0:
-        dQn_dn = -dQn_dn
-        
-    return dQn_dn
 
 def darcey_weisbach_f(n: float, R: float):
     """Computes Darcey-Weisbach's friction factor.

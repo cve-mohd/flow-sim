@@ -1,6 +1,6 @@
 from .rating_curve import RatingCurve
 from .hydrograph import Hydrograph
-from .hydraulics import normal_flow, dQn_dA, dQn_dn
+from .hydraulics import normal_flow, dQn_dA
 from .lumped_storage import LumpedStorage
 from .cross_section import CrossSection
 
