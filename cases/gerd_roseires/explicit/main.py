@@ -44,12 +44,15 @@ solver = PreissmannSolver(channel=GERD_Roseires_system,
 
 print("Simulation started.")
 
-solver.run(verbose=3, tolerance=tolerance)
+#solver.run(verbose=3, tolerance=tolerance)
 
 print("Saving results...")
 
-solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
+#solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
 
 print("Done.")
 
 # py -m cases.gerd_roseires.explicit.main
+import numpy as np
+bed_profile = np.array(object=[GERD_Roseires_system.bed_level_at(i=i) for i in range(len(GERD_Roseires_system.xs_at_node))])
+print(GERD_Roseires_system.initial_conditions[:, 0] + bed_profile)

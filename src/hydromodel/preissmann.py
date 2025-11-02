@@ -194,7 +194,7 @@ class PreissmannSolver(Solver):
         k = self.time_level
         self.depth[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
-
+        
         self.area[k] = np.array(
             object=[self.channel.area_at(i=i, h=self.depth_at(i=i)) for i in range(self.number_of_nodes)],
             dtype=np.float64
