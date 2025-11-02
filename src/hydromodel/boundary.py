@@ -54,7 +54,7 @@ class Boundary:
         self.lumped_storage = lumped_storage
     
     def condition_residual(self,
-                           area: float,
+                           depth: float,
                            flow: float,
                            time: int | float = None,
                            duration: int | float = None,
@@ -75,9 +75,7 @@ class Boundary:
         Returns:
             float: Residual
         """
-        depth = self.cross_section.depth_at(A_target=area)
-        R = self.cross_section.hydraulic_radius(hw=self.cross_section.bed+depth)
-        n = self.cross_section.get_equivalent_n(hw=self.cross_section.bed+depth)
+        hw = self.cross_section.bed+depth
         S0 = self.cross_section.bed_slope
         
         unknown = flow if self.condition_type() else depth
@@ -91,7 +89,7 @@ class Boundary:
             target = self.hydrograph.get_at(time=time)
         
         elif self.condition == 'normal_depth':
-            target = normal_flow(area=area, bed_slope=S0, roughness=n, hydraulic_radius=R)
+            target = normal_flow(bed_slope=S0, K=self.cross_section.conveyance(hw=hw))
         
         elif self.condition == 'rating_curve':
             target = self.rating_curve.discharge(stage=self.bed_level+depth, time=time)
@@ -115,6 +113,10 @@ class Boundary:
                     Y_old=Y_old,
                     time=time
                 )
+                
+                R = self.cross_section.hydraulic_radius(hw=hw)
+                n = self.cross_section.get_equivalent_n(hw=hw)
+                area = self.cross_section.area(hw=hw)
                 head_loss = self.lumped_storage.energy_loss(
                     entry_area=area, flow=flow, roughness=n, hydraulic_radius=R
                 )
@@ -138,8 +140,8 @@ class Boundary:
         
         return unknown - target
         
-    def df_dA(self,
-              area: float,
+    def df_dh(self,
+              depth: float,
               flow_rate: float,
               time: int | float = None) -> float:
         """Computes the derivative of the boundary condition equation with respect to the cross-sectional flow area.
@@ -157,33 +159,35 @@ class Boundary:
         if self.condition == 'flow_hydrograph':
             return 0
             
-        depth = self.cross_section.depth_at(A_target=area)
-        R = self.cross_section.hydraulic_radius(hw=self.cross_section.bed+depth)
-        n = self.cross_section.get_equivalent_n(hw=self.cross_section.bed+depth)
+        hw = depth + self.bed_level
         S0 = self.cross_section.bed_slope
-        dR_dA = self.cross_section.dR_dA(hw=self.cross_section.bed+depth)
+        
         dh_dA = self.cross_section.dh_dA(hw=self.cross_section.bed+depth)
             
         if self.condition == 'fixed_depth':            
             if self.lumped_storage is not None:
+                R = self.cross_section.hydraulic_radius(hw=self.cross_section.bed+depth)
+                n = self.cross_section.get_equivalent_n(hw=self.cross_section.bed+depth)
+                dR_dA = self.cross_section.dR_dA(hw=self.cross_section.bed+depth)
+                area = self.cross_section.area(hw=hw)
                 dhl_dA = self.lumped_storage.dhl_dA(entry_area=area, flow=flow_rate, roughness=n, hydraulic_radius=R, dR_dA=dR_dA)
             else:
                 dhl_dA = 0
             
-            return dh_dA - dhl_dA
+            return 1 - dhl_dA / dh_dA
         
         elif self.condition == 'normal_depth':
-            return 0 - dQn_dA(A=area, S=S0, n=n, R=R, dR_dA=dR_dA)
+            return 0 - dQn_dA(S_0=S0, dK_dA=self.cross_section.dK_dA(hw=hw)) / dh_dA
         
         elif self.condition == 'rating_curve':
             stage = self.bed_level + depth
-            return 0 - self.rating_curve.dQ_dz(stage, time=time) * dh_dA
+            return 0 - self.rating_curve.dQ_dz(stage, time=time)
             
         elif self.condition == 'stage_hydrograph':
-            return dh_dA
+            return 1
         
     def df_dQ(self,
-              area: float,
+              depth: float,
               flow_rate: float,
               duration: int | float = None,
               time: int | float = None,
@@ -204,10 +208,8 @@ class Boundary:
         if self.condition_type():
             return 1
         
-        depth = self.cross_section.depth_at(A_target=area)
-        R = self.cross_section.hydraulic_radius(hw=self.cross_section.bed+depth)
-        n = self.cross_section.get_equivalent_n(hw=self.cross_section.bed+depth)
-        
+        hw = depth + self.bed_level
+                
         if self.condition == 'fixed_depth':
             if self.lumped_storage is not None:
                 if duration is None or time is None or vol_in is None:
@@ -227,6 +229,9 @@ class Boundary:
                 )
                 dvol_dQ = 0.5 * duration
                 
+                R = self.cross_section.hydraulic_radius(hw=self.cross_section.bed+depth)
+                n = self.cross_section.get_equivalent_n(hw=self.cross_section.bed+depth)
+                area = self.cross_section.area(hw=hw)
                 dhl_dQ = self.lumped_storage.dhl_dQ(entry_area=area, flow=flow_rate, roughness=n, hydraulic_radius=R)
                 
                 return 0 - (dY_new_dvol * dvol_dQ + dhl_dQ)

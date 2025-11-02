@@ -63,7 +63,7 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.area[0, :] = self.channel.initial_conditions[:, 0]
+        self.depth[0, :] = self.channel.initial_conditions[:, 0]
         self.flow[0, :] = self.channel.initial_conditions[:, 1]
         self.unknowns = self.channel.initial_conditions.flatten()
 
@@ -105,15 +105,15 @@ class PreissmannSolver(Solver):
         """
         jacobian_matrix = np.zeros(shape=(2*self.number_of_nodes, 2*self.number_of_nodes))
 
-        jacobian_matrix[0, 0] = self.dU_dA()
+        jacobian_matrix[0, 0] = self.dU_dh()
         jacobian_matrix[0, 1] = self.dU_dQ()
 
         for row in range(1, 2 * self.number_of_nodes - 1, 2):
             spatial_node = (row - 1) // 2
             
-            jacobian_matrix[row, row - 1] = self.dC_dAi(i=spatial_node)
+            jacobian_matrix[row, row - 1] = self.dC_dh_i(i=spatial_node)
             jacobian_matrix[row, row + 0] = self.dC_dQi(i=spatial_node)
-            jacobian_matrix[row, row + 1] = self.dC_dAiplus1(i=spatial_node)
+            jacobian_matrix[row, row + 1] = self.dC_dh_i1(i=spatial_node)
             jacobian_matrix[row, row + 2] = self.dC_dQiplus1(i=spatial_node)
 
             jacobian_matrix[row + 1, row - 1] = self.dM_dAi(i=spatial_node)
@@ -121,7 +121,7 @@ class PreissmannSolver(Solver):
             jacobian_matrix[row + 1, row + 1] = self.dM_dAiplus1(i=spatial_node)
             jacobian_matrix[row + 1, row + 2] = self.dM_dQiplus1(i=spatial_node)
         
-        jacobian_matrix[-1, -2] = self.dD_dA()
+        jacobian_matrix[-1, -2] = self.dD_dh()
         jacobian_matrix[-1, -1] = self.dD_dQ()
 
         return jacobian_matrix
@@ -192,16 +192,17 @@ class PreissmannSolver(Solver):
 
         """
         k = self.time_level
-        self.area[k] = self.unknowns[ ::2]
+        self.depth[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
-        self.depth[k] = np.array(
-            object=[self.channel.depth_at(i=i, area=self.area_at(i=i)) for i in range(self.number_of_nodes)],
+
+        self.area[k] = np.array(
+            object=[self.channel.area_at(i=i, h=self.depth_at(i=i)) for i in range(self.number_of_nodes)],
             dtype=np.float64
         )
         
         if self._new_time_level:
-            self.depth[k-1] = np.array(
-                object=[self.channel.depth_at(i=i, area=self.area_at(i=i, k=k-1)) for i in range(self.number_of_nodes)],
+            self.area[k-1] = np.array(
+                object=[self.channel.area_at(i=i, h=self.depth_at(i=i, k=k-1)) for i in range(self.number_of_nodes)],
                 dtype=np.float64
             )
         
@@ -221,7 +222,7 @@ class PreissmannSolver(Solver):
 
         """
         time = self.time_level * self.time_step        
-        return self.channel.upstream_boundary.condition_residual(area=self.area_at(i=0),
+        return self.channel.upstream_boundary.condition_residual(depth=self.depth_at(i=0),
                                                                  flow=self.flow_at(i=0),
                                                                  time=time)
 
@@ -321,13 +322,13 @@ class PreissmannSolver(Solver):
         time = self.time_level * self.time_step
         volume = 0.5 * (self.flow_at(k=-1, i=-1) + self.flow_at(i=-1)) * self.time_step
         
-        return self.channel.downstream_boundary.condition_residual(area=self.area_at(i=-1),
+        return self.channel.downstream_boundary.condition_residual(depth=self.depth_at(i=-1),
                                                                    flow=self.flow_at(i=-1),
                                                                    time=time,
                                                                    vol_in=volume,
                                                                    duration=self.time_step)
             
-    def dU_dA(self) -> int:
+    def dU_dh(self) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow area.
 
@@ -337,20 +338,21 @@ class PreissmannSolver(Solver):
             dU/dA
 
         """
-        A = self.area_at(i=0)
+        h = self.depth_at(i=0)
         t = self.time_level * self.time_step
         Q = self.flow_at(i=0)
                             
-        dU = self.channel.upstream_boundary.df_dA(area=A,
+        dU = self.channel.upstream_boundary.df_dh(depth=h,
                                                   flow_rate=Q,
                                                   time=t)
+        return dU
         if not self.regularization:
             return dU
         else:
             dU_dAreg = dU            
             volume = 0.5 * (Q + self.flow_at(k=-1, i=0))
             
-            dU_dQe = self.channel.upstream_boundary.df_dQ(area=A,
+            dU_dQe = self.channel.upstream_boundary.df_dQ(depth=h,
                                                           flow_rate=Q,
                                                           duration=self.time_step,
                                                           time=t,
@@ -370,24 +372,24 @@ class PreissmannSolver(Solver):
         """
         t = self.time_level * self.time_step
         Q = self.flow_at(i=0)
-        A = self.area_at(i=0)
+        h = self.depth_at(i=0)
         volume = 0.5 * (Q + self.flow_at(k=-1, i=0))
         
         dU = self.channel.upstream_boundary.df_dQ(
-            area=A,
+            depth=h,
             flow_rate=Q,
             duration=self.time_step,
             time=t,
             vol_in=volume
         )
-        
+        return dU
         if not self.regularization:
             return dU
         else:
             dU_dQe = dU
             return dU_dQe * self.dQe_dQ(i=0)
 
-    def dC_dAiplus1(self, i) -> float:
+    def dC_dh_i1(self, i) -> float:
         """
         Computes the derivative of the continuity residual w.r.t. flow area of the advanced spatial node.
 
@@ -398,17 +400,19 @@ class PreissmannSolver(Solver):
 
         """
         d_dA_dt_dA = self.time_diff(k1_i1=1)
-        d_dQ_dx_dA = 0
-
+        d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i+1)
+        d_dQ_dx_dh = 0
+        
+        return d_dA_dt_dh + d_dQ_dx_dh
         if not self.regularization:
-            return d_dA_dt_dA + d_dQ_dx_dA
+            return d_dA_dt_dA + d_dQ_dx_dh
         else:
-            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dA
+            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dh
             dC_dQe = self.dC_dQiplus1(i, eff=True)
             
             return dC_dAreg * self.dAreg_dA(i=i+1) + dC_dQe * self.dQe_dA(i=i+1)
 
-    def dC_dAi(self, i) -> float:
+    def dC_dh_i(self, i) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the cross-sectional area of the current spatial point.
@@ -420,12 +424,14 @@ class PreissmannSolver(Solver):
 
         """
         d_dA_dt_dA = self.time_diff(k1_i=1)
-        d_dQ_dx_dA = 0
-
+        d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i)
+        d_dQ_dx_dh = 0
+        
+        return d_dA_dt_dh + d_dQ_dx_dh
         if not self.regularization:
-            return d_dA_dt_dA + d_dQ_dx_dA
+            return d_dA_dt_dh + d_dQ_dx_dh
         else:
-            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dA
+            dC_dAreg = d_dA_dt_dA + d_dQ_dx_dh
             dC_dQe = self.dC_dQi(i, eff=True)
             
             return dC_dAreg * self.dAreg_dA(i=i) + dC_dQe * self.dQe_dA(i=i)
@@ -484,10 +490,11 @@ class PreissmannSolver(Solver):
         # Flow variables:
         A = self.area_at(i=i+1)
         Q = self.flow_at(i=i+1)
+        h = self.depth_at(i=i+1)
         
         # Basic derivatives:
         dY_dA = self.channel.dh_dA(i=i+1, h=self.depth_at(i=i+1))
-        dSe_dA = self.channel.dSe_dA(A=A, Q=Q, i=i+1)
+        dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i+1)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -523,6 +530,8 @@ class PreissmannSolver(Solver):
             avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
             )
         
+        return dM_dA * self.dA_dh(i=i+1)
+        
         if not self.regularization:
             return dM_dA
         else:
@@ -543,10 +552,11 @@ class PreissmannSolver(Solver):
         # Flow variables:
         A = self.area_at(i=i)
         Q = self.flow_at(i=i)
+        h = self.depth_at(i=i)
         
         # Basic derivatives:
-        dY_dA = self.channel.dh_dA(i=i, h=self.depth_at(i=i))
-        dSe_dA = self.channel.dSe_dA(A=A, Q=Q, i=i)
+        dY_dA = self.channel.dh_dA(i=i, h=h)
+        dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -582,6 +592,8 @@ class PreissmannSolver(Solver):
             avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
             )
         
+        return dM_dA * self.dA_dh(i=i)
+        
         if not self.regularization:
             return dM_dA
         else:
@@ -601,9 +613,10 @@ class PreissmannSolver(Solver):
         # Flow variables:
         A = self.area_at(i=i+1)
         Q = self.flow_at(i=i+1)
+        h = self.depth_at(i=i+1)
         
         # Basic derivatives:
-        dSe_dQ = self.channel.dSe_dQ(A=A, Q=Q, i=i+1)
+        dSe_dQ = self.channel.dSe_dQ(h=h, Q=Q, i=i+1)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -658,9 +671,10 @@ class PreissmannSolver(Solver):
         # Flow variables:
         A = self.area_at(i=i)
         Q = self.flow_at(i=i)
+        h = self.depth_at(i=i)
         
         # Basic derivatives:
-        dSe_dQ = self.channel.dSe_dQ(A=A, Q=Q, i=i)
+        dSe_dQ = self.channel.dSe_dQ(h=h, Q=Q, i=i)
         
         # Finite differences:
         avg_A = self.cell_avg(
@@ -701,7 +715,7 @@ class PreissmannSolver(Solver):
         else:
             return dM_dQ * self.dQe_dQ(i=i)
 
-    def dD_dA(self) -> float:
+    def dD_dh(self) -> float:
         """
         Computes the derivative of the downstream boundary condition equation
         with respect to the cross-sectional area of the downstream node.
@@ -712,13 +726,14 @@ class PreissmannSolver(Solver):
             The computed derivative.
 
         """
-        A = self.area_at(i=-1)
+        h = self.depth_at(i=-1)
         Q = self.flow_at(i=-1)
         t = self.time_level * self.time_step
                                 
-        dD = self.channel.downstream_boundary.df_dA(area=A,
+        dD = self.channel.downstream_boundary.df_dh(depth=h,
                                                     flow_rate=Q,
                                                     time=t)
+        return dD
         if not self.regularization:
             return dD
         else:
@@ -747,18 +762,18 @@ class PreissmannSolver(Solver):
 
         """
         t = self.time_level * self.time_step
-        A = self.area_at(i=-1)
+        h = self.depth_at(i=-1)
         Q = self.flow_at(i=-1)
         volume = 0.5 * (self.flow_at(k=-1, i=-1) + Q) * self.time_step
         
         dD = self.channel.downstream_boundary.df_dQ(
-            area=A,
+            depth=h,
             flow_rate=Q,
             duration=self.time_step,
             vol_in=volume,
             time=t
         )
-        
+        return dD
         if not self.regularization:
             return dD
         else:

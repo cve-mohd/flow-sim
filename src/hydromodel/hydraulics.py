@@ -203,14 +203,16 @@ def dFr_dQ(T: float, A: float):
     
     return dV_dQ * (g*D)**(-0.5)
     
-def dQn_dA(A, S, n, R, dR_dA):
-    dQn_dR = (2/3) * A * R**(2/3 - 1) * abs(S)**0.5 / n
-    
-    dQn_dA = R**(2/3) * abs(S)**0.5 / n + dQn_dR * dR_dA
-    if S < 0:
-        dQn_dA = -dQn_dA
+def dQn_dA(S_0, A = None, n = None, R = None, dR_dA = None, dK_dA = None):
+    if dK_dA is None:
+        dK_dA = dK_dA_(A=A, n=n, R=R, dR_dA=dR_dA)
         
-    return dQn_dA
+    dQ_dA = dK_dA * np.abs(S_0)**0.5
+    
+    if S_0 < 0:
+        dQ_dA = -dQ_dA
+                    
+    return dQ_dA
 
 def darcey_weisbach_f(n: float, R: float):
     """Computes Darcey-Weisbach's friction factor.

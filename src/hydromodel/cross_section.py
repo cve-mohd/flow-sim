@@ -232,7 +232,7 @@ class CrossSection:
         K_total = K_sum ** (2 / 3)
         return hydraulics.Sf(K=K_total, Q=Q)
     
-    def dSf_dA(self, h, Q):
+    def dSf_dh(self, h, Q):
         hw = h + self.bed
         
         if not self._is_rect:
@@ -260,7 +260,7 @@ class CrossSection:
         K_eq = K_sum ** (2 / 3)
         dK_dA_eq = (2 / 3) * K_sum ** (-1 / 3) * dK_dA_sum
         
-        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq)
+        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq) / self.dh_dA
     
     def dSf_dQ(self, h: float, Q: float) -> float:
         hw = h + self.bed
@@ -363,7 +363,7 @@ class CrossSection:
         A = self.area(hw=hw)
         dR_dA = self.dR_dA(hw=hw)
         
-        return hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature), dR_dA=dR_dA, T=T)
+        return hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature), dR_dA=dR_dA, T=T) / self.dh_dA
         
     def dSc_dQ(self, h: float, Q: float) -> float:
         if self.curvature == 0:
@@ -445,13 +445,10 @@ class CrossSection:
         Returns:
             float: Normal flow rate.
         """
-        A = self.area(hw=hw)
-        R = self.hydraulic_radius(hw=hw)
-        n = self.get_equivalent_n(hw=hw)
-        
-        return hydraulics.normal_flow(area=A, bed_slope=self.bed_slope, roughness=n, hydraulic_radius=R)
+        K = self.conveyance(hw=hw)        
+        return hydraulics.normal_flow(bed_slope=self.bed_slope, K=K)
     
-    def normal_area(self, Q_target: float, hw_max = None) -> float:
+    def normal_depth(self, Q_target: float, hw_max = None) -> float:
         """Computes the normal flow area for a given flow rate.
 
         Args:
@@ -467,15 +464,15 @@ class CrossSection:
             return Q_target - self.normal_flow(hw=hw)
         
         hw = brentq(f, self.bed, hw_max)
-        return self.area(hw=hw)
+        return hw - self.bed
 
-    def get_subchannels(self, h):
+    def get_subchannels(self, hw):
         """
         Identify contiguous wetted regions (subchannels) in the cross-section.
         Each subchannel is defined by consecutive x,z points where z < h.
         Returns a list of dicts, each containing x and z arrays for the segment.
         """
-        wet = self.z < h
+        wet = self.z < hw
         subchannels = []
         i = 0
         n = len(wet)
@@ -496,14 +493,14 @@ class CrossSection:
             x_seg = self.x[start:end]
             z_seg = self.z[start:end]
             # optional: add intersection points with water surface at edges
-            if start > 0 and z_seg[0] > h:
-                x0 = np.interp(h, [self.z[start-1], self.z[start]], [self.x[start-1], self.x[start]])
+            if start > 0 and z_seg[0] > hw:
+                x0 = np.interp(hw, [self.z[start-1], self.z[start]], [self.x[start-1], self.x[start]])
                 x_seg = np.insert(x_seg, 0, x0)
-                z_seg = np.insert(z_seg, 0, h)
-            if end < n and self.z[end-1] < h and self.z[end] > h:
-                x1 = np.interp(h, [self.z[end-1], self.z[end]], [self.x[end-1], self.x[end]])
+                z_seg = np.insert(z_seg, 0, hw)
+            if end < n and self.z[end-1] < hw and self.z[end] > hw:
+                x1 = np.interp(hw, [self.z[end-1], self.z[end]], [self.x[end-1], self.x[end]])
                 x_seg = np.append(x_seg, x1)
-                z_seg = np.append(z_seg, h)
+                z_seg = np.append(z_seg, hw)
 
             subchannels.append({"x": x_seg, "z": z_seg})
 

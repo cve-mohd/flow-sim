@@ -38,10 +38,10 @@ class Solver:
         self.channel.initialize_conditions(n_nodes=self.number_of_nodes)
         self.num_celerity = self.spatial_step / self.time_step
 
-        self.area = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
-        self.flow = np.empty_like(self.area)
-        self.depth = np.empty_like(self.area)
-                
+        self.flow = np.empty(shape=(self.max_timelevels, self.number_of_nodes), dtype=np.float64)
+        self.depth = np.empty_like(self.flow)
+        self.area = np.empty_like(self.flow)
+                        
         self._type = None
         self._solved = False
         self._new_time_level = False
@@ -53,7 +53,7 @@ class Solver:
         self.number_of_nodes = round(self.channel.length / self.spatial_step) + 1
         self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
         
-    def prepare_results(self) -> None:
+    def prepare_results(self) -> None:                
         self.velocity = self.flow / self.area
         self.bed_profile = np.array(object=[xs.bed for xs in self.channel.xs_at_node], dtype=np.float64)
         self.level = self.depth + self.bed_profile
@@ -210,8 +210,7 @@ class Solver:
         if i is None:
             raise ValueError("Spatial node must be specified.")
         
-        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
-        A = self.area[k, i]
+        A = self.channel.area_at(i=i, h=self.depth_at(k=k, i=i))
             
         if regularization is None:
             regularization = self.regularization
@@ -254,9 +253,12 @@ class Solver:
         return self.channel.xs_at_node[i].bed + self.depth_at(k=k, i=i, regularization=regularization)
         
     def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
-        return self.channel.Se(A=self.area_at(k=k, i=i, regularization=regularization),
+        return self.channel.Se(h=self.depth_at(k=k, i=i, regularization=regularization),
                                Q=self.flow_at(k=k, i=i, chi_scaling=chi_scaling),
                                i=i)
+        
+    def dA_dh(self, k: int = None, i: int = None, regularization: bool = None):
+        return 1.0 / self.channel.dh_dA(i=i, h=self.depth_at(k=k, i=i, regularization=regularization))
     
     def A_reg(self, A):
         """

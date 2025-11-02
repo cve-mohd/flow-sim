@@ -50,7 +50,7 @@ class Channel:
         self.coords_chainages = None
         self.coords = None
     
-    def Se(self, A: float, Q: float, i: int) -> float:
+    def Se(self, h: float, Q: float, i: int) -> float:
         """Computes the energy slope at a location.
 
         Args:
@@ -61,7 +61,6 @@ class Channel:
         Returns:
             float: Energy slope (Se)
         """
-        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
         Sf = xs.friction_slope(h=h, Q=Q)
@@ -69,7 +68,7 @@ class Channel:
             
         return Sf + Sc
     
-    def dSe_dA(self, A: float, Q: float, i: int) -> float:
+    def dSe_dA(self, h: float, Q: float, i: int) -> float:
         """Computes the derivative of the energy slope w.r.t. flow area.
 
         Args:
@@ -80,15 +79,14 @@ class Channel:
         Returns:
             float: dSe/dA
         """
-        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
-        dSf_dA = xs.dSf_dA(h=h, Q=Q)
+        dSf_dA = xs.dSf_dh(h=h, Q=Q)
         dSc_dA = xs.dSc_dA(h=h, Q=Q)
             
         return dSf_dA + dSc_dA
     
-    def dSe_dQ(self, A: float, Q: float, i: int) -> float:
+    def dSe_dQ(self, h: float, Q: float, i: int) -> float:
         """Computes the derivative of the energy slope w.r.t. flow rate.
 
         Args:
@@ -99,7 +97,6 @@ class Channel:
         Returns:
             float: dSe/dQ
         """
-        h = self.depth_at(i=i, area=A)
         xs: CrossSection = self.xs_at_node[i]
         
         dSf_dQ = xs.dSf_dQ(h=h, Q=Q)
@@ -323,9 +320,9 @@ class Channel:
     def _steady_conditions(self, n_nodes, Q):
         for i in range(n_nodes):
             xs: CrossSection = self.xs_at_node[i]
-            A = xs.normal_area(Q_target=Q)
+            h = xs.normal_depth(Q_target=Q)
                 
-            self.initial_conditions[i, 0] = A
+            self.initial_conditions[i, 0] = h
             self.initial_conditions[i, 1] = Q
 
     def _gvh_conditions(self, n_nodes, Q):
@@ -333,12 +330,13 @@ class Channel:
         h = self.downstream_boundary.initial_depth
             
             # Add last node
-        A = self.area_at(i=-1, h=h)
-        self.initial_conditions[n_nodes-1, 0] = A
+        self.initial_conditions[n_nodes-1, 0] = h
         self.initial_conditions[n_nodes-1, 1] = Q
 
         for i in reversed(range(n_nodes-1)):
-            Fr = hydraulics.froude_num(T=self.top_width(i=i, h=h), A=A, Q=Q)
+            A = self.area_at(i=i, h=h)
+            T = self.top_width(i=i, h=h)
+            Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
             denominator = 1 - Fr**2
                 
             if abs(denominator) < 1e-6:
@@ -346,17 +344,15 @@ class Channel:
             else:
                 dz = self.bed_level_at(i+1) - self.bed_level_at(i)
                 S0 = -dz/dx
-                Sf = self.Se(A=A, Q=Q, i=i)
+                Sf = self.Se(h=h, Q=Q, i=i)
                 dh_dx = (S0 - Sf) / denominator
 
             h -= dh_dx * dx
 
             if h < 0:
                 raise ValueError("GVF failed.")
-
-            A = self.area_at(i=i, h=h)
                 
-            self.initial_conditions[i, 0] = A
+            self.initial_conditions[i, 0] = h
             self.initial_conditions[i, 1] = Q
 
     def _linear_conditions(self, n_nodes, Q):
@@ -367,7 +363,6 @@ class Channel:
             distance = self.length * i / (n_nodes-1)
                 
             h = h0 + (hN - h0) * distance / self.length
-            A = self.area_at(i=i, h=h)
                 
-            self.initial_conditions[i, 0] = A
+            self.initial_conditions[i, 0] = h
             self.initial_conditions[i, 1] = Q
