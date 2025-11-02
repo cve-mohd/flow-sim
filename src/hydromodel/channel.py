@@ -187,14 +187,6 @@ class Channel:
         hw = h + xs.bed
         return xs.top_width(hw)
         
-    def depth_at(self, i, area):
-        """
-        Compute depth h for node i given target flow area A_target.
-        Evaluates A(h) directly from the cross_section.area() function.
-        """
-        xs: CrossSection = self.xs_at_node[i]
-        return xs.depth_at(A_target=area)
-
     def bed_level_at(self, i):
         xs: CrossSection = self.xs_at_node[i]
         return xs.bed

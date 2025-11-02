@@ -165,7 +165,7 @@ class PreissmannSolver(Solver):
                 delta = np.linalg.solve(J, -R)
                 self.unknowns += delta
                 
-                error = euclidean_norm(delta)
+                error = euclidean_norm(R)
                 
                 if verbose == 3:
                     print(f">> Iteration #{iteration}: Error = {error}")    

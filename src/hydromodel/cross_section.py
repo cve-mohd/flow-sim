@@ -244,7 +244,7 @@ class CrossSection:
         if _n == 1:
             K = self.conveyance(hw=hw)
             dK_dA = self.dK_dA(hw=hw)
-            return hydraulics.dSf_dA(Q=Q, K=K, dK_dA=dK_dA)
+            return hydraulics.dSf_dA(Q=Q, K=K, dK_dA=dK_dA) / self.dh_dA(hw=hw)
 
         K_sum = 0.0
         dK_dA_sum = 0.0
@@ -260,7 +260,7 @@ class CrossSection:
         K_eq = K_sum ** (2 / 3)
         dK_dA_eq = (2 / 3) * K_sum ** (-1 / 3) * dK_dA_sum
         
-        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq) / self.dh_dA
+        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq) / self.dh_dA(hw=hw)
     
     def dSf_dQ(self, h: float, Q: float) -> float:
         hw = h + self.bed
@@ -394,41 +394,6 @@ class CrossSection:
         R1 = self.hydraulic_radius(hw - dh)
         R2 = self.hydraulic_radius(hw + dh)
         return (R2 - R1) / (A2 - A1)
-    
-    def depth_at(self, A_target, h_min=0.0, h_max=None, tol=1e-8, max_iter=300):
-        """
-        Compute depth h for node i given target flow area A_target.
-        Evaluates A(h) directly from the cross_section.area() function.
-        """
-        # Set default upper bound (covers all likely depths)
-        if self._is_rect:
-            return A_target / self.width
-        
-        if h_max is None:
-            h_max = max(self.z) - min(self.z) + 100.0  # large enough upper bound
-            A_high = self.area(hw=self.bed+h_max)
-
-        A_low = self.area(hw=self.bed+h_min)
-        A_high = self.area(hw=self.bed+h_max)
-
-        if not (A_low <= A_target <= A_high):
-            raise ValueError("A_target outside valid area range for this cross-section")
-
-        for _ in range(max_iter):
-            h_mid = 0.5 * (h_min + h_max)
-            A_mid = self.area(hw=self.bed+h_mid)
-
-            if abs(A_mid - A_target) < tol:
-                return h_mid
-
-            if A_mid < A_target:
-                h_min = h_mid
-            else:
-                h_max = h_mid
-
-        # Return midpoint if not converged
-        print(f'not converged')
-        return 0.5 * (h_min + h_max)
     
     def dh_dA(self, hw, dh=1e-6):
         A1 = self.area(hw - dh)
