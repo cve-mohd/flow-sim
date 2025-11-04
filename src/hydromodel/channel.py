@@ -81,7 +81,7 @@ class Channel:
         """
         xs: CrossSection = self.xs_at_node[i]
         
-        dSf_dA = xs.dSf_dh(h=h, Q=Q)
+        dSf_dA = xs.dSf_dA(h=h, Q=Q)
         dSc_dA = xs.dSc_dA(h=h, Q=Q)
             
         return dSf_dA + dSc_dA
@@ -172,28 +172,25 @@ class Channel:
         self.xs_chainages = chainages
         self.input_xs = sections
     
-    def area_at(self, i, h):
+    def area_at(self, i, hw):
         xs: CrossSection = self.xs_at_node[i]
-        hw = h + xs.bed
         return xs.area(hw)
 
-    def hydraulic_radius(self, i, h):
+    def hydraulic_radius(self, i, hw):
         xs: CrossSection = self.xs_at_node[i]
-        hw = h + xs.bed
         return xs.hydraulic_radius(hw)
 
-    def top_width(self, i, h):
+    def top_width(self, i, hw):
         xs: CrossSection = self.xs_at_node[i]
-        hw = h + xs.bed
         return xs.top_width(hw)
         
     def bed_level_at(self, i):
         xs: CrossSection = self.xs_at_node[i]
-        return xs.bed
+        return xs.z_min
     
-    def dh_dA(self, i, h):
+    def dh_dA(self, i, hw):
         xs: CrossSection = self.xs_at_node[i]
-        return xs.dh_dA(hw=xs.bed+h)
+        return xs.dh_dA(hw=hw)
             
     def _initialize_geometry(self, n_nodes: int):
         """
@@ -243,7 +240,7 @@ class Channel:
             # interpolate geometry
             if xs_left._is_rect and xs_right._is_rect:
                 width = (1 - alpha) * xs_left.width + alpha * xs_right.width
-                bed = (1 - alpha) * xs_left.bed + alpha * xs_right.bed
+                bed = (1 - alpha) * xs_left.z_min + alpha * xs_right.z_min
                 cs_interp = CrossSection(width=width, bed=bed)
             else:
                 x_min = min(0 if xs_left._is_rect else xs_left.x[0],
@@ -258,8 +255,8 @@ class Channel:
                 dx = max(dx, (x_max-x_min)*1e-4, 0.01)
                 X = np.arange(x_min, x_max + dx, dx)
 
-                z1 = xs_left.bed * np.ones_like(X) if xs_left._is_rect else np.interp(X, xs_left.x, xs_left.z, left=xs_left.z[0], right=xs_left.z[-1])
-                z2 = xs_right.bed * np.ones_like(X) if xs_right._is_rect else np.interp(X, xs_right.x, xs_right.z, left=xs_right.z[0], right=xs_right.z[-1])
+                z1 = np.array(object=[xs_left.z_at(x=x_) for x_ in X], dtype=np.float64)
+                z2 = np.array(object=[xs_right.z_at(x=x_) for x_ in X], dtype=np.float64)
                 Z = (1 - alpha) * z1 + alpha * z2
                 
                 # construct interpolated cross-section
@@ -279,7 +276,7 @@ class Channel:
             cs_interp.left_fp_limit = left_fp_limit
             cs_interp.right_fp_limit = right_fp_limit
             cs_interp.curvature = curvatures[i]
-            cs_interp.bed_slope = (xs_right.bed - xs_left.bed) / (ch_left - ch_right)
+            cs_interp.bed_slope = (xs_right.z_min - xs_left.z_min) / (ch_left - ch_right)
                 
             self.xs_at_node.append(cs_interp)
 
@@ -299,7 +296,7 @@ class Channel:
         us_xs = CrossSection(width=self.width, bed = self.upstream_boundary.bed_level, n=self.roughness)
         ds_xs = CrossSection(width=self.width, bed=self.downstream_boundary.bed_level, n=self.roughness)
         
-        bed_slope = (self.upstream_boundary.bed_level - self.downstream_boundary.bed_level) / self.length
+        bed_slope = (us_xs.z_min - ds_xs.z_min) / self.length
         us_xs.bed_slope = bed_slope
         ds_xs.bed_slope = bed_slope
         
@@ -312,6 +309,9 @@ class Channel:
     def _steady_conditions(self, n_nodes, Q):
         for i in range(n_nodes):
             xs: CrossSection = self.xs_at_node[i]
+            if xs.bed_slope is None:
+                raise ValueError("Bed slope must be defined.")
+        
             h = xs.normal_depth(Q_target=Q)
                 
             self.initial_conditions[i, 0] = h
@@ -320,26 +320,31 @@ class Channel:
     def _gvh_conditions(self, n_nodes, Q):
         dx = self.length / (n_nodes - 1)
         h = self.downstream_boundary.initial_depth
+        hw = self.downstream_boundary.initial_stage
             
-            # Add last node
+        # Add last node
         self.initial_conditions[n_nodes-1, 0] = h
         self.initial_conditions[n_nodes-1, 1] = Q
 
         for i in reversed(range(n_nodes-1)):
-            A = self.area_at(i=i, h=h)
-            T = self.top_width(i=i, h=h)
-            Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
+            Fr = hydraulics.froude_num(
+                T = self.top_width(i=i, hw=hw),
+                A = self.area_at(i=i, hw=hw),
+                Q = Q)
+            
             denominator = 1 - Fr**2
                 
             if abs(denominator) < 1e-6:
                 dh_dx = 0.0
             else:
-                dz = self.bed_level_at(i+1) - self.bed_level_at(i)
+                #dz = self.bed_level_at(i+1) - self.bed_level_at(i)
+                dz = self.xs_at_node[i+1].depth_weighted_bed(hw=hw) - self.xs_at_node[i].depth_weighted_bed(hw=hw)
                 S0 = -dz/dx
                 Sf = self.Se(h=h, Q=Q, i=i)
                 dh_dx = (S0 - Sf) / denominator
 
             h -= dh_dx * dx
+            hw = h + self.bed_level_at(i=i)
 
             if h < 0:
                 raise ValueError("GVF failed.")

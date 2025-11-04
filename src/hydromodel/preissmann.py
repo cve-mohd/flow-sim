@@ -112,14 +112,14 @@ class PreissmannSolver(Solver):
             spatial_node = (row - 1) // 2
             
             jacobian_matrix[row, row - 1] = self.dC_dh_i(i=spatial_node)
-            jacobian_matrix[row, row + 0] = self.dC_dQi(i=spatial_node)
-            jacobian_matrix[row, row + 1] = self.dC_dh_i1(i=spatial_node)
-            jacobian_matrix[row, row + 2] = self.dC_dQiplus1(i=spatial_node)
+            jacobian_matrix[row, row + 0] = self.dC_dQ_i(i=spatial_node)
+            jacobian_matrix[row, row + 1] = self.dC_dh_ip1(i=spatial_node)
+            jacobian_matrix[row, row + 2] = self.dC_dQ_ip1(i=spatial_node)
 
-            jacobian_matrix[row + 1, row - 1] = self.dM_dAi(i=spatial_node)
-            jacobian_matrix[row + 1, row + 0] = self.dM_dQi(i=spatial_node)
-            jacobian_matrix[row + 1, row + 1] = self.dM_dAiplus1(i=spatial_node)
-            jacobian_matrix[row + 1, row + 2] = self.dM_dQiplus1(i=spatial_node)
+            jacobian_matrix[row + 1, row - 1] = self.dM_dh_i(i=spatial_node)
+            jacobian_matrix[row + 1, row + 0] = self.dM_dQ_i(i=spatial_node)
+            jacobian_matrix[row + 1, row + 1] = self.dM_dh_ip1(i=spatial_node)
+            jacobian_matrix[row + 1, row + 2] = self.dM_dQ_ip1(i=spatial_node)
         
         jacobian_matrix[-1, -2] = self.dD_dh()
         jacobian_matrix[-1, -1] = self.dD_dQ()
@@ -136,9 +136,9 @@ class PreissmannSolver(Solver):
         while running:
             self.time_level += 1
             self._new_time_level = True
-            if self.time_level >= self.max_timelevels:
+            if self.time_level >= self.number_of_time_levels:
                 running = False
-                self.time_level = self.max_timelevels-1
+                self.time_level = self.number_of_time_levels-1
                 break
             
             if verbose >= 1:
@@ -194,18 +194,7 @@ class PreissmannSolver(Solver):
         k = self.time_level
         self.depth[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
-        
-        self.area[k] = np.array(
-            object=[self.channel.area_at(i=i, h=self.depth_at(i=i)) for i in range(self.number_of_nodes)],
-            dtype=np.float64
-        )
-        
-        if self._new_time_level:
-            self.area[k-1] = np.array(
-                object=[self.channel.area_at(i=i, h=self.depth_at(i=i, k=k-1)) for i in range(self.number_of_nodes)],
-                dtype=np.float64
-            )
-        
+                
     def upstream_residual(self) -> float:
         """
         Computes the residual of the upstream boundary condition equation.
@@ -389,7 +378,7 @@ class PreissmannSolver(Solver):
             dU_dQe = dU
             return dU_dQe * self.dQe_dQ(i=0)
 
-    def dC_dh_i1(self, i) -> float:
+    def dC_dh_ip1(self, i) -> float:
         """
         Computes the derivative of the continuity residual w.r.t. flow area of the advanced spatial node.
 
@@ -408,7 +397,7 @@ class PreissmannSolver(Solver):
             return d_dA_dt_dA + d_dQ_dx_dh
         else:
             dC_dAreg = d_dA_dt_dA + d_dQ_dx_dh
-            dC_dQe = self.dC_dQiplus1(i, eff=True)
+            dC_dQe = self.dC_dQ_ip1(i, eff=True)
             
             return dC_dAreg * self.dAreg_dA(i=i+1) + dC_dQe * self.dQe_dA(i=i+1)
 
@@ -432,11 +421,11 @@ class PreissmannSolver(Solver):
             return d_dA_dt_dh + d_dQ_dx_dh
         else:
             dC_dAreg = d_dA_dt_dA + d_dQ_dx_dh
-            dC_dQe = self.dC_dQi(i, eff=True)
+            dC_dQe = self.dC_dQ_i(i, eff=True)
             
             return dC_dAreg * self.dAreg_dA(i=i) + dC_dQe * self.dQe_dA(i=i)
 
-    def dC_dQiplus1(self, i, eff = False) -> float:
+    def dC_dQ_ip1(self, i, eff = False) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the advanced spatial point.
@@ -456,7 +445,7 @@ class PreissmannSolver(Solver):
             dC_dQe = d_dA_dt_dQ + d_dQ_dx_dQ
             return dC_dQe * self.dQe_dQ(i=i+1)
     
-    def dC_dQi(self, i, eff = False) -> float:
+    def dC_dQ_i(self, i, eff = False) -> float:
         """
         Computes the derivative of the continuity equation with respect to
         the discharge at the current spatial point.
@@ -476,7 +465,7 @@ class PreissmannSolver(Solver):
             dC_dQe = d_dA_dt_dQ + d_dQ_dx_dQ
             return dC_dQe * self.dQe_dQ(i=i)
 
-    def dM_dAiplus1(self, i) -> float:
+    def dM_dh_ip1(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the advanced spatial point.
@@ -493,7 +482,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i+1)
         
         # Basic derivatives:
-        dY_dA = self.channel.dh_dA(i=i+1, h=self.depth_at(i=i+1))
+        dY_dA = self.dY_dA_at(i=i+1)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i+1)
         
         # Finite differences:
@@ -535,10 +524,10 @@ class PreissmannSolver(Solver):
         if not self.regularization:
             return dM_dA
         else:
-            dM_dQe = self.dM_dQiplus1(i, eff=True)
+            dM_dQe = self.dM_dQ_ip1(i, eff=True)
             return dM_dA * self.dAreg_dA(i=i+1) + dM_dQe * self.dQe_dA(i=i+1)
 
-    def dM_dAi(self, i) -> float:
+    def dM_dh_i(self, i) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the cross-sectional area at the current spatial point.
@@ -555,7 +544,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i)
         
         # Basic derivatives:
-        dY_dA = self.channel.dh_dA(i=i, h=h)
+        dY_dA = self.dY_dA_at(i=i)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i)
         
         # Finite differences:
@@ -597,9 +586,9 @@ class PreissmannSolver(Solver):
         if not self.regularization:
             return dM_dA
         else:
-            return dM_dA * self.dAreg_dA(i=i) + self.dM_dQi(i, eff=True) * self.dQe_dA(i=i)
+            return dM_dA * self.dAreg_dA(i=i) + self.dM_dQ_i(i, eff=True) * self.dQe_dA(i=i)
 
-    def dM_dQiplus1(self, i, eff=False) -> float:
+    def dM_dQ_ip1(self, i, eff=False) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the advanced spatial point.
@@ -657,7 +646,7 @@ class PreissmannSolver(Solver):
         else:
             return dM_dQ * self.dQe_dQ(i=i+1)
 
-    def dM_dQi(self, i, eff = False) -> float:
+    def dM_dQ_i(self, i, eff = False) -> float:
         """
         Computes the derivative of the momentum equation with respect to
         the discharge at the current spatial point.

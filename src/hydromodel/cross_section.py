@@ -26,7 +26,7 @@ class CrossSection:
         if width is not None and bed is not None:
             self._is_rect = True
             self.width = float(width)
-            self.bed = float(bed)
+            self.z_min = float(bed)
 
             # no arrays required
             self._n = 2
@@ -52,7 +52,7 @@ class CrossSection:
             self.x = x
             self.z = z
             self._n = x.size
-            self.bed = float(np.min(self.z))
+            self.z_min = float(np.min(self.z))
             self.width = float(np.max(self.x) - np.min(self.x))
 
             # Precompute segment geometry
@@ -84,115 +84,93 @@ class CrossSection:
         self.bed_slope = None
 
     def properties(self, hw):
-        """Return (A, P, R, T) for scalar hw. Results are cached for repeated calls
-        with the same hw to avoid recomputation.
-        """
+        """Return (A, P, R, T) for scalar hw."""
         hw = float(hw)
         if self._last_hw is not None and hw == self._last_hw:
             return self._last_res
 
         if self._is_rect:
-            depth = max(0.0, hw - self.bed)
+            depth = max(0.0, hw - self.z_min)
             A = self.width * depth
             if depth <= 0.0:
-                P = 0.0
-                T = 0.0
-                R = 0.0
+                res = (0.0, 0.0, 0.0, 0.0)
             else:
-                # vertical walls assumed
                 P = self.width + 2.0 * depth
                 T = self.width
                 R = A / P
-            res = (A, P, R, T)
-            self._last_hw = hw
-            self._last_res = res
+                res = (A, P, R, T)
+                
+            self._last_hw, self._last_res = hw, res
             return res
 
-        # General polyline
-        # Depths at nodes
-        d = hw - self.z
-        d_clip = np.maximum(d, 0.0)
-
-        # Area using trapezoidal rule on depths vs x
-        # A = sum( (d_i + d_{i+1})/2 * dx_i )
-        A = np.dot((d_clip[:-1] + d_clip[1:]) * 0.5, self._dx)
-
-        # Top width: find leftmost and rightmost intersection with hw
-        below = d > 0.0
+        z = self.z
+        x = self.x
+        h = hw - z
+        below = h > 0.0
         if not np.any(below):
-            T = 0.0
-        else:
-            i_left = np.argmax(below)            # first True
-            i_right = self._n - np.argmax(below[::-1]) - 1  # last True
+            res = (0.0, 0.0, 0.0, 0.0)
+            self._last_hw, self._last_res = hw, res
+            return res
 
-            # left intersection
-            if i_left == 0:
-                xl = self.x[0]
-            else:
-                z0 = self.z[i_left - 1]
-                z1 = self.z[i_left]
-                x0 = self.x[i_left - 1]
-                x1 = self.x[i_left]
-                if z1 == z0:
-                    xl = x0
-                else:
-                    t = (hw - z0) / (z1 - z0)
-                    t = np.clip(t, 0.0, 1.0)
-                    xl = x0 + t * (x1 - x0)
+        # Identify continuous wetted segments
+        wet_segments = []
+        i = 0
+        n = len(below)
+        while i < n:
+            if below[i]:
+                start = i
+                while i + 1 < n and below[i + 1]:
+                    i += 1
+                end = i
+                wet_segments.append((start, end))
+            i += 1
 
-            # right intersection
-            if i_right == self._n - 1:
-                xr = self.x[-1]
-            else:
-                z0 = self.z[i_right]
-                z1 = self.z[i_right + 1]
-                x0 = self.x[i_right]
-                x1 = self.x[i_right + 1]
-                if z1 == z0:
-                    xr = x1
-                else:
-                    t = (hw - z0) / (z1 - z0)
-                    t = np.clip(t, 0.0, 1.0)
-                    xr = x0 + t * (x1 - x0)
+        A_total = 0.0
+        P_total = 0.0
+        T_total = 0.0
 
-            T = max(0.0, float(xr - xl))
+        for (i0, iN) in wet_segments:
+            x_seg = x[i0:iN + 1]
+            z_seg = z[i0:iN + 1]
 
-        # Wetted perimeter
-        # Cases per segment:
-        #  - both below hw -> full seg_len
-        #  - both above -> 0
-        #  - partial -> fraction of seg_len up to intersection
-        z0 = self._z0
-        z1 = self._z1
-        seg = self._seg_len
+            # Add intersection points at hw on both sides
+            if i0 > 0 and z[i0 - 1] > hw:
+                z0, z1 = z[i0 - 1], z[i0]
+                x0, x1 = x[i0 - 1], x[i0]
+                t = (hw - z0) / (z1 - z0)
+                xl = x0 + t * (x1 - x0)
+                x_seg = np.insert(x_seg, 0, xl)
+                z_seg = np.insert(z_seg, 0, hw)
 
-        both_sub = (z0 < hw) & (z1 < hw)
-        both_dry = (z0 >= hw) & (z1 >= hw)
-        partial_mask = ~(both_sub | both_dry)
+            if iN < n - 1 and z[iN + 1] > hw:
+                z0, z1 = z[iN], z[iN + 1]
+                x0, x1 = x[iN], x[iN + 1]
+                t = (hw - z0) / (z1 - z0)
+                xr = x0 + t * (x1 - x0)
+                x_seg = np.append(x_seg, xr)
+                z_seg = np.append(z_seg, hw)
 
-        P = float(np.sum(seg[both_sub]))
+            d_seg = np.maximum(hw - z_seg, 0.0)
 
-        if np.any(partial_mask):
-            z0_p = z0[partial_mask]
-            z1_p = z1[partial_mask]
-            seg_p = seg[partial_mask]
-            # compute intersection parameter t where z(t)=hw, t in [0,1]
-            t = (hw - z0_p) / (z1_p - z0_p)
-            t = np.clip(t, 0.0, 1.0)
-            # if z0 < hw and z1 >= hw -> submerged fraction = t
-            # if z0 >= hw and z1 < hw -> submerged fraction = 1 - t
-            mask_z0_below = z0_p < hw
-            frac = np.empty_like(t)
-            frac[mask_z0_below] = t[mask_z0_below]
-            frac[~mask_z0_below] = 1.0 - t[~mask_z0_below]
-            # add absolute segment portions
-            P += float(np.sum(seg_p * np.abs(frac)))
+            # Area (trapezoidal)
+            A = np.sum(0.5 * (d_seg[:-1] + d_seg[1:]) * np.diff(x_seg))
 
-        R = A / P if P > 0.0 else 0.0
+            # Perimeter
+            dz = np.diff(z_seg)
+            dx = np.diff(x_seg)
+            seg_len = np.sqrt(dx**2 + dz**2)
+            P = np.sum(seg_len)
 
-        res = (float(A), float(P), float(R), float(T))
-        self._last_hw = hw
-        self._last_res = res
+            # Top width
+            T = x_seg[-1] - x_seg[0]
+
+            A_total += A
+            P_total += P
+            T_total += T
+
+        R_total = A_total / P_total if P_total > 0.0 else 0.0
+        res = (float(A_total), float(P_total), float(R_total), float(T_total))
+        self._last_hw, self._last_res = hw, res
         return res
 
     def area(self, hw):
@@ -208,7 +186,7 @@ class CrossSection:
         return self.properties(hw)[2]
     
     def friction_slope(self, h, Q):
-        hw = h + self.bed
+        hw = h + self.z_min
         
         if not self._is_rect:
             subchs = self.get_subchannels(hw)
@@ -232,8 +210,8 @@ class CrossSection:
         K_total = K_sum ** (2 / 3)
         return hydraulics.Sf(K=K_total, Q=Q)
     
-    def dSf_dh(self, h, Q):
-        hw = h + self.bed
+    def dSf_dA(self, h, Q):
+        hw = h + self.z_min
         
         if not self._is_rect:
             subchs = self.get_subchannels(hw)
@@ -244,7 +222,7 @@ class CrossSection:
         if _n == 1:
             K = self.conveyance(hw=hw)
             dK_dA = self.dK_dA(hw=hw)
-            return hydraulics.dSf_dA(Q=Q, K=K, dK_dA=dK_dA) / self.dh_dA(hw=hw)
+            return hydraulics.dSf_dA(Q=Q, K=K, dK_dA=dK_dA)
 
         K_sum = 0.0
         dK_dA_sum = 0.0
@@ -260,10 +238,10 @@ class CrossSection:
         K_eq = K_sum ** (2 / 3)
         dK_dA_eq = (2 / 3) * K_sum ** (-1 / 3) * dK_dA_sum
         
-        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq) / self.dh_dA(hw=hw)
+        return hydraulics.dSf_dA(Q=Q, K=K_eq, dK_dA=dK_dA_eq)
     
     def dSf_dQ(self, h: float, Q: float) -> float:
-        hw = h + self.bed
+        hw = h + self.z_min
         
         if not self._is_rect:
             subchs = self.get_subchannels(hw)
@@ -290,7 +268,7 @@ class CrossSection:
         if self.curvature == 0:
             return 0.0
         
-        hw = h+self.bed
+        hw = h + self.z_min
         
         n = self.get_equivalent_n(hw=hw)
         R = self.hydraulic_radius(hw=hw)
@@ -355,7 +333,7 @@ class CrossSection:
         if self.curvature == 0:
             return 0.0
         
-        hw = h+self.bed
+        hw = h + self.z_min
         
         n = self.get_equivalent_n(hw=hw)
         R = self.hydraulic_radius(hw=hw)
@@ -369,7 +347,7 @@ class CrossSection:
         if self.curvature == 0:
             return 0.0
         
-        hw = h+self.bed
+        hw = h + self.z_min
         
         n = self.get_equivalent_n(hw=hw)
         R = self.hydraulic_radius(hw=hw)
@@ -423,13 +401,13 @@ class CrossSection:
             float: Normal flow area.
         """
         if hw_max is None:
-            hw_max = self.bed + 100
+            hw_max = self.z_min + 100
             
         def f(hw):
             return Q_target - self.normal_flow(hw=hw)
         
-        hw = brentq(f, self.bed, hw_max)
-        return hw - self.bed
+        hw = brentq(f, self.z_min, hw_max)
+        return hw - self.z_min
 
     def get_subchannels(self, hw):
         """
@@ -457,7 +435,7 @@ class CrossSection:
             # include boundary points for accurate integration
             x_seg = self.x[start:end]
             z_seg = self.z[start:end]
-            # optional: add intersection points with water surface at edges
+            # Add intersection points with water surface at edges
             if start > 0 and z_seg[0] > hw:
                 x0 = np.interp(hw, [self.z[start-1], self.z[start]], [self.x[start-1], self.x[start]])
                 x_seg = np.insert(x_seg, 0, x0)
@@ -491,3 +469,29 @@ class CrossSection:
     
     def set_roughness_para(self, parameters: tuple):
         self.n_left, self.n_main, self.n_right, self.left_fp_limit, self.right_fp_limit = parameters
+        
+    def depth_weighted_bed(self, hw: float) -> float:
+        if self._is_rect:
+            return self.z_min
+
+        dx = np.diff(self.x)
+        z = self.z
+
+        # depth at nodes
+        d = np.maximum(0.0, hw - z)
+        # trapezoidal integral of z(x)*d(x) dx
+        z_d_mid = 0.5 * (z[:-1] * d[:-1] + z[1:] * d[1:])
+        A = np.dot(0.5 * (d[:-1] + d[1:]), dx)  # same as cs.area(hw)
+        if A <= 0:
+            # no wetted area, fallback to mean bed
+            return float(np.dot(0.5*(z[:-1]+z[1:]), dx) / np.sum(dx))
+        return float(np.sum(z_d_mid * dx) / A)
+
+    def z_at(self, x):
+        if self._is_rect:
+            if x <=0 or x >= self.width:
+                return np.inf
+            else:
+                return self.z_min
+        else:
+            return np.interp(x, self.x, self.z, left=self.z[0], right=self.z[-1])

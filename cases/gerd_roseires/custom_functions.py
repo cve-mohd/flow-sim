@@ -173,4 +173,4 @@ def load_cross_sections(xs_folder: str, info_csv: str):
     chainages = np.array(chainages)[order]
     sections = [sections[i] for i in order]
 
-    return np.array(chainages), sections
+    return chainages.tolist(), sections

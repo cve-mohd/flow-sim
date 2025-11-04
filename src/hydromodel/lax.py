@@ -76,9 +76,9 @@ class LaxSolver(Solver):
         
         while running:
             self.time_level += 1
-            if self.time_level >= self.max_timelevels:
+            if self.time_level >= self.number_of_time_levels:
                 running = False
-                self.time_level = self.max_timelevels-1
+                self.time_level = self.number_of_time_levels-1
                 break
             
             if verbose >= 1:

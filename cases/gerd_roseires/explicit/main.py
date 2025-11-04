@@ -16,8 +16,13 @@ coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
 xs_chainages, sections = load_cross_sections(xs_folder='cases\\gerd_roseires\\data\\cross_sections\\', info_csv='cases\\gerd_roseires\\data\\xs_info.csv')
 
 roseires_ch = xs_chainages[-1]
-roseires_bed = sections[-1].bed
+roseires_bed = sections[-1].z_min
+
+#GERD_xs = CrossSection(width=250, bed=495, n=0.3)
 GERD_ch = xs_chainages[0]
+
+#sections.insert(0, GERD_xs)
+#xs_chainages.insert(0, GERD_ch)
 
 GERD = Boundary(condition='flow_hydrograph',
                 hydrograph=inflow_hyd,
