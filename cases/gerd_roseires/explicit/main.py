@@ -55,4 +55,3 @@ solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
 print("Done.")
 
 # py -m cases.gerd_roseires.explicit.main
-# Peak amp d/s of GERD = 14.4051992914764 m
