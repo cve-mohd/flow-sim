@@ -17,18 +17,18 @@ coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
 gerd_bed_level = bed_profile[0, 1]
 gerd_chainage = min([bed_profile[:, 0].min(), widths[:, 0].min(), coords[:, 0].min()])
 
-ds_bed_level = bed_profile[-1, 1]
-ds_chainage = max([bed_profile[:, 0].max(), widths[:, 0].max(), coords[:, 0].max()])
+roseires_bed_level = bed_profile[-1, 1]
+roseires_chainage = max([bed_profile[:, 0].max(), widths[:, 0].max(), coords[:, 0].max()])
 
 GERD = Boundary(condition='flow_hydrograph',
                 bed_level=gerd_bed_level,
                 chainage=gerd_chainage,
                 hydrograph=inflow_hyd)
 
-Roseires = Boundary(initial_depth=initial_roseires_level-ds_bed_level,
+Roseires = Boundary(initial_depth=initial_roseires_level-roseires_bed_level,
                     condition='rating_curve',
-                    bed_level=ds_bed_level,
-                    chainage=ds_chainage,
+                    bed_level=roseires_bed_level,
+                    chainage=roseires_chainage,
                     rating_curve=RoseiresRatingCurve())
 
 GERD_Roseires_system = Channel(width=widths[0, 1],
@@ -57,3 +57,5 @@ print("Saving results...")
 solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
 
 print("Done.")
+
+# py -m cases.gerd_roseires.explicit.main

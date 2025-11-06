@@ -4,6 +4,7 @@ from pandas import read_csv
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
+from .settings import opening_time, closing_time, jammed_spillways, jammed_sluicegates
     
 class RoseiresRatingCurve(RatingCurve):
     HYDROPOWER_Q = 63.0 * 1e6 /(24*3600)
@@ -100,14 +101,10 @@ class RoseiresRatingCurve(RatingCurve):
             self.sluice_model.fit(X, y)
             
     def gate_state(self, time):
-        OPEN_AT = 6
-        CLOSE_AT = 55
-        t = time/3600.
-        
-        if t < OPEN_AT or t > CLOSE_AT:
-            self.spillway_opening = [6.5] + [0] * (RoseiresRatingCurve.NUM_SPILLWAYS-1)
+        if time < opening_time or time > closing_time:
+            self.spillway_opening = [6.5] + [0] * (RoseiresRatingCurve.NUM_SPILLWAYS - 1)
             self.open_sluices = 0
             
         else:
-            self.spillway_opening = [13] * RoseiresRatingCurve.NUM_SPILLWAYS
-            self.open_sluices = 5
+            self.spillway_opening = [13 - jammed_spillways] * RoseiresRatingCurve.NUM_SPILLWAYS + [0] * jammed_spillways
+            self.open_sluices = 5 - jammed_sluicegates
