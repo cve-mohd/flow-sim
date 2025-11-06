@@ -116,7 +116,7 @@ def import_hydrograph(path: str) -> np.ndarray:
     
     return area_curve
 
-def import_table(path: str, header: bool = True, sort_by: str = None):
+def import_table(path: str, header: bool = True, sort_by: str = None) -> np.ndarray:
     table = read_csv(path, header=(0 if header else None)).dropna(axis=1, how="all").dropna()
     
     if sort_by is not None:
@@ -174,3 +174,15 @@ def load_cross_sections(xs_folder: str, info_csv: str):
     sections = [sections[i] for i in order]
 
     return chainages.tolist(), sections
+
+def load_rect_xs(file_path: str):
+    table = import_table(path=file_path)
+    chainages = table[:, 0]
+    cross_sections = []
+    
+    for i in range(chainages.shape[0]):
+        cross_sections.append(
+            CrossSection(width=table[i, 1], bed=table[i, 2], n=0.027)
+        )
+        
+    return chainages, cross_sections

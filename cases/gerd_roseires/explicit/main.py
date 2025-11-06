@@ -4,7 +4,7 @@ from src.hydromodel.hydrograph import Hydrograph
 from src.hydromodel.preissmann import PreissmannSolver
 from src.hydromodel.cross_section import CrossSection
 from ..settings import initial_roseires_level, theta, spatial_step, time_step, sim_duration, tolerance
-from ..custom_functions import import_table, import_hydrograph, load_cross_sections
+from ..custom_functions import import_table, import_hydrograph, load_cross_sections, load_rect_xs
 from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
@@ -13,16 +13,13 @@ input_dir = "cases\\gerd_roseires\\explicit\\data\\"
 inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\data\\inflow_hydrograph.csv"))
 coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
 
-xs_chainages, sections = load_cross_sections(xs_folder='cases\\gerd_roseires\\data\\cross_sections\\', info_csv='cases\\gerd_roseires\\data\\xs_info.csv')
+#xs_chainages, sections = load_cross_sections(xs_folder='cases\\gerd_roseires\\data\\cross_sections\\', info_csv='cases\\gerd_roseires\\data\\xs_info.csv')
+xs_chainages, sections = load_rect_xs(file_path = input_dir + 'rect_sections.csv')
 
 roseires_ch = xs_chainages[-1]
 roseires_bed = sections[-1].z_min
 
-#GERD_xs = CrossSection(width=250, bed=495, n=0.3)
 GERD_ch = xs_chainages[0]
-
-#sections.insert(0, GERD_xs)
-#xs_chainages.insert(0, GERD_ch)
 
 GERD = Boundary(condition='flow_hydrograph',
                 hydrograph=inflow_hyd,
@@ -49,15 +46,13 @@ solver = PreissmannSolver(channel=GERD_Roseires_system,
 
 print("Simulation started.")
 
-#solver.run(verbose=3, tolerance=tolerance)
+solver.run(verbose=0, tolerance=tolerance)
 
 print("Saving results...")
 
-#solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
+solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
 
 print("Done.")
 
 # py -m cases.gerd_roseires.explicit.main
-import numpy as np
-bed_profile = np.array(object=[GERD_Roseires_system.bed_level_at(i=i) for i in range(len(GERD_Roseires_system.xs_at_node))])
-print(GERD_Roseires_system.initial_conditions[:, 0] + bed_profile)
+# Peak amp d/s of GERD = 14.4051992914764 m
