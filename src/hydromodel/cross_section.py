@@ -567,9 +567,9 @@ class TrapezoidalSection(CrossSection):
     - n_main, n_left, n_right: Manning's n values
     """
     
-    def __init__(self, z_bed, b_main, m_main, 
+    def __init__(self, z_bed, b_main, m_main, n_main, 
                  z_bank=None, b_fp_left=0.0, b_fp_right=0.0, m_fp=0.0,
-                 n_main=0.03, n_left=0.03, n_right=0.03, **kwargs):
+                 n_left=0.03, n_right=0.03, **kwargs):
         
         super().__init__(n=n_main, **kwargs)
         
@@ -624,7 +624,7 @@ class TrapezoidalSection(CrossSection):
     def properties(self, hw: float) -> tuple:
         """Return (A, P, R, T) using analytical formulas."""
         hw = float(hw)
-        if self._last_hw is not None and hw == self.last_hw:
+        if self._last_hw is not None and hw == self._last_hw:
             return self._last_res
 
         depth = max(0.0, hw - self.z_bed)
@@ -847,3 +847,126 @@ class TrapezoidalSection(CrossSection):
                 # On outer inclined wall
                 dist = x - x_right_bed_outer
                 return self.z_bank + dist / self.m_fp
+            
+# ------------------------------------------------------------------
+# 4. Interpolation Function
+# ------------------------------------------------------------------
+
+def _interp_safe(v1, v2, w1, w2):
+    if v1 is None or v2 is None:
+        return None
+    return v1 * w1 + v2 * w2
+            
+def interpolate_cross_section(xs1: CrossSection, xs2: CrossSection, 
+                            dist1: float, dist2: float) -> CrossSection:
+    """
+    Interpolates a new CrossSection based on two neighbors and distances.
+
+    If both cs1 and cs2 are TrapezoidalSection, the result is Trapezoidal.
+    Otherwise, the result is an IrregularSection.
+
+    Args:
+        cs1: The upstream or left neighboring cross-section.
+        cs2: The downstream or right neighboring cross-section.
+        dist1: Distance from the target location to cs1.
+        dist2: Distance from the target location to cs2.
+
+    Returns:
+        A new CrossSection object representing the interpolation.
+    """
+    total_dist = dist1 + dist2
+    
+    if total_dist < 1e-9:
+        # Avoid division by zero, return closer section
+        return xs1 # Note: this is a reference, not a copy
+        
+    if dist1 < 1e-9:
+        return xs1 # We are at cs1
+    if dist2 < 1e-9:
+        return xs2 # We are at cs2
+
+    # w1 is weight for cs1, w2 is weight for cs2
+    # Closer section gets more weight
+    w1 = dist2 / total_dist
+    w2 = dist1 / total_dist
+    
+    # --- Interpolate shared (non-geometric) properties ---
+    n_l = xs1.n_left * w1 + xs2.n_left * w2
+    n_m = xs1.n_main * w1 + xs2.n_main * w2
+    n_r = xs1.n_right * w1 + xs2.n_right * w2
+    bed_slope = _interp_safe(xs1.bed_slope, xs2.bed_slope, w1, w2)
+    curvature = xs1.curvature * w1 + xs2.curvature * w2
+    
+    # --- Case 1: Both are Trapezoidal ---
+    if isinstance(xs1, TrapezoidalSection) and isinstance(xs2, TrapezoidalSection):
+        
+        z_bed = xs1.z_bed * w1 + xs2.z_bed * w2
+        b_main = xs1.b_main * w1 + xs2.b_main * w2
+        m_main = xs1.m_main * w1 + xs2.m_main * w2
+        
+        # Interpolate y_bank (depth from bed to bank)
+        # Simple sections have y_bank = 0
+        y_bank1 = (xs1.z_bank - xs1.z_bed) if xs1._is_compound else 0.0
+        y_bank2 = (xs2.z_bank - xs2.z_bed) if xs2._is_compound else 0.0
+        y_bank_new = y_bank1 * w1 + y_bank2 * w2
+        
+        # If interpolated bank depth is 0, it's a simple trapezoid (z_bank=None)
+        z_bank_new = (z_bed + y_bank_new) if y_bank_new > 1e-6 else None
+        
+        # These will be 0 if a section is simple, which is correct
+        b_fp_l = xs1.b_fp_left * w1 + xs2.b_fp_left * w2
+        b_fp_r = xs1.b_fp_right * w1 + xs2.b_fp_right * w2
+        m_fp = xs1.m_fp * w1 + xs2.m_fp * w2
+        
+        new_cs = TrapezoidalSection(
+            z_bed=z_bed,
+            b_main=b_main,
+            m_main=m_main,
+            z_bank=z_bank_new,
+            b_fp_left=b_fp_l,
+            b_fp_right=b_fp_r,
+            m_fp=m_fp,
+            n_main=n_m, n_left=n_l, n_right=n_r,
+            bed_slope=bed_slope,
+            curvature=curvature
+        )
+        return new_cs
+        
+    # --- Case 2: At least one is Irregular ---
+    else:
+        
+        x1 = xs1.x if isinstance(xs1, IrregularSection) else None
+        x2 = xs2.x if isinstance(xs2, IrregularSection) else None
+        
+        if x1 is not None and x2 is not None:
+            x_master = np.union1d(x1, x2)
+        elif x1 is not None:
+            x_master = x1
+        elif x2 is not None:
+            x_master = x2
+        else:
+            # This should never happen if logic is correct
+            raise TypeError("Cannot interpolate: no x-coordinates found.")
+            
+        # Get z values at master x coordinates
+        # We must vectorize z_at as it may not support array inputs
+        z1_master = np.vectorize(xs1.z_at)(x_master)
+        z2_master = np.vectorize(xs2.z_at)(x_master)
+        
+        # Interpolate z
+        z_new = z1_master * w1 + z2_master * w2
+        
+        new_cs = IrregularSection(
+            x=x_master,
+            z=z_new,
+            n=n_m, # Use interpolated main n as default
+            bed_slope=bed_slope,
+            curvature=curvature
+        )
+        
+        # Interpolate and set composite roughness limits
+        l_lim = xs1.left_fp_limit * w1 + xs2.left_fp_limit * w2
+        r_lim = xs1.right_fp_limit * w1 + xs2.right_fp_limit * w2
+        new_cs.set_roughness_para((n_l, n_m, n_r, l_lim, r_lim))
+        
+        return new_cs

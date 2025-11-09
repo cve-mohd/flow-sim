@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cross_sections_base\\', results_csv='composite_trapezoids.csv',
+def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cross_sections_base\\', results_csv='cases\\gerd_roseires\\data\\composite_trapezoids.csv',
                                   overlay=True, save=False, show=True):
     """
     Plot an irregular cross-section and its trapezoidal approximations
@@ -38,6 +38,7 @@ def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cro
 
     # --- Identify corresponding cross-section file ---
     xs_file = os.path.join(folder, row['file'])
+    xs_number = row['file'][:2]
 
     # --- Read original cross-section data ---
     xs_data = pd.read_csv(xs_file, header=0, names=['x', 'z'])
@@ -47,9 +48,12 @@ def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cro
     # --- Extract parameters ---
     b_main = float(row['b_main'])
     m_main = float(row['m_main'])
-    b_fp   = float(row['b_fp'])
-    m_fp   = float(row['m_fp'])
     h_bankfull = float(row['h_bankfull'])
+    T_bf = b_main + 2 * m_main * h_bankfull
+    
+    b_left = float(row['b_fp_left'])
+    b_fp   = float(b_left + row['b_fp_right'] + T_bf)
+    m_fp   = float(row['m_fp'])
     h_max = float(row['h_max'])
 
     # Build trapezoid definitions    
@@ -85,7 +89,7 @@ def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cro
     bed_level = main_ch_trapezoid['zb']
     bankful_depth = main_ch_trapezoid['hb']
     
-    left = center - 0.5 * bottom_width - side_slope * bankful_depth
+    left = left + b_left + floodplain_trapezoid['m'] * floodplain_trapezoid['hb'] #center - 0.5 * bottom_width - side_slope * bankful_depth
     right = left + bottom_width + 2*side_slope*bankful_depth
     xs = np.array([left, left + side_slope*bankful_depth, left + side_slope*bankful_depth + bottom_width, right])
     zs = np.array([bed_level+bankful_depth, bed_level, bed_level, bed_level+bankful_depth])
@@ -99,7 +103,7 @@ def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cro
     # --- Formatting ---
     ax.set_xlabel("Horizontal distance (m)")
     ax.set_ylabel("Elevation (m)")
-    ax.set_title(f"Cross-section {index} — Trapezoidal approximation")
+    ax.set_title(f"Cross-section {xs_number} — Trapezoidal approximation")
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     #ax.invert_yaxis()  # water depth increases downward

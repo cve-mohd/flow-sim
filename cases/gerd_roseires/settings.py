@@ -1,8 +1,3 @@
-############                Channel Geometry                    ############
-
-wet_n = 0.027
-dry_n = 0.030
-
 ############                Simulation Parameters               ############
 
 spatial_step = 1000

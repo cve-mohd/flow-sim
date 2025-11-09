@@ -2,9 +2,8 @@ from src.hydromodel.channel import Channel
 from src.hydromodel.boundary import Boundary
 from src.hydromodel.hydrograph import Hydrograph
 from src.hydromodel.preissmann import PreissmannSolver
-from src.hydromodel.cross_section import CrossSection
 from ..settings import initial_roseires_level, theta, spatial_step, time_step, sim_duration, tolerance
-from ..custom_functions import import_table, import_hydrograph, load_cross_sections, load_rect_xs
+from ..custom_functions import import_table, import_hydrograph, load_trapzoid_xs
 from ..roseires_rating_curve import RoseiresRatingCurve
 
 print("Processing input data...")
@@ -14,7 +13,7 @@ inflow_hyd = Hydrograph(table=import_hydrograph("cases\\gerd_roseires\\data\\inf
 coords = import_table(input_dir + "centerline_coords.csv", sort_by='chainage')
 
 #xs_chainages, sections = load_cross_sections(xs_folder='cases\\gerd_roseires\\data\\cross_sections\\', info_csv='cases\\gerd_roseires\\data\\xs_info.csv')
-xs_chainages, sections = load_rect_xs(file_path = input_dir + 'rect_sections.csv')
+xs_chainages, sections = load_trapzoid_xs(file_path='cases\\gerd_roseires\\data\\composite_trapezoids.csv')
 
 roseires_ch = xs_chainages[-1]
 roseires_bed = sections[-1].z_min
@@ -46,11 +45,13 @@ solver = PreissmannSolver(channel=GERD_Roseires_system,
 
 print("Simulation started.")
 
-solver.run(verbose=0, tolerance=tolerance)
+solver.run(verbose=3, tolerance=tolerance)
 
 print("Saving results...")
 
 solver.save_results(folder_path='cases\\gerd_roseires\\explicit\\results\\')
+#print(f'Level = {GERD_Roseires_system.initial_conditions[0,0]+GERD_Roseires_system.bed_level_at(0)} m')
+#print(f'Depth = {GERD_Roseires_system.initial_conditions[0,0]} m')
 
 print("Done.")
 

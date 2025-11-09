@@ -2,7 +2,7 @@ from .boundary import Boundary
 from .utility import compute_radii_curv
 from . import hydraulics
 import numpy as np
-from .cross_section import CrossSection
+from .cross_section import CrossSection, interpolate_cross_section
 
 class Channel:
     """
@@ -232,52 +232,14 @@ class Channel:
             j = np.searchsorted(self.xs_chainages, s) - 1
             ch_left = self.xs_chainages[j]
             ch_right = self.xs_chainages[j + 1]
-            alpha = (s - ch_left) / (ch_right - ch_left)
 
             xs_left: CrossSection = self.input_xs[j]
             xs_right: CrossSection = self.input_xs[j + 1]
-
-            # interpolate geometry
-            if xs_left._is_rect and xs_right._is_rect:
-                width = (1 - alpha) * xs_left.width + alpha * xs_right.width
-                bed = (1 - alpha) * xs_left.z_min + alpha * xs_right.z_min
-                cs_interp = CrossSection(width=width, bed=bed)
-            else:
-                x_min = min(0 if xs_left._is_rect else xs_left.x[0],
-                            0 if xs_right._is_rect else xs_right.x[0])
-                x_max = max(xs_left.width if xs_left._is_rect else xs_left.x[-1],
-                            xs_right if xs_right._is_rect else xs_right.x[-1])
-                
-                dx1 = x_max - x_min if xs_left._is_rect else np.min(xs_left.x[1:] - xs_left.x[:-1])
-                dx2 = x_max - x_min if xs_right._is_rect else np.min(xs_right.x[1:] - xs_right.x[:-1])
-                
-                dx = min(dx1, dx2)
-                dx = max(dx, (x_max-x_min)*1e-4, 0.01)
-                X = np.arange(x_min, x_max + dx, dx)
-
-                z1 = np.array(object=[xs_left.z_at(x=x_) for x_ in X], dtype=np.float64)
-                z2 = np.array(object=[xs_right.z_at(x=x_) for x_ in X], dtype=np.float64)
-                Z = (1 - alpha) * z1 + alpha * z2
-                
-                # construct interpolated cross-section
-                cs_interp = CrossSection(x=X, z=Z)
-                
-            n_left  = (1 - alpha) * xs_left.n_left  + alpha * xs_right.n_left
-            n_main  = (1 - alpha) * xs_left.n_main  + alpha * xs_right.n_main
-            n_right = (1 - alpha) * xs_left.n_right + alpha * xs_right.n_right
-
-            # interpolate floodplain limits
-            left_fp_limit  = (1 - alpha) * xs_left.left_fp_limit  + alpha * xs_right.left_fp_limit
-            right_fp_limit = (1 - alpha) * xs_left.right_fp_limit + alpha * xs_right.right_fp_limit
-
-            cs_interp.n_left = n_left
-            cs_interp.n_main = n_main
-            cs_interp.n_right = n_right
-            cs_interp.left_fp_limit = left_fp_limit
-            cs_interp.right_fp_limit = right_fp_limit
-            cs_interp.curvature = curvatures[i]
-            cs_interp.bed_slope = (xs_right.z_min - xs_left.z_min) / (ch_left - ch_right)
-                
+            
+            cs_interp = interpolate_cross_section(xs1=xs_left,
+                                                  xs2=xs_right,
+                                                  dist1=s-ch_left,
+                                                  dist2=ch_right-s)
             self.xs_at_node.append(cs_interp)
 
         self.upstream_boundary.cross_section = self.xs_at_node[0]
@@ -319,39 +281,77 @@ class Channel:
 
     def _gvh_conditions(self, n_nodes, Q):
         dx = self.length / (n_nodes - 1)
+        
+        # Start at the downstream boundary
         h = self.downstream_boundary.initial_depth
-        hw = self.downstream_boundary.initial_stage
-            
-        # Add last node
         self.initial_conditions[n_nodes-1, 0] = h
         self.initial_conditions[n_nodes-1, 1] = Q
 
-        for i in reversed(range(n_nodes-1)):
-            Fr = hydraulics.froude_num(
-                T = self.top_width(i=i, hw=hw),
-                A = self.area_at(i=i, hw=hw),
-                Q = Q)
+        # This helper function calculates dh/dx at a given node
+        def get_dh_dx(h_in, node_idx):
+            """Calculates dh/dx at a specific node given depth h_in."""
+            hw = h_in + self.bed_level_at(i=node_idx)
+            A = self.area_at(i=node_idx, hw=hw)
+            T = self.top_width(i=node_idx, hw=hw)
             
-            denominator = 1 - Fr**2
-                
-            if abs(denominator) < 1e-6:
-                dh_dx = 0.0
-            else:
-                #dz = self.bed_level_at(i+1) - self.bed_level_at(i)
-                dz = self.xs_at_node[i+1].depth_weighted_bed(hw=hw) - self.xs_at_node[i].depth_weighted_bed(hw=hw)
-                S0 = -dz/dx
-                Sf = self.Se(h=h, Q=Q, i=i)
-                dh_dx = (S0 - Sf) / denominator
+            # Check for dry or invalid section
+            if T < 1e-6 or A < 1e-6:
+                return 0.0
 
-            h -= dh_dx * dx
-            hw = h + self.bed_level_at(i=i)
-
-            if h < 0:
-                raise ValueError("GVF failed.")
+            # 1. Check Flow Regime (Critical Check 1)
+            Fr = hydraulics.froude_num(T=T, A=A, Q=Q)
+            if Fr > 1.0:
+                raise RuntimeError(
+                    f"GVF Error: Flow became supercritical (Fr={Fr:.2f}) at node {node_idx}. "
+                    "Downstream boundary control is not valid for this Q."
+                )
+            
+            Fr_sq = Fr**2
+            denominator = 1 - Fr_sq
+            
+            # 2. Prevent Numerical Explosion (Critical Check 2)
+            if denominator < 0.01: # Don't allow denominator to be near-zero
+                print(f"Warning: GVF approaching critical depth at node {node_idx} (Fr={Fr:.2f}). Clamping slope.")
+                denominator = 0.01 
                 
+            # Slopes
+            # S0 is the bed slope from the target node (i) to the known node (i+1)
+            S0 = (self.bed_level_at(i) - self.bed_level_at(i+1)) / dx # (z_up - z_down) / dx
+            Sf = self.Se(h=h_in, Q=Q, i=node_idx)
+            
+            return (S0 - Sf) / denominator
+
+        # Iterate from downstream (n-1) to upstream (0)
+        for i in reversed(range(n_nodes-1)):
+            
+            h_down = h # This is the known depth h_i+1
+            
+            # --- 1. PREDICTOR Step ---
+            # Calculate slope at the known downstream node (i+1)
+            dh_dx_down = get_dh_dx(h_down, i+1)       
+            # Predict the depth at the upstream node (i)
+            h_pred = h_down - dh_dx_down * dx        
+            
+            if h_pred <= 0:
+                h_pred = 0.01 # Prevent negative depth
+
+            # --- 2. CORRECTOR Step ---
+            # Calculate slope at the upstream node (i) using the predicted depth
+            dh_dx_pred = get_dh_dx(h_pred, i)        
+            
+            # --- 3. Average Slopes and Final Step ---
+            dh_dx_avg = 0.5 * (dh_dx_down + dh_dx_pred)
+            h_up = h_down - dh_dx_avg * dx           # This is the final, corrected h_i
+            
+            if h_up <= 0:
+                print(f"Warning: GVF calculation resulted in h <= 0 at node {i}. Setting to 0.01.")
+                h_up = 0.01
+                
+            # --- 4. Save and set up for next iteration ---
+            h = h_up # The new upstream depth becomes the known downstream depth for the next loop
             self.initial_conditions[i, 0] = h
             self.initial_conditions[i, 1] = Q
-
+            
     def _linear_conditions(self, n_nodes, Q):
         h0 = self.upstream_boundary.initial_depth
         hN = self.downstream_boundary.initial_depth

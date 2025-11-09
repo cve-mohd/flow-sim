@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from src.hydromodel.cross_section import CrossSection
+from src.hydromodel.cross_section import TrapezoidalSection
 from pandas import read_csv
 
 def reconstruct_centerline(chainages, curvature, x0, y0, theta0):
@@ -124,65 +123,32 @@ def import_table(path: str, header: bool = True, sort_by: str = None) -> np.ndar
     
     return table.to_numpy(dtype=np.float64)
 
-def load_cross_sections(xs_folder: str, info_csv: str):
-    """
-    Loads cross-section geometry and properties, returning:
-        chainages  -> numpy array of chainage values [m]
-        sections   -> list of CrossSection objects
-
-    Parameters
-    ----------
-    xs_folder : str
-        Path to folder containing .csv files named by xs_id (e.g., "1.csv", "2.csv", ...).
-    info_csv : str
-        Path to CSV file containing metadata with columns:
-        xs_id, chainage, left_fp_limit, right_fp_limit, n_left, n_main, n_right
-    """
-    # Load the metadata
-    info = read_csv(info_csv)
-    chainages = []
-    sections = []
-
-    for _, row in info.iterrows():
-        xs_id = int(row["xs_id"])
-        fname = os.path.join(xs_folder, f"{xs_id}.csv")
-        if not os.path.exists(fname):
-            # Skip missing files but keep warning
-            print(f"Warning: cross-section {xs_id} not found at {fname}")
-            continue
-
-        # Read x, z pairs
-        data = np.loadtxt(fname, delimiter=",", skiprows=1)
-        if data.ndim == 1 or data.shape[1] < 2:
-            raise ValueError(f"Invalid data in {fname}. Expected two columns (x, z).")
-        x, z = data[:, 0], data[:, 1]
-        
-        # Create the CrossSection object
-        cs = CrossSection(x=x, z=z)
-        cs.left_fp_limit = float(row["left_fp_limit"])
-        cs.right_fp_limit = float(row["right_fp_limit"])
-        cs.n_left = float(row["n_left"])
-        cs.n_main = float(row["n_main"])
-        cs.n_right = float(row["n_right"])
-
-        # Append to lists
-        chainages.append(float(row["chainage"]))
-        sections.append(cs)
-
-    order = np.argsort(chainages)
-    chainages = np.array(chainages)[order]
-    sections = [sections[i] for i in order]
-
-    return chainages.tolist(), sections
-
-def load_rect_xs(file_path: str):
-    table = import_table(path=file_path)
-    chainages = table[:, 0]
-    cross_sections = []
+def load_trapzoid_xs(file_path: str):
+    table = read_csv(file_path)
     
-    for i in range(chainages.shape[0]):
+    chainages = []
+    cross_sections = []
+    for i in range(table.index.shape[0]):
+        row = table.iloc[[i]]
+        row = row.squeeze()
+        
+        chainages.append(row['chainage'])
         cross_sections.append(
-            CrossSection(width=table[i, 1], bed=table[i, 2], n=0.027)
+            TrapezoidalSection(
+                z_bed = row['z_min'],
+                b_main = row['b_main'],
+                m_main = row['m_main'],
+                n_main = row['n_main'],
+                z_bank = row['z_min'] + row['h_bankfull'],
+                b_fp_left = row['b_fp_left'],
+                b_fp_right = row['b_fp_right'],
+                m_fp = row['m_fp'],
+                n_left = row['n_left'],
+                n_right = row['n_right']
+            )
         )
         
     return chainages, cross_sections
+
+load_trapzoid_xs(file_path='cases\\gerd_roseires\\data\\composite_trapezoids.csv')
+# py -m cases.gerd_roseires.custom_functions
