@@ -162,7 +162,7 @@ class Boundary:
         hw = depth + self.bed_level
         S0 = self.cross_section.bed_slope
         
-        dh_dA = self.cross_section.dh_dA(hw=hw)
+        dA_dh = self.cross_section.dA_dh(hw=hw)
             
         if self.condition == 'fixed_depth':            
             if self.lumped_storage is not None:
@@ -174,10 +174,10 @@ class Boundary:
             else:
                 dhl_dA = 0
             
-            return 1 - dhl_dA / dh_dA
+            return 1 - dhl_dA * dA_dh
         
         elif self.condition == 'normal_depth':
-            return 0 - dQn_dA(S_0=S0, dK_dA=self.cross_section.dK_dA(hw=hw)) / dh_dA
+            return 0 - dQn_dA(S_0=S0, dK_dA=self.cross_section.dK_dA(hw=hw)) * dA_dh
         
         elif self.condition == 'rating_curve':
             stage = self.bed_level + depth

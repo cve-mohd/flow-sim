@@ -156,7 +156,7 @@ class PreissmannSolver(Solver):
                 
                 R = self.compute_residual_vector()
                 J = self.compute_jacobian()
-                                                                        
+                                                                                        
                 if np.isnan(R).any() or np.isnan(J).any():
                     raise ValueError("NaN in system assembly")
                 if np.linalg.cond(J) > 1e12:
@@ -390,6 +390,7 @@ class PreissmannSolver(Solver):
         """
         d_dA_dt_dA = self.time_diff(k1_i1=1)
         d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i+1)
+        
         d_dQ_dx_dh = 0
         
         return d_dA_dt_dh + d_dQ_dx_dh
@@ -414,6 +415,7 @@ class PreissmannSolver(Solver):
         """
         d_dA_dt_dA = self.time_diff(k1_i=1)
         d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i)
+        
         d_dQ_dx_dh = 0
         
         return d_dA_dt_dh + d_dQ_dx_dh
@@ -482,7 +484,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i+1)
         
         # Basic derivatives:
-        dY_dA = self.dY_dA_at(i=i+1)
+        dA_dh = self.dA_dh(i=i+1)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i+1)
         
         # Finite differences:
@@ -511,15 +513,15 @@ class PreissmannSolver(Solver):
         d_dQdt_dA = 0
         d_dQ2Adx_dA = -self.spatial_diff(k1_i1=1) * (Q/A) ** 2
         d_avgA_dA = self.cell_avg(k1_i1=1)
-        d_dYdx_dA = self.spatial_diff(k1_i1=1) * dY_dA
+        d_dYdx_dh = self.spatial_diff(k1_i1=1)
         d_avgSe_dA = self.cell_avg(k1_i1=1) * dSe_dA
         
         # dM/dA:
-        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
-            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+        dM_dh = d_dQdt_dA * dA_dh + d_dQ2Adx_dA * dA_dh + g * (
+            avg_A * (d_dYdx_dh + d_avgSe_dA * dA_dh) + d_avgA_dA * dA_dh * (dY_dx + avg_Se)
             )
         
-        return dM_dA * self.dA_dh(i=i+1)
+        return dM_dh
         
         if not self.regularization:
             return dM_dA
@@ -544,7 +546,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i)
         
         # Basic derivatives:
-        dY_dA = self.dY_dA_at(i=i)
+        dA_dh = self.dA_dh(i=i)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i)
         
         # Finite differences:
@@ -573,15 +575,15 @@ class PreissmannSolver(Solver):
         d_dQdt_dA = 0
         d_dQ2Adx_dA = -self.spatial_diff(k1_i=1) * (Q/A) ** 2
         d_avgA_dA = self.cell_avg(k1_i=1)
-        d_dYdx_dA = self.spatial_diff(k1_i=1) * dY_dA
+        d_dYdx_dh = self.spatial_diff(k1_i=1)
         d_avgSe_dA = self.cell_avg(k1_i=1) * dSe_dA
         
         # dM/dA:
-        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
-            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+        dM_dh = d_dQdt_dA * dA_dh + d_dQ2Adx_dA * dA_dh + g * (
+            avg_A * (d_dYdx_dh + d_avgSe_dA * dA_dh) + d_avgA_dA * dA_dh * (dY_dx + avg_Se)
             )
         
-        return dM_dA * self.dA_dh(i=i)
+        return dM_dh
         
         if not self.regularization:
             return dM_dA

@@ -2,7 +2,7 @@ from .boundary import Boundary
 from .utility import compute_radii_curv
 from . import hydraulics
 import numpy as np
-from .cross_section import CrossSection, interpolate_cross_section
+from .cross_section import CrossSection, interpolate_cross_section, TrapezoidalSection
 
 class Channel:
     """
@@ -188,9 +188,9 @@ class Channel:
         xs: CrossSection = self.xs_at_node[i]
         return xs.z_min
     
-    def dh_dA(self, i, hw):
+    def dA_dh(self, i, hw):
         xs: CrossSection = self.xs_at_node[i]
-        return xs.dh_dA(hw=hw)
+        return xs.dA_dh(hw=hw)
             
     def _initialize_geometry(self, n_nodes: int):
         """
@@ -255,8 +255,8 @@ class Channel:
         self.ch_at_node = np.linspace(self.upstream_boundary.chainage, self.downstream_boundary.chainage, n_nodes)
 
     def _create_provisional_cross_sections(self):
-        us_xs = CrossSection(width=self.width, bed = self.upstream_boundary.bed_level, n=self.roughness)
-        ds_xs = CrossSection(width=self.width, bed=self.downstream_boundary.bed_level, n=self.roughness)
+        us_xs = TrapezoidalSection(b_main=self.width, m_main=0, z_bed = self.upstream_boundary.bed_level, n_main=self.roughness)
+        ds_xs = TrapezoidalSection(b_main=self.width, m_main=0, z_bed=self.downstream_boundary.bed_level, n_main=self.roughness)
         
         bed_slope = (us_xs.z_min - ds_xs.z_min) / self.length
         us_xs.bed_slope = bed_slope

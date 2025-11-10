@@ -54,15 +54,23 @@ class Solver:
         self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
         
     def prepare_results(self) -> None:
+        self.bed_profile = np.array(object=[xs.z_min for xs in self.channel.xs_at_node], dtype=np.float64)
+        self.level = self.depth + self.bed_profile
+        
+        self.area = np.empty_like(self.flow)
+        self.top_width = np.empty_like(self.flow)
         for k in range(self.number_of_time_levels):
             self.area[k] = np.array(
                 object=[self.channel.area_at(i=i, hw=self.water_level_at(i=i, k=k)) for i in range(self.number_of_nodes)],
                 dtype=np.float64
             )
             
+            self.top_width[k] = np.array(
+                object=[self.channel.top_width(i=i, hw=self.water_level_at(i=i, k=k)) for i in range(self.number_of_nodes)],
+                dtype=np.float64
+            )
+            
         self.velocity = self.flow / self.area
-        self.bed_profile = np.array(object=[xs.z_min for xs in self.channel.xs_at_node], dtype=np.float64)
-        self.level = self.depth + self.bed_profile
         self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
         
         ref = self.depth[0, :]
@@ -106,17 +114,18 @@ class Solver:
         filename = folder_path + "\\results.xlsx"
         
         arrays_2d = {
-            "Area": self.area,
-            "Flow": self.flow,
-            "Velocity": self.velocity,
-            "Depth": self.depth,
             "Level": self.level,
+            "Flow": self.flow,
+            "Depth": self.depth,
+            "Velocity": self.velocity,
+            "Area": self.area,
+            "Top width": self.top_width,
             "Wave celerity": self.wave_celerity,
         }
 
         nt, nx = next(iter(arrays_2d.values())).shape
         time = np.arange(nt) * self.time_step
-        distance = np.arange(nx) * self.spatial_step
+        distance = np.array(object=self.channel.ch_at_node, dtype=np.float64)
 
         with pd.ExcelWriter(filename, engine="openpyxl") as writer:
             # 2D arrays
@@ -142,12 +151,6 @@ class Solver:
             df_peak.index = ["Peak amplitude"]
             df_peak.columns.name = "Distance"
             df_peak.to_excel(writer, sheet_name="Peak amplitude")
-
-            # Width (row with distance headers)
-            df_width = pd.DataFrame([np.array(object=[xs.width for xs in self.channel.xs_at_node], dtype=np.float64)], columns=distance)
-            df_width.index = ["Width"]
-            df_width.columns.name = "Distance"
-            df_width.to_excel(writer, sheet_name="Width")
 
             # Bed level (row with distance headers)
             df_bed = pd.DataFrame([self.bed_profile], columns=distance)
@@ -264,12 +267,8 @@ class Solver:
                                i=i)
         
     def dA_dh(self, k: int = None, i: int = None, regularization: bool = None):
-        return 1.0 / self.channel.dh_dA(i=i, hw=self.water_level_at(k=k, i=i, regularization=regularization))
-    
-    def dY_dA_at(self, i):
-        dY_dA = self.channel.dh_dA(i=i, hw=self.water_level_at(i=i))
-        return dY_dA
-    
+        return self.channel.dA_dh(i=i, hw=self.water_level_at(k=k, i=i, regularization=regularization))
+        
     def A_reg(self, A):
         """
         Regularized wetted area.

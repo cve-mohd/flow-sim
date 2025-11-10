@@ -74,7 +74,7 @@ class CrossSection(ABC):
         pass
     
     @abstractmethod
-    def dh_dA(self, hw: float) -> float:
+    def dA_dh(self, hw: float) -> float:
         """Compute derivative of depth w.r.t. area (dh/dA) at hw."""
         pass
 
@@ -161,7 +161,7 @@ class CrossSection(ABC):
         A, P, R, T = self.properties(hw=hw)
         dR_dA = self.dR_dA(hw=hw)
         
-        return hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature), dR_dA=dR_dA, T=T) / self.dh_dA(hw=hw)
+        return hydraulics.dSc_dA(h=h, A=A, Q=Q, n=n, R=R, rc=(1.0 / self.curvature), dR_dA=dR_dA, T=T) * self.dA_dh(hw=hw)
         
     def dSc_dQ(self, h: float, Q: float) -> float:
         """Compute dSc/dQ."""
@@ -531,13 +531,12 @@ class IrregularSection(CrossSection):
         R2 = self.hydraulic_radius(hw + dh)
         return (R2 - R1) / (A2 - A1)
     
-    def dh_dA(self, hw: float, dh: float = 1e-6) -> float:
+    def dA_dh(self, hw: float, dh: float = 1e-6) -> float:
         """Compute dh/dA using finite difference."""
         A1 = self.area(hw - dh)
         A2 = self.area(hw + dh)
-        if (A2 - A1) == 0.0: return 0.0
                 
-        return 2 * dh / (A2 - A1)
+        return (A2 - A1) / (2 * dh)
 
     def z_at(self, x: float) -> float:
         """Interpolate bed elevation at lateral coordinate x."""
@@ -790,10 +789,8 @@ class TrapezoidalSection(CrossSection):
         
         return (P - A * dP_dA) / (P**2)
 
-    def dh_dA(self, hw: float) -> float:
-        """Compute dh/dA analytically (1/T)."""
-        T = self.top_width(hw)
-        return 1.0 / T if T > 0.0 else 0.0
+    def dA_dh(self, hw: float) -> float:
+        return self.top_width(hw)
 
     def z_at(self, x: float) -> float:
         """Return bed elevation z at lateral coordinate x."""

@@ -40,12 +40,12 @@ GERD_Roseires_system.set_cross_sections(chainages=xs_chainages, sections=section
 solver = PreissmannSolver(channel=GERD_Roseires_system,
                           theta=theta,
                           time_step=time_step,
-                          spatial_step=spatial_step,
+                          spatial_step=spatial_step*2,
                           simulation_time=sim_duration)
 
 print("Simulation started.")
 
-solver.run(verbose=3, tolerance=tolerance)
+solver.run(verbose=1, tolerance=tolerance)
 
 print("Saving results...")
 
