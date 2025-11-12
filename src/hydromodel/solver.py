@@ -4,6 +4,7 @@ from scipy.constants import g
 from .channel import Channel
 from .utility import create_directory_if_not_exists
 from .utility import seconds_to_hms
+from .hydraulics import froude_num
 
 class Solver:
     def __init__(self,
@@ -40,7 +41,6 @@ class Solver:
 
         self.flow = np.empty(shape=(self.number_of_time_levels, self.number_of_nodes), dtype=np.float64)
         self.depth = np.empty_like(self.flow)
-        self.area = np.empty_like(self.flow)
                         
         self._type = None
         self._solved = False
@@ -54,12 +54,18 @@ class Solver:
         self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
         
     def prepare_results(self) -> None:
+        if self.time_level + 1 < self.number_of_time_levels:
+            self.flow = self.flow[:self.time_level+1, :]
+            self.depth = self.depth[:self.time_level+1, :]
+            
         self.bed_profile = np.array(object=[xs.z_min for xs in self.channel.xs_at_node], dtype=np.float64)
         self.level = self.depth + self.bed_profile
         
         self.area = np.empty_like(self.flow)
         self.top_width = np.empty_like(self.flow)
-        for k in range(self.number_of_time_levels):
+        self.froude_number = np.empty_like(self.flow)
+        
+        for k in range(self.time_level+1):
             self.area[k] = np.array(
                 object=[self.channel.area_at(i=i, hw=self.water_level_at(i=i, k=k)) for i in range(self.number_of_nodes)],
                 dtype=np.float64
@@ -70,12 +76,17 @@ class Solver:
                 dtype=np.float64
             )
             
+            self.froude_number[k] = np.array(
+                object=[froude_num(T=self.top_width[k, i], A=self.area[k, i], Q=self.flow_at(k=k, i=i)) for i in range(self.number_of_nodes)],
+                dtype=np.float64
+            )
+            
         self.velocity = self.flow / self.area
         self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
         
         ref = self.depth[0, :]
-        deviation = np.abs(self.depth - ref)
-        self.peak_amplitude = deviation.max(axis=0)
+        self.amplitude = self.depth - ref
+        self.peak_amplitude = self.amplitude.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
             Y = self.water_level_at(k=0, i=-1)
@@ -89,7 +100,7 @@ class Solver:
             self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)
             self.storage_stage = self.storage_stage[:, 1].flatten()
             
-            self.storage_outflow = np.empty(shape=(self.number_of_time_levels), dtype=np.float64)
+            self.storage_outflow = np.empty(shape=(self.time_level+1), dtype=np.float64)
             if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
                 self.storage_outflow[0] = 0
             else:
@@ -98,7 +109,7 @@ class Solver:
                     self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.storage_stage[0], time=0)
                     )
             
-            for k in range(1, self.number_of_time_levels):
+            for k in range(1, self.time_level+1):
                 avg_inflow = 0.5 * (self.flow_at(k=k-1, i=-1) + self.flow_at(k=k, i=-1))
                 Y1 = self.storage_stage[k-1]; Y2 = self.storage_stage[k]
                 vol_change = self.channel.downstream_boundary.lumped_storage.net_vol_change(Y1=Y1, Y2=Y2)
@@ -121,6 +132,8 @@ class Solver:
             "Area": self.area,
             "Top width": self.top_width,
             "Wave celerity": self.wave_celerity,
+            "Amplitude": self.amplitude,
+            "Froude number": self.froude_number
         }
 
         nt, nx = next(iter(arrays_2d.values())).shape

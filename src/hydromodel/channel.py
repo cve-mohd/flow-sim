@@ -1,5 +1,5 @@
 from .boundary import Boundary
-from .utility import compute_radii_curv
+from .utility import compute_curv
 from . import hydraulics
 import numpy as np
 from .cross_section import CrossSection, interpolate_cross_section, TrapezoidalSection
@@ -147,9 +147,6 @@ class Channel:
         self.coords_chainages = np.asarray(chainages, dtype=np.float64)
         self.coords = np.asarray(coords, dtype=np.float64)
         
-        self.upstream_boundary.chainage = self.coords_chainages[0]
-        self.downstream_boundary.chainage = self.coords_chainages[-1]
-        self.length = self.downstream_boundary.chainage - self.upstream_boundary.chainage
         self.coordinated = True
     
     def set_cross_sections(self, chainages, sections: list[CrossSection]):
@@ -215,9 +212,7 @@ class Channel:
 
     def _interpolate_cross_sections(self):
         if self.coords_chainages is not None and self.coords is not None:
-            curvatures = self._calc_curvature()
-        else:
-            curvatures = np.zeros_like(self.ch_at_node)
+            self._calc_curvature()
             
         self.xs_at_node = []
         for i, s in enumerate(self.ch_at_node):
@@ -246,11 +241,41 @@ class Channel:
         self.downstream_boundary.cross_section = self.xs_at_node[-1]
         
     def _calc_curvature(self):
-        x = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 0])
-        y = np.interp(self.ch_at_node, self.coords_chainages, self.coords[:, 1])
-        curvatures = compute_radii_curv(x_coords=x, y_coords=y)
-        return curvatures
+        for i in range(1, len(self.input_xs) - 1):
+            ch_left, ch, ch_right = (
+                self.xs_chainages[i - 1],
+                self.xs_chainages[i],
+                self.xs_chainages[i + 1],
+            )
 
+            # interpolate to get coordinates along centerline
+            chs = np.array([ch_left, ch, ch_right])
+            xys = np.column_stack([
+                np.interp(chs, self.coords_chainages, self.coords[:, 0]),
+                np.interp(chs, self.coords_chainages, self.coords[:, 1])
+            ])
+            xy_left, xy, xy_right = xys
+
+            # direction vectors
+            v1 = xy - xy_left
+            v2 = xy_right - xy
+
+            # avoid zero-length vectors
+            if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0:
+                curvature = 0.0
+            else:
+                # turning angle
+                dot = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                theta = np.arccos(np.clip(dot, -1.0, 1.0))
+
+                # average segment length
+                L = 0.5 * (np.linalg.norm(v1) + np.linalg.norm(v2))
+
+                # curvature
+                curvature = 2 * np.sin(theta / 2) / L * np.sign(np.cross(v1, v2))
+
+            self.input_xs[i].curvature = curvature
+        
     def _interpolate_chainages(self, n_nodes):
         self.ch_at_node = np.linspace(self.upstream_boundary.chainage, self.downstream_boundary.chainage, n_nodes)
 

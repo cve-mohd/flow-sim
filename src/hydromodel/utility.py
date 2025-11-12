@@ -33,7 +33,7 @@ def seconds_to_hms(seconds: int):
     
     return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
 
-def compute_radii_curv(x_coords, y_coords):
+def compute_curv(x_coords, y_coords):
     x_coords, y_coords = np.asarray(x_coords, dtype=np.float64), np.asarray(y_coords, dtype=np.float64)
     # Arc length parameterization
     ds = np.hypot(np.diff(x_coords), np.diff(y_coords))

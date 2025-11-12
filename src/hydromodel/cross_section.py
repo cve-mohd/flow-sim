@@ -153,7 +153,7 @@ class CrossSection(ABC):
         
     def dSc_dA(self, h: float, Q: float) -> float:
         """Compute dSc/dA."""
-        if self.curvature == 0:
+        if abs(self.curvature) <= 1e-12:
             return 0.0
         
         hw = h + self.z_min
@@ -165,7 +165,7 @@ class CrossSection(ABC):
         
     def dSc_dQ(self, h: float, Q: float) -> float:
         """Compute dSc/dQ."""
-        if self.curvature == 0:
+        if abs(self.curvature) <= 1e-12:
             return 0.0
         
         hw = h + self.z_min

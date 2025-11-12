@@ -3,6 +3,7 @@ from scipy.constants import g
 from .solver import Solver
 from .channel import Channel
 from .utility import euclidean_norm
+from .hydraulics import froude_num
 
 class PreissmannSolver(Solver):
     """
@@ -150,6 +151,7 @@ class PreissmannSolver(Solver):
             while not converged:
                 iteration += 1
                 if iteration - 1 >= max_iter:
+                    self.check_criticality()
                     raise ValueError(f'Convergence within {iteration - 1} iterations couldn\'t be achieved.')
                 
                 self.update_guesses()
@@ -158,8 +160,10 @@ class PreissmannSolver(Solver):
                 J = self.compute_jacobian()
                                                                                         
                 if np.isnan(R).any() or np.isnan(J).any():
+                    self.check_criticality()
                     raise ValueError("NaN in system assembly")
                 if np.linalg.cond(J) > 1e12:
+                    self.check_criticality()
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
                                 
                 delta = np.linalg.solve(J, -R)
@@ -194,6 +198,27 @@ class PreissmannSolver(Solver):
         k = self.time_level
         self.depth[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
+        
+    def check_criticality(self) -> None:
+        fail = False
+        for i in range(self.number_of_nodes):
+            x = self.channel.ch_at_node[i]
+            hw = self.water_level_at(i=i)
+            fr = froude_num(
+                T = self.channel.top_width(i=i, hw=hw),
+                A = self.area_at(i=i),
+                Q = self.flow_at(i=i)
+            )
+    
+            if fr == 1.0:
+                fail = True
+                print(f'WARNING: Flow goes critical at x = {x} m. Fr = {fr}.')
+            elif fr > 1.0:
+                fail = True
+                print(f'WARNING: Flow goes supercritical at x = {x} m. Fr = {fr}.')
+                
+        if not fail:
+            print('Flow is subcritical.')
                 
     def upstream_residual(self) -> float:
         """

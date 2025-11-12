@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cross_sections_base\\', results_csv='cases\\gerd_roseires\\data\\composite_trapezoids.csv',
+def plot_cross_section_from_index(index, folder='cases\\gerd_roseires\\data\\cross_sections_raw\\', results_csv='cases\\gerd_roseires\\data\\composite_trapezoids.csv',
                                   overlay=True, save=False, show=True):
     """
     Plot an irregular cross-section and its trapezoidal approximations

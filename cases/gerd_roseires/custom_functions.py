@@ -132,6 +132,10 @@ def load_trapzoid_xs(file_path: str):
         row = table.iloc[[i]]
         row = row.squeeze()
         
+        if row['file'] == '53.csv':
+            print(f'Skipped cross-section {row['file'][:2]}.')
+            continue
+        
         chainages.append(row['chainage'])
         cross_sections.append(
             TrapezoidalSection(
@@ -149,6 +153,3 @@ def load_trapzoid_xs(file_path: str):
         )
         
     return chainages, cross_sections
-
-load_trapzoid_xs(file_path='cases\\gerd_roseires\\data\\composite_trapezoids.csv')
-# py -m cases.gerd_roseires.custom_functions

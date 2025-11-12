@@ -9,9 +9,8 @@ tolerance = 1e-6
 
 ############                Hydrologic Parameters               ############
 
-initial_roseires_level = 490
-gates_open = True
-jammed_spillways = 0
-jammed_sluicegates = 0
-opening_time = 3600 * 6
-closing_time = 3600 * 55
+initial_roseires_level = 482
+JAMMED_SPILLWAYS = 0
+JAMMED_SLUICEGATES = 0
+OPEN_TIMING = 3600 * 6
+CLOSE_TIMING = 3600 * 55
