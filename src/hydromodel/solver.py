@@ -5,14 +5,15 @@ from .channel import Channel
 from .utility import create_directory_if_not_exists
 from .utility import seconds_to_hms
 from .hydraulics import froude_num
+from abc import ABC, abstractmethod
 
-class Solver:
+class Solver(ABC):
     def __init__(self,
                  channel: Channel,
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
-                 regularization: bool = True,
+                 regularization: bool = False,
                  fit_spatial_step: bool = True):
         """
         Initializes the class.
@@ -52,7 +53,15 @@ class Solver:
     def fit_spatial_step(self):
         self.number_of_nodes = round(self.channel.length / self.spatial_step) + 1
         self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
-        
+    
+    @abstractmethod
+    def run(self, verbose: int = 1):
+        pass
+    
+    def initialize_t0(self):
+        self.depth[0, :] = self.channel.initial_conditions[:, 0]
+        self.flow[0, :] = self.channel.initial_conditions[:, 1]
+    
     def prepare_results(self) -> None:
         if self.time_level + 1 < self.number_of_time_levels:
             self.flow = self.flow[:self.time_level+1, :]
@@ -267,7 +276,7 @@ class Solver:
         if regularization:
             h_min = 1e-4
             A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
-            A = self.A_reg(A, A_min)
+            A = self.A_reg(A=A, eps=A_min)
         
         return A
             

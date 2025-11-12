@@ -8,14 +8,7 @@ class LaxSolver(Solver):
     solve the Saint-Venant equations.
         
     """
-    def __init__(self,
-                 channel: Channel,
-                 time_step: int | float,
-                 spatial_step: int | float,
-                 simulation_time: int,
-                 secondary_BC: tuple = ('constant', 'constant'),
-                 fit_spatial_step: bool = True,
-                 regularization: bool = False):
+    def __init__(self, secondary_BC: tuple = ('constant', 'constant'), **kwargs):
         """
         Initializes the class.
 
@@ -33,12 +26,7 @@ class LaxSolver(Solver):
             Wheter or not the size of the spatial step should be adjusted suit the total length of the reach.
             
         """
-        super().__init__(channel=channel,
-                         time_step=time_step,
-                         spatial_step=spatial_step,
-                         simulation_time=simulation_time,
-                         fit_spatial_step=fit_spatial_step,
-                         regularization=regularization)
+        super().__init__(**kwargs)
         
         self.secondary_BC = secondary_BC
         

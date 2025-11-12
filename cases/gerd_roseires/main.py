@@ -45,7 +45,7 @@ solver = PreissmannSolver(channel=GERD_Roseires_system,
 
 print("Simulation started.")
 
-solver.run(verbose=0, tolerance=tolerance)
+solver.run(verbose=1, tolerance=tolerance)
 
 print("Saving results...")
 
