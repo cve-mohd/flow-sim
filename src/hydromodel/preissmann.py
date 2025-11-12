@@ -94,9 +94,9 @@ class PreissmannSolver(Solver):
             
         """
         data = self.compute_jacobian_data()
-        shape = (2 * self.number_of_nodes, 2 * self.number_of_nodes)
         
         if self.J is None:
+            shape = (2 * self.number_of_nodes, 2 * self.number_of_nodes)
             self.J = sp.coo_matrix((data, self.compute_indicies()), shape=shape).tocsr()
         else:
             self.J.data[:] = data
