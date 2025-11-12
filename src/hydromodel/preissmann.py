@@ -1,9 +1,10 @@
 import numpy as np
 from scipy.constants import g
 from .solver import Solver
-from .channel import Channel
 from .utility import euclidean_norm
 from .hydraulics import froude_num
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 
 class PreissmannSolver(Solver):
     """
@@ -81,40 +82,59 @@ class PreissmannSolver(Solver):
             
         return R
 
-    def compute_jacobian(self) -> np.ndarray:
+    def compute_jacobian(self):
         """
-        Constructs the Jacobian matrix J of the system of equations.
+        Constructs the Jacobian matrix J of the system of equations (sparse version).
 
         Returns
         -------
-        np.ndarray
-            J
-            
+        scipy.sparse.csr_matrix
+            Sparse Jacobian matrix
         """
-        jacobian_matrix = np.zeros(shape=(2*self.number_of_nodes, 2*self.number_of_nodes))
+        n = self.number_of_nodes
+        row_indicies = []
+        col_indicies = []
+        data = []
 
-        jacobian_matrix[0, 0] = self.dU_dh()
-        jacobian_matrix[0, 1] = self.dU_dQ()
+        # Upstream boundary
+        row_indicies += [0, 0]
+        col_indicies += [0, 1]
+        data += [self.dU_dh(), self.dU_dQ()]
 
-        for row in range(1, 2 * self.number_of_nodes - 1, 2):
-            spatial_node = (row - 1) // 2
-            
-            jacobian_matrix[row, row - 1] = self.dC_dh_i(i=spatial_node)
-            jacobian_matrix[row, row + 0] = self.dC_dQ_i(i=spatial_node)
-            jacobian_matrix[row, row + 1] = self.dC_dh_ip1(i=spatial_node)
-            jacobian_matrix[row, row + 2] = self.dC_dQ_ip1(i=spatial_node)
+        # Interior nodes
+        for row_index in range(1, 2 * n - 1, 2):
+            i = (row_index - 1) // 2
 
-            jacobian_matrix[row + 1, row - 1] = self.dM_dh_i(i=spatial_node)
-            jacobian_matrix[row + 1, row + 0] = self.dM_dQ_i(i=spatial_node)
-            jacobian_matrix[row + 1, row + 1] = self.dM_dh_ip1(i=spatial_node)
-            jacobian_matrix[row + 1, row + 2] = self.dM_dQ_ip1(i=spatial_node)
-        
-        jacobian_matrix[-1, -2] = self.dD_dh()
-        jacobian_matrix[-1, -1] = self.dD_dQ()
+            # Continuity equation (row)
+            row_indicies += [row_index] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+            data += [
+                self.dC_dh_i(i=i),
+                self.dC_dQ_i(i=i),
+                self.dC_dh_ip1(i=i),
+                self.dC_dQ_ip1(i=i),
+            ]
 
-        return jacobian_matrix
+            # Momentum equation (row + 1)
+            row_indicies += [row_index + 1] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+            data += [
+                self.dM_dh_i(i=i),
+                self.dM_dQ_i(i=i),
+                self.dM_dh_ip1(i=i),
+                self.dM_dQ_ip1(i=i),
+            ]
 
-    def run(self, tolerance=1e-4, verbose=3, max_iter=100) -> None:
+        # Downstream boundary
+        row_indicies += [2 * n - 1, 2 * n - 1]
+        col_indicies += [2 * n - 2, 2 * n - 1]
+        data += [self.dD_dh(), self.dD_dQ()]
+
+        # Assemble in COO then convert to CSR
+        J = sp.coo_matrix((data, (row_indicies, col_indicies)), shape=(2 * n, 2 * n)).tocsr()
+        return J
+
+    def run(self, tolerance=1e-4, verbose=3, max_iter=100, diagnos=False) -> None:
         """
         Run the simulation.
         """
@@ -145,15 +165,21 @@ class PreissmannSolver(Solver):
                 
                 R = self.compute_residual_vector()
                 J = self.compute_jacobian()
-                                                                                        
-                if np.isnan(R).any() or np.isnan(J).any():
-                    self.check_criticality()
-                    raise ValueError("NaN in system assembly")
-                if np.linalg.cond(J) > 1e12:
-                    self.check_criticality()
-                    raise ValueError("Jacobian is ill-conditioned (near singular).")
+                
+                if diagnos:
+                    # --- NaN check ---
+                    if np.isnan(R).any() or np.isnan(J.data).any():
+                        self.check_criticality()
+                        raise ValueError("NaN in system assembly")
+
+                    # --- Ill-conditioning check ---
+                    lu = spla.splu(J.tocsc())
+                    rcond = lu.rcond  # reciprocal condition estimate
+                    if rcond is not None and rcond < 1e-12:
+                        self.check_criticality()
+                        raise ValueError("Jacobian is ill-conditioned (rcond too small)")
                                 
-                delta = np.linalg.solve(J, -R)
+                delta = spla.spsolve(J, -R)
                 self.unknowns += delta
                 
                 error = euclidean_norm(R)
