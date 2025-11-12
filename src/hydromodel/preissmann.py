@@ -1,9 +1,10 @@
 import numpy as np
 from scipy.constants import g
 from .solver import Solver
-from .channel import Channel
 from .utility import euclidean_norm
 from .hydraulics import froude_num
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 
 class PreissmannSolver(Solver):
     """
@@ -38,6 +39,7 @@ class PreissmannSolver(Solver):
         super().__init__(**kwargs)
         
         self.theta = theta
+        self.J = None
         self.unknowns = None
         self.type = 'preissmann'
         self.initialize_t0()
@@ -81,40 +83,25 @@ class PreissmannSolver(Solver):
             
         return R
 
-    def compute_jacobian(self) -> np.ndarray:
+    def compute_jacobian(self):
         """
-        Constructs the Jacobian matrix J of the system of equations.
+        Constructs the Jacobian matrix J of the system of equations (sparse version).
 
         Returns
         -------
-        np.ndarray
-            J
+        scipy.sparse.csr_matrix
+            Sparse Jacobian matrix
             
         """
-        jacobian_matrix = np.zeros(shape=(2*self.number_of_nodes, 2*self.number_of_nodes))
-
-        jacobian_matrix[0, 0] = self.dU_dh()
-        jacobian_matrix[0, 1] = self.dU_dQ()
-
-        for row in range(1, 2 * self.number_of_nodes - 1, 2):
-            spatial_node = (row - 1) // 2
-            
-            jacobian_matrix[row, row - 1] = self.dC_dh_i(i=spatial_node)
-            jacobian_matrix[row, row + 0] = self.dC_dQ_i(i=spatial_node)
-            jacobian_matrix[row, row + 1] = self.dC_dh_ip1(i=spatial_node)
-            jacobian_matrix[row, row + 2] = self.dC_dQ_ip1(i=spatial_node)
-
-            jacobian_matrix[row + 1, row - 1] = self.dM_dh_i(i=spatial_node)
-            jacobian_matrix[row + 1, row + 0] = self.dM_dQ_i(i=spatial_node)
-            jacobian_matrix[row + 1, row + 1] = self.dM_dh_ip1(i=spatial_node)
-            jacobian_matrix[row + 1, row + 2] = self.dM_dQ_ip1(i=spatial_node)
+        data = self.compute_jacobian_data()
         
-        jacobian_matrix[-1, -2] = self.dD_dh()
-        jacobian_matrix[-1, -1] = self.dD_dQ()
-
-        return jacobian_matrix
-
-    def run(self, tolerance=1e-4, verbose=3, max_iter=100) -> None:
+        if self.J is None:
+            shape = (2 * self.number_of_nodes, 2 * self.number_of_nodes)
+            self.J = sp.coo_matrix((data, self.compute_indicies()), shape=shape).tocsr()
+        else:
+            self.J.data[:] = data
+            
+    def run(self, tolerance=1e-4, verbose=3, max_iter=100, diagnos=False) -> None:
         """
         Run the simulation.
         """
@@ -144,16 +131,22 @@ class PreissmannSolver(Solver):
                 self.update_guesses()
                 
                 R = self.compute_residual_vector()
-                J = self.compute_jacobian()
-                                                                                        
-                if np.isnan(R).any() or np.isnan(J).any():
-                    self.check_criticality()
-                    raise ValueError("NaN in system assembly")
-                if np.linalg.cond(J) > 1e12:
-                    self.check_criticality()
-                    raise ValueError("Jacobian is ill-conditioned (near singular).")
+                self.compute_jacobian()
+                
+                if diagnos:
+                    # --- NaN check ---
+                    if np.isnan(R).any() or np.isnan(self.J.data).any():
+                        self.check_criticality()
+                        raise ValueError("NaN in system assembly")
+
+                    # --- Ill-conditioning check ---
+                    lu = spla.splu(self.J.tocsc())
+                    rcond = lu.rcond  # reciprocal condition estimate
+                    if rcond is not None and rcond < 1e-12:
+                        self.check_criticality()
+                        raise ValueError("Jacobian is ill-conditioned (rcond too small)")
                                 
-                delta = np.linalg.solve(J, -R)
+                delta = spla.spsolve(self.J, -R)
                 self.unknowns += delta
                 
                 error = euclidean_norm(R)
@@ -328,7 +321,31 @@ class PreissmannSolver(Solver):
                                                                    time=time,
                                                                    vol_in=volume,
                                                                    duration=self.time_step)
-            
+    
+    def compute_jacobian_data(self):
+        data = []
+        data += [self.dU_dh(), self.dU_dQ()]
+
+        for row_index in range(1, 2 * self.number_of_nodes - 1, 2):
+            i = (row_index - 1) // 2
+
+            data += [
+                self.dC_dh_i(i=i),
+                self.dC_dQ_i(i=i),
+                self.dC_dh_ip1(i=i),
+                self.dC_dQ_ip1(i=i),
+            ]
+
+            data += [
+                self.dM_dh_i(i=i),
+                self.dM_dQ_i(i=i),
+                self.dM_dh_ip1(i=i),
+                self.dM_dQ_ip1(i=i),
+            ]
+
+        data += [self.dD_dh(), self.dD_dQ()]
+        return data
+
     def dU_dh(self) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow area.
@@ -856,6 +873,31 @@ class PreissmannSolver(Solver):
         chi = A_reg / (A_reg + A_min)
         
         return chi
+
+    def compute_indicies(self):
+        n = self.number_of_nodes
+        row_indicies = []
+        col_indicies = []
+        
+        # Upstream boundary
+        row_indicies += [0, 0]
+        col_indicies += [0, 1]
+        
+        # Interior nodes
+        for row_index in range(1, 2 * n - 1, 2):
+            # Continuity equation (row)
+            row_indicies += [row_index] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+            
+            # Momentum equation (row + 1)
+            row_indicies += [row_index + 1] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+
+        # Downstream boundary
+        row_indicies += [2 * n - 1, 2 * n - 1]
+        col_indicies += [2 * n - 2, 2 * n - 1]
+        
+        return row_indicies, col_indicies
 
     def time_diff(self, k1_i1 = 0, k1_i = 0, k_i1 = 0, k_i = 0):
         return (k1_i1 + k1_i - k_i1 - k_i) / (2 * self.time_step)
