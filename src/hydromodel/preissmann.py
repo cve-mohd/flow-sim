@@ -64,8 +64,7 @@ class PreissmannSolver(Solver):
         None.
 
         """
-        self.depth[0, :] = self.channel.initial_conditions[:, 0]
-        self.flow[0, :] = self.channel.initial_conditions[:, 1]
+        super().initialize_t0()
         self.unknowns = self.channel.initial_conditions.flatten()
 
     def compute_residual_vector(self) -> np.ndarray:
@@ -183,7 +182,7 @@ class PreissmannSolver(Solver):
                 
             total_iterations += iteration
             
-        super()._finalize(verbose)
+        self._finalize(verbose)
         #print(f'Total iterations = {total_iterations}')
     
     def update_guesses(self) -> None:
