@@ -4,6 +4,7 @@ from scipy.constants import g
 from .channel import Channel
 from .utility import create_directory_if_not_exists
 from .utility import seconds_to_hms
+from .hydraulics import froude_num
 
 class Solver:
     def __init__(self,
@@ -40,7 +41,6 @@ class Solver:
 
         self.flow = np.empty(shape=(self.number_of_time_levels, self.number_of_nodes), dtype=np.float64)
         self.depth = np.empty_like(self.flow)
-        self.area = np.empty_like(self.flow)
                         
         self._type = None
         self._solved = False
@@ -54,20 +54,39 @@ class Solver:
         self.spatial_step = self.channel.length / (self.number_of_nodes - 1)
         
     def prepare_results(self) -> None:
-        for k in range(self.number_of_time_levels):
+        if self.time_level + 1 < self.number_of_time_levels:
+            self.flow = self.flow[:self.time_level+1, :]
+            self.depth = self.depth[:self.time_level+1, :]
+            
+        self.bed_profile = np.array(object=[xs.z_min for xs in self.channel.xs_at_node], dtype=np.float64)
+        self.level = self.depth + self.bed_profile
+        
+        self.area = np.empty_like(self.flow)
+        self.top_width = np.empty_like(self.flow)
+        self.froude_number = np.empty_like(self.flow)
+        
+        for k in range(self.time_level+1):
             self.area[k] = np.array(
                 object=[self.channel.area_at(i=i, hw=self.water_level_at(i=i, k=k)) for i in range(self.number_of_nodes)],
                 dtype=np.float64
             )
             
+            self.top_width[k] = np.array(
+                object=[self.channel.top_width(i=i, hw=self.water_level_at(i=i, k=k)) for i in range(self.number_of_nodes)],
+                dtype=np.float64
+            )
+            
+            self.froude_number[k] = np.array(
+                object=[froude_num(T=self.top_width[k, i], A=self.area[k, i], Q=self.flow_at(k=k, i=i)) for i in range(self.number_of_nodes)],
+                dtype=np.float64
+            )
+            
         self.velocity = self.flow / self.area
-        self.bed_profile = np.array(object=[xs.z_min for xs in self.channel.xs_at_node], dtype=np.float64)
-        self.level = self.depth + self.bed_profile
         self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
         
         ref = self.depth[0, :]
-        deviation = np.abs(self.depth - ref)
-        self.peak_amplitude = deviation.max(axis=0)
+        self.amplitude = self.depth - ref
+        self.peak_amplitude = self.amplitude.max(axis=0)
         
         if self.channel.downstream_boundary.lumped_storage is not None:
             Y = self.water_level_at(k=0, i=-1)
@@ -81,7 +100,7 @@ class Solver:
             self.storage_stage = np.array(self.channel.downstream_boundary.lumped_storage.stage_hydrograph, dtype=np.float64)
             self.storage_stage = self.storage_stage[:, 1].flatten()
             
-            self.storage_outflow = np.empty(shape=(self.number_of_time_levels), dtype=np.float64)
+            self.storage_outflow = np.empty(shape=(self.time_level+1), dtype=np.float64)
             if self.channel.downstream_boundary.lumped_storage.rating_curve is None:
                 self.storage_outflow[0] = 0
             else:
@@ -90,7 +109,7 @@ class Solver:
                     self.channel.downstream_boundary.lumped_storage.rating_curve.discharge(stage=self.storage_stage[0], time=0)
                     )
             
-            for k in range(1, self.number_of_time_levels):
+            for k in range(1, self.time_level+1):
                 avg_inflow = 0.5 * (self.flow_at(k=k-1, i=-1) + self.flow_at(k=k, i=-1))
                 Y1 = self.storage_stage[k-1]; Y2 = self.storage_stage[k]
                 vol_change = self.channel.downstream_boundary.lumped_storage.net_vol_change(Y1=Y1, Y2=Y2)
@@ -106,17 +125,20 @@ class Solver:
         filename = folder_path + "\\results.xlsx"
         
         arrays_2d = {
-            "Area": self.area,
-            "Flow": self.flow,
-            "Velocity": self.velocity,
-            "Depth": self.depth,
             "Level": self.level,
+            "Flow": self.flow,
+            "Depth": self.depth,
+            "Velocity": self.velocity,
+            "Area": self.area,
+            "Top width": self.top_width,
             "Wave celerity": self.wave_celerity,
+            "Amplitude": self.amplitude,
+            "Froude number": self.froude_number
         }
 
         nt, nx = next(iter(arrays_2d.values())).shape
         time = np.arange(nt) * self.time_step
-        distance = np.arange(nx) * self.spatial_step
+        distance = np.array(object=self.channel.ch_at_node, dtype=np.float64)
 
         with pd.ExcelWriter(filename, engine="openpyxl") as writer:
             # 2D arrays
@@ -142,12 +164,6 @@ class Solver:
             df_peak.index = ["Peak amplitude"]
             df_peak.columns.name = "Distance"
             df_peak.to_excel(writer, sheet_name="Peak amplitude")
-
-            # Width (row with distance headers)
-            df_width = pd.DataFrame([np.array(object=[xs.width for xs in self.channel.xs_at_node], dtype=np.float64)], columns=distance)
-            df_width.index = ["Width"]
-            df_width.columns.name = "Distance"
-            df_width.to_excel(writer, sheet_name="Width")
 
             # Bed level (row with distance headers)
             df_bed = pd.DataFrame([self.bed_profile], columns=distance)
@@ -212,22 +228,13 @@ class Solver:
         if verbose >= 1:
             print("Simulation completed successfully.")
             
-    def area_at(self, k: int = None, i: int = None, regularization: bool = None):
+    def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
         
-        A = self.channel.area_at(i=i, hw=self.water_level_at(k=k, i=i))
-            
-        if regularization is None:
-            regularization = self.regularization
-        
-        if regularization:
-            h_min = 1e-4
-            A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
-            A = self.A_reg(A, A_min)
-        
-        return A
-        
+        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
+        return self.depth[k, i]
+    
     def flow_at(self, k: int = None, i: int = None, chi_scaling: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
@@ -247,16 +254,25 @@ class Solver:
             Q = Q * chi
             
         return Q
-        
-    def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
+    
+    def area_at(self, k: int = None, i: int = None, regularization: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
         
-        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
-        return self.depth[k, i]
-    
+        A = self.channel.area_at(i=i, hw=self.water_level_at(k=k, i=i))
+            
+        if regularization is None:
+            regularization = self.regularization
+        
+        if regularization:
+            h_min = 1e-4
+            A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
+            A = self.A_reg(A, A_min)
+        
+        return A
+            
     def water_level_at(self, k: int = None, i: int = None, regularization: bool = None):
-        return self.channel.xs_at_node[i].z_min + self.depth_at(k=k, i=i, regularization=regularization)
+        return self.channel.bed_level_at(i=i) + self.depth_at(k=k, i=i, regularization=regularization)
         
     def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
         return self.channel.Se(h=self.depth_at(k=k, i=i, regularization=regularization),
@@ -264,12 +280,8 @@ class Solver:
                                i=i)
         
     def dA_dh(self, k: int = None, i: int = None, regularization: bool = None):
-        return 1.0 / self.channel.dh_dA(i=i, hw=self.water_level_at(k=k, i=i, regularization=regularization))
-    
-    def dY_dA_at(self, i):
-        dY_dA = self.channel.dh_dA(i=i, hw=self.water_level_at(i=i))
-        return dY_dA
-    
+        return self.channel.dA_dh(i=i, hw=self.water_level_at(k=k, i=i, regularization=regularization))
+        
     def A_reg(self, A):
         """
         Regularized wetted area.

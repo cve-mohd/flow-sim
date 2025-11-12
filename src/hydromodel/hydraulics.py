@@ -163,9 +163,9 @@ def froude_num(T: float, A: float, Q: float):
     Returns:
         float: The Froude number.
     """
-    V = Q/A
-    D = A/T
-    return V / np.sqrt(g*D)
+    V = Q/max(A, 1e-6)
+    D = A/max(T, 1e-6)
+    return V / np.sqrt(g*max(D, 1e-6))
 
 def dFr_dA(T: float, A: float, Q: float) -> float:
     """Computes the derivative of the Froude number w.r.t. flow area.

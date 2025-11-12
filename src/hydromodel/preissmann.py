@@ -3,6 +3,7 @@ from scipy.constants import g
 from .solver import Solver
 from .channel import Channel
 from .utility import euclidean_norm
+from .hydraulics import froude_num
 
 class PreissmannSolver(Solver):
     """
@@ -150,16 +151,19 @@ class PreissmannSolver(Solver):
             while not converged:
                 iteration += 1
                 if iteration - 1 >= max_iter:
+                    self.check_criticality()
                     raise ValueError(f'Convergence within {iteration - 1} iterations couldn\'t be achieved.')
                 
                 self.update_guesses()
                 
                 R = self.compute_residual_vector()
                 J = self.compute_jacobian()
-                                                                        
+                                                                                        
                 if np.isnan(R).any() or np.isnan(J).any():
+                    self.check_criticality()
                     raise ValueError("NaN in system assembly")
                 if np.linalg.cond(J) > 1e12:
+                    self.check_criticality()
                     raise ValueError("Jacobian is ill-conditioned (near singular).")
                                 
                 delta = np.linalg.solve(J, -R)
@@ -194,6 +198,27 @@ class PreissmannSolver(Solver):
         k = self.time_level
         self.depth[k] = self.unknowns[ ::2]
         self.flow[k] = self.unknowns[1::2]
+        
+    def check_criticality(self) -> None:
+        fail = False
+        for i in range(self.number_of_nodes):
+            x = self.channel.ch_at_node[i]
+            hw = self.water_level_at(i=i)
+            fr = froude_num(
+                T = self.channel.top_width(i=i, hw=hw),
+                A = self.area_at(i=i),
+                Q = self.flow_at(i=i)
+            )
+    
+            if fr == 1.0:
+                fail = True
+                print(f'WARNING: Flow goes critical at x = {x} m. Fr = {fr}.')
+            elif fr > 1.0:
+                fail = True
+                print(f'WARNING: Flow goes supercritical at x = {x} m. Fr = {fr}.')
+                
+        if not fail:
+            print('Flow is subcritical.')
                 
     def upstream_residual(self) -> float:
         """
@@ -390,6 +415,7 @@ class PreissmannSolver(Solver):
         """
         d_dA_dt_dA = self.time_diff(k1_i1=1)
         d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i+1)
+        
         d_dQ_dx_dh = 0
         
         return d_dA_dt_dh + d_dQ_dx_dh
@@ -414,6 +440,7 @@ class PreissmannSolver(Solver):
         """
         d_dA_dt_dA = self.time_diff(k1_i=1)
         d_dA_dt_dh = d_dA_dt_dA * self.dA_dh(i=i)
+        
         d_dQ_dx_dh = 0
         
         return d_dA_dt_dh + d_dQ_dx_dh
@@ -482,7 +509,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i+1)
         
         # Basic derivatives:
-        dY_dA = self.dY_dA_at(i=i+1)
+        dA_dh = self.dA_dh(i=i+1)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i+1)
         
         # Finite differences:
@@ -511,15 +538,15 @@ class PreissmannSolver(Solver):
         d_dQdt_dA = 0
         d_dQ2Adx_dA = -self.spatial_diff(k1_i1=1) * (Q/A) ** 2
         d_avgA_dA = self.cell_avg(k1_i1=1)
-        d_dYdx_dA = self.spatial_diff(k1_i1=1) * dY_dA
+        d_dYdx_dh = self.spatial_diff(k1_i1=1)
         d_avgSe_dA = self.cell_avg(k1_i1=1) * dSe_dA
         
         # dM/dA:
-        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
-            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+        dM_dh = d_dQdt_dA * dA_dh + d_dQ2Adx_dA * dA_dh + g * (
+            avg_A * (d_dYdx_dh + d_avgSe_dA * dA_dh) + d_avgA_dA * dA_dh * (dY_dx + avg_Se)
             )
         
-        return dM_dA * self.dA_dh(i=i+1)
+        return dM_dh
         
         if not self.regularization:
             return dM_dA
@@ -544,7 +571,7 @@ class PreissmannSolver(Solver):
         h = self.depth_at(i=i)
         
         # Basic derivatives:
-        dY_dA = self.dY_dA_at(i=i)
+        dA_dh = self.dA_dh(i=i)
         dSe_dA = self.channel.dSe_dA(h=h, Q=Q, i=i)
         
         # Finite differences:
@@ -573,15 +600,15 @@ class PreissmannSolver(Solver):
         d_dQdt_dA = 0
         d_dQ2Adx_dA = -self.spatial_diff(k1_i=1) * (Q/A) ** 2
         d_avgA_dA = self.cell_avg(k1_i=1)
-        d_dYdx_dA = self.spatial_diff(k1_i=1) * dY_dA
+        d_dYdx_dh = self.spatial_diff(k1_i=1)
         d_avgSe_dA = self.cell_avg(k1_i=1) * dSe_dA
         
         # dM/dA:
-        dM_dA = d_dQdt_dA + d_dQ2Adx_dA + g * (
-            avg_A * (d_dYdx_dA + d_avgSe_dA) + d_avgA_dA * (dY_dx + avg_Se)
+        dM_dh = d_dQdt_dA * dA_dh + d_dQ2Adx_dA * dA_dh + g * (
+            avg_A * (d_dYdx_dh + d_avgSe_dA * dA_dh) + d_avgA_dA * dA_dh * (dY_dx + avg_Se)
             )
         
-        return dM_dA * self.dA_dh(i=i)
+        return dM_dh
         
         if not self.regularization:
             return dM_dA
