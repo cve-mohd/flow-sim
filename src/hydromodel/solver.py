@@ -228,22 +228,13 @@ class Solver:
         if verbose >= 1:
             print("Simulation completed successfully.")
             
-    def area_at(self, k: int = None, i: int = None, regularization: bool = None):
+    def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
         
-        A = self.channel.area_at(i=i, hw=self.water_level_at(k=k, i=i))
-            
-        if regularization is None:
-            regularization = self.regularization
-        
-        if regularization:
-            h_min = 1e-4
-            A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
-            A = self.A_reg(A, A_min)
-        
-        return A
-        
+        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
+        return self.depth[k, i]
+    
     def flow_at(self, k: int = None, i: int = None, chi_scaling: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
@@ -263,16 +254,25 @@ class Solver:
             Q = Q * chi
             
         return Q
-        
-    def depth_at(self, k: int = None, i: int = None, regularization: bool = None):
+    
+    def area_at(self, k: int = None, i: int = None, regularization: bool = None):
         if i is None:
             raise ValueError("Spatial node must be specified.")
         
-        k = self.time_level if k is None else self.time_level-1 if k == -1 else k
-        return self.depth[k, i]
-    
+        A = self.channel.area_at(i=i, hw=self.water_level_at(k=k, i=i))
+            
+        if regularization is None:
+            regularization = self.regularization
+        
+        if regularization:
+            h_min = 1e-4
+            A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
+            A = self.A_reg(A, A_min)
+        
+        return A
+            
     def water_level_at(self, k: int = None, i: int = None, regularization: bool = None):
-        return self.channel.xs_at_node[i].z_min + self.depth_at(k=k, i=i, regularization=regularization)
+        return self.channel.bed_level_at(i=i) + self.depth_at(k=k, i=i, regularization=regularization)
         
     def Se_at(self, k: int = None, i: int = None, regularization: bool = None, chi_scaling: bool = None):
         return self.channel.Se(h=self.depth_at(k=k, i=i, regularization=regularization),
