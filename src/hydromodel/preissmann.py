@@ -19,14 +19,7 @@ class PreissmannSolver(Solver):
             
     """
 
-    def __init__(self,
-                 channel: Channel,
-                 theta: int | float,
-                 time_step: int | float,
-                 spatial_step: int | float,
-                 simulation_time: int,
-                 fit_spatial_step: bool = True,
-                 regularization: bool = False):
+    def __init__(self, theta: int | float, **kwargs):
         """
         Initializes the class.
 
@@ -42,12 +35,7 @@ class PreissmannSolver(Solver):
             Spatial step for the simulation in meters.
             
         """
-        super().__init__(channel=channel,
-                         time_step=time_step,
-                         spatial_step=spatial_step,
-                         simulation_time=simulation_time,
-                         regularization=regularization,
-                         fit_spatial_step=fit_spatial_step)
+        super().__init__(**kwargs)
         
         self.theta = theta
         self.unknowns = None

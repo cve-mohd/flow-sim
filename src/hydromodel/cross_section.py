@@ -213,8 +213,8 @@ class IrregularSection(CrossSection):
     separated by a dry levee).
     """
     
-    def __init__(self, x, z, n=None, **kwargs):
-        super().__init__(n=n, **kwargs)
+    def __init__(self, x, z, **kwargs):
+        super().__init__(**kwargs)
 
         x = np.ascontiguousarray(x, dtype=float)
         z = np.ascontiguousarray(z, dtype=float)

@@ -13,7 +13,7 @@ class Solver(ABC):
                  time_step: int | float,
                  spatial_step: int | float,
                  simulation_time: int,
-                 regularization: bool = True,
+                 regularization: bool = False,
                  fit_spatial_step: bool = True):
         """
         Initializes the class.
@@ -276,7 +276,7 @@ class Solver(ABC):
         if regularization:
             h_min = 1e-4
             A_min = self.channel.area_at(i=i, hw=self.channel.bed_level_at(i=i) + h_min)
-            A = self.A_reg(A, A_min)
+            A = self.A_reg(A=A, eps=A_min)
         
         return A
             
