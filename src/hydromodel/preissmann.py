@@ -83,31 +83,6 @@ class PreissmannSolver(Solver):
             
         return R
 
-    def compute_indicies(self):
-        n = self.number_of_nodes
-        row_indicies = []
-        col_indicies = []
-        
-        # Upstream boundary
-        row_indicies += [0, 0]
-        col_indicies += [0, 1]
-        
-        # Interior nodes
-        for row_index in range(1, 2 * n - 1, 2):
-            # Continuity equation (row)
-            row_indicies += [row_index] * 4
-            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
-            
-            # Momentum equation (row + 1)
-            row_indicies += [row_index + 1] * 4
-            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
-
-        # Downstream boundary
-        row_indicies += [2 * n - 1, 2 * n - 1]
-        col_indicies += [2 * n - 2, 2 * n - 1]
-        
-        return row_indicies, col_indicies
-
     def compute_jacobian(self):
         """
         Constructs the Jacobian matrix J of the system of equations (sparse version).
@@ -125,31 +100,7 @@ class PreissmannSolver(Solver):
             self.J = sp.coo_matrix((data, self.compute_indicies()), shape=shape).tocsr()
         else:
             self.J.data[:] = data
-
-    def compute_jacobian_data(self):
-        data = []
-        data += [self.dU_dh(), self.dU_dQ()]
-
-        for row_index in range(1, 2 * self.number_of_nodes - 1, 2):
-            i = (row_index - 1) // 2
-
-            data += [
-                self.dC_dh_i(i=i),
-                self.dC_dQ_i(i=i),
-                self.dC_dh_ip1(i=i),
-                self.dC_dQ_ip1(i=i),
-            ]
-
-            data += [
-                self.dM_dh_i(i=i),
-                self.dM_dQ_i(i=i),
-                self.dM_dh_ip1(i=i),
-                self.dM_dQ_ip1(i=i),
-            ]
-
-        data += [self.dD_dh(), self.dD_dQ()]
-        return data
-
+            
     def run(self, tolerance=1e-4, verbose=3, max_iter=100, diagnos=False) -> None:
         """
         Run the simulation.
@@ -370,7 +321,31 @@ class PreissmannSolver(Solver):
                                                                    time=time,
                                                                    vol_in=volume,
                                                                    duration=self.time_step)
-            
+    
+    def compute_jacobian_data(self):
+        data = []
+        data += [self.dU_dh(), self.dU_dQ()]
+
+        for row_index in range(1, 2 * self.number_of_nodes - 1, 2):
+            i = (row_index - 1) // 2
+
+            data += [
+                self.dC_dh_i(i=i),
+                self.dC_dQ_i(i=i),
+                self.dC_dh_ip1(i=i),
+                self.dC_dQ_ip1(i=i),
+            ]
+
+            data += [
+                self.dM_dh_i(i=i),
+                self.dM_dQ_i(i=i),
+                self.dM_dh_ip1(i=i),
+                self.dM_dQ_ip1(i=i),
+            ]
+
+        data += [self.dD_dh(), self.dD_dQ()]
+        return data
+
     def dU_dh(self) -> int:
         """
         Computes the derivative of the upstream BC residual w.r.t. flow area.
@@ -898,6 +873,31 @@ class PreissmannSolver(Solver):
         chi = A_reg / (A_reg + A_min)
         
         return chi
+
+    def compute_indicies(self):
+        n = self.number_of_nodes
+        row_indicies = []
+        col_indicies = []
+        
+        # Upstream boundary
+        row_indicies += [0, 0]
+        col_indicies += [0, 1]
+        
+        # Interior nodes
+        for row_index in range(1, 2 * n - 1, 2):
+            # Continuity equation (row)
+            row_indicies += [row_index] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+            
+            # Momentum equation (row + 1)
+            row_indicies += [row_index + 1] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+
+        # Downstream boundary
+        row_indicies += [2 * n - 1, 2 * n - 1]
+        col_indicies += [2 * n - 2, 2 * n - 1]
+        
+        return row_indicies, col_indicies
 
     def time_diff(self, k1_i1 = 0, k1_i = 0, k_i1 = 0, k_i = 0):
         return (k1_i1 + k1_i - k_i1 - k_i) / (2 * self.time_step)
