@@ -39,6 +39,7 @@ class PreissmannSolver(Solver):
         super().__init__(**kwargs)
         
         self.theta = theta
+        self.J = None
         self.unknowns = None
         self.type = 'preissmann'
         self.initialize_t0()
@@ -82,6 +83,31 @@ class PreissmannSolver(Solver):
             
         return R
 
+    def compute_indicies(self):
+        n = self.number_of_nodes
+        row_indicies = []
+        col_indicies = []
+        
+        # Upstream boundary
+        row_indicies += [0, 0]
+        col_indicies += [0, 1]
+        
+        # Interior nodes
+        for row_index in range(1, 2 * n - 1, 2):
+            # Continuity equation (row)
+            row_indicies += [row_index] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+            
+            # Momentum equation (row + 1)
+            row_indicies += [row_index + 1] * 4
+            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
+
+        # Downstream boundary
+        row_indicies += [2 * n - 1, 2 * n - 1]
+        col_indicies += [2 * n - 2, 2 * n - 1]
+        
+        return row_indicies, col_indicies
+
     def compute_jacobian(self):
         """
         Constructs the Jacobian matrix J of the system of equations (sparse version).
@@ -90,24 +116,23 @@ class PreissmannSolver(Solver):
         -------
         scipy.sparse.csr_matrix
             Sparse Jacobian matrix
+            
         """
-        n = self.number_of_nodes
-        row_indicies = []
-        col_indicies = []
-        data = []
+        data = self.compute_jacobian_data()
+        shape = (2 * self.number_of_nodes, 2 * self.number_of_nodes)
+        
+        if self.J is None:
+            self.J = sp.coo_matrix((data, self.compute_indicies()), shape=shape).tocsr()
+        else:
+            self.J.data[:] = data
 
-        # Upstream boundary
-        row_indicies += [0, 0]
-        col_indicies += [0, 1]
+    def compute_jacobian_data(self):
+        data = []
         data += [self.dU_dh(), self.dU_dQ()]
 
-        # Interior nodes
-        for row_index in range(1, 2 * n - 1, 2):
+        for row_index in range(1, 2 * self.number_of_nodes - 1, 2):
             i = (row_index - 1) // 2
 
-            # Continuity equation (row)
-            row_indicies += [row_index] * 4
-            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
             data += [
                 self.dC_dh_i(i=i),
                 self.dC_dQ_i(i=i),
@@ -115,9 +140,6 @@ class PreissmannSolver(Solver):
                 self.dC_dQ_ip1(i=i),
             ]
 
-            # Momentum equation (row + 1)
-            row_indicies += [row_index + 1] * 4
-            col_indicies += [row_index - 1, row_index, row_index + 1, row_index + 2]
             data += [
                 self.dM_dh_i(i=i),
                 self.dM_dQ_i(i=i),
@@ -125,14 +147,8 @@ class PreissmannSolver(Solver):
                 self.dM_dQ_ip1(i=i),
             ]
 
-        # Downstream boundary
-        row_indicies += [2 * n - 1, 2 * n - 1]
-        col_indicies += [2 * n - 2, 2 * n - 1]
         data += [self.dD_dh(), self.dD_dQ()]
-
-        # Assemble in COO then convert to CSR
-        J = sp.coo_matrix((data, (row_indicies, col_indicies)), shape=(2 * n, 2 * n)).tocsr()
-        return J
+        return data
 
     def run(self, tolerance=1e-4, verbose=3, max_iter=100, diagnos=False) -> None:
         """
@@ -164,22 +180,22 @@ class PreissmannSolver(Solver):
                 self.update_guesses()
                 
                 R = self.compute_residual_vector()
-                J = self.compute_jacobian()
+                self.compute_jacobian()
                 
                 if diagnos:
                     # --- NaN check ---
-                    if np.isnan(R).any() or np.isnan(J.data).any():
+                    if np.isnan(R).any() or np.isnan(self.J.data).any():
                         self.check_criticality()
                         raise ValueError("NaN in system assembly")
 
                     # --- Ill-conditioning check ---
-                    lu = spla.splu(J.tocsc())
+                    lu = spla.splu(self.J.tocsc())
                     rcond = lu.rcond  # reciprocal condition estimate
                     if rcond is not None and rcond < 1e-12:
                         self.check_criticality()
                         raise ValueError("Jacobian is ill-conditioned (rcond too small)")
                                 
-                delta = spla.spsolve(J, -R)
+                delta = spla.spsolve(self.J, -R)
                 self.unknowns += delta
                 
                 error = euclidean_norm(R)
