@@ -18,7 +18,7 @@ OPEN_STATUS = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - JAMMED_SPILLWAYS) + [0] 
 MAX_COOLDOWN = 3600 * 5
     
 class RoseiresRatingCurve(RatingCurve):
-    def __init__(self, initial_stage = None, initial_flow = None):       
+    def __init__(self, initial_stage = None, initial_flow = None, initially_open = False):       
         self.fit_models()
         
         self.initial_stage = initial_stage
@@ -33,20 +33,22 @@ class RoseiresRatingCurve(RatingCurve):
         self.cooldown = 0
         self.prev_time = None
         
-        self.spillway_opening = [MAX_SPILLWAY_OPENING] * NUM_SPILLWAYS
-        self.open_sluices = NUM_SLUICE_GATES
+        self.spillway_openings = [MAX_SPILLWAY_OPENING] * NUM_SPILLWAYS
+        self.open_sluices_num = NUM_SLUICE_GATES
         
-        self.tail_water_level = TAIL_WATER_LEVEL_RANGE[0]
+        self.tail_water_level = np.average(TAIL_WATER_LEVEL_RANGE)
         
         self.calc_closed_status(initial_flow)
-        self.close_gates()
+        
+        if not initially_open:
+            self.close_gates()
  
-    def discharge(self, stage, time = None, update_stage = True, check_gate_state = True) -> float:
-        if check_gate_state:
+    def discharge(self, stage, time = None, update_stage = True, update_gate_state = True) -> float:
+        if update_gate_state:
             self.gate_control(time=time)
         
-        sluice_releases = self.sluice_Q(stage) * self.open_sluices
-        spillway_releases = sum([self.spillway_Q(stage, opening) if opening > 0 else 0 for opening in self.spillway_opening])
+        sluice_releases = self.sluice_Q(stage) * self.open_sluices_num
+        spillway_releases = sum([self.spillway_Q(stage, opening) if opening > 0 else 0 for opening in self.spillway_openings])
         
         discharge = spillway_releases + sluice_releases + HYDROPOWER_Q
         
@@ -76,8 +78,8 @@ class RoseiresRatingCurve(RatingCurve):
         return float(self.sluice_model.predict([[stage, self.tail_water_level]])[0])
 
     def dQ_dz(self, stage, time = float, dx=0.1) -> float:
-        f_plus = self.discharge(stage + dx, time=time, update_stage=False, check_gate_state=False)
-        f_minus = self.discharge(stage - dx, time=time, update_stage=False, check_gate_state=False)
+        f_plus = self.discharge(stage + dx, time=time, update_stage=False, update_gate_state=False)
+        f_minus = self.discharge(stage - dx, time=time, update_stage=False, update_gate_state=False)
         derivative = (f_plus - f_minus) / (2 * dx)
         
         self.current_stage = stage
@@ -155,35 +157,35 @@ class RoseiresRatingCurve(RatingCurve):
         return self.current_stage <= self.initial_stage - 1
 
     def open_gates(self):
-        self.spillway_opening, self.open_sluices = OPEN_STATUS
+        self.spillway_openings, self.open_sluices_num = OPEN_STATUS
         self.open = True
 
     def close_gates(self):    
-        self.spillway_opening, self.open_sluices = self.closed_status
+        self.spillway_openings, self.open_sluices_num = self.closed_status
         self.open = False
 
     def calc_closed_status(self, initial_flow):
-        current_status = self.spillway_opening, self.open_sluices
+        current_status = self.spillway_openings, self.open_sluices_num
         
         # First, determine how many sluices need to be open
-        self.spillway_opening = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - JAMMED_SPILLWAYS)
+        self.spillway_openings = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - JAMMED_SPILLWAYS) # All spillways open except jammed ones
         for i in range(NUM_SLUICE_GATES + 1 - JAMMED_SLUICEGATES):
-            self.open_sluices = i
-            if self.discharge(stage=self.initial_stage, check_gate_state=False) > initial_flow:
-                self.open_sluices = max(i-1, 0)
+            self.open_sluices_num = i
+            if self.discharge(stage=self.initial_stage, update_gate_state=False) > initial_flow:
+                self.open_sluices_num = max(i-1, 0)
                 break
         
         # Second, determine how many spillways need to be fully open
         fully_o = 0
         for i in range(NUM_SPILLWAYS + 1 - JAMMED_SPILLWAYS):
-            self.spillway_opening = [MAX_SPILLWAY_OPENING] * i + [0] * (NUM_SPILLWAYS - i)
-            if self.discharge(stage=self.initial_stage, check_gate_state=False) > initial_flow:
+            self.spillway_openings = [MAX_SPILLWAY_OPENING] * i + [0] * (NUM_SPILLWAYS - i)
+            if self.discharge(stage=self.initial_stage, update_gate_state=False) > initial_flow:
                 fully_o = i - 1
                 break
                 
         def f(partial_opening):
-            self.spillway_opening = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
-            return initial_flow - self.discharge(stage=self.initial_stage, check_gate_state=False)
+            self.spillway_openings = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
+            return initial_flow - self.discharge(stage=self.initial_stage, update_gate_state=False)
         
         partial_opening = round(brentq(f, 0, MAX_SPILLWAY_OPENING), 1)
         partially_o = 1 if partial_opening > 0 else 0
@@ -191,10 +193,20 @@ class RoseiresRatingCurve(RatingCurve):
         if fully_o + partially_o > NUM_SPILLWAYS - JAMMED_SPILLWAYS:
             raise ValueError("wttf")
         
-        self.spillway_opening = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
+        self.spillway_openings = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
         
         # ------------ #
         
-        self.closed_status = self.spillway_opening, self.open_sluices
-        self.spillway_opening, self.open_sluices = current_status
+        self.closed_status = self.spillway_openings, self.open_sluices_num
+        self.spillway_openings, self.open_sluices_num = current_status
+
+"""    
+rc = RoseiresRatingCurve(initial_stage=487, initial_flow=1562.5, initially_open=False)
+Y = [y for y in range(480, 493)]
+Q = []
+for y in Y:
+    Q.append(rc.discharge(stage=y, update_stage=False, update_gate_state=False))
     
+print(Q)
+# py -m cases.gerd_roseires.roseires_rating_curve
+"""
