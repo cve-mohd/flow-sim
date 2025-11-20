@@ -185,7 +185,7 @@ class Solver(ABC):
             df_bed.to_excel(writer, sheet_name="Bed level")
                 
         # Save data summary
-        with open(folder_path + '\\Data.txt', 'w') as output_file:
+        with open(file_path[:-5] + '.txt', 'w') as output_file:
             # Spatial step
             output_file.write(f'Spatial step = {self.spatial_step} m\n')
             

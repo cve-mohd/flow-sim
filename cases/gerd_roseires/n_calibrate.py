@@ -9,7 +9,7 @@ def run_model(n_main, Q):
         n_main=n_main,
         Q=Q,
         verbose=0,
-        save_path=None,
+        folder=None,
         inflow_hyd_path="cases\\gerd_roseires\\data\\inflow_hydrograph_small.csv"
     )
     

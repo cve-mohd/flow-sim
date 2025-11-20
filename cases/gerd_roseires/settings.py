@@ -4,7 +4,7 @@ spatial_step = 1000
 time_step = 3600
 theta = 0.8
 
-sim_duration = 3600 * 96
+sim_duration = 3600 * 120
 tolerance = 1e-6
 
 ############                Hydrologic Parameters               ############

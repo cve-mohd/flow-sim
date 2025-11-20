@@ -21,7 +21,10 @@ def run(
     inflow_hyd_func = settings.sin_wave,
     coords_path = "cases\\gerd_roseires\\data\\centerline_coords.csv",
     cross_sections_path = 'cases\\gerd_roseires\\data\\composite_trapezoids.csv',
-    save_path = 'cases\\gerd_roseires\\results\\'
+    folder = 'cases\\gerd_roseires\\results\\',
+    file = 'results.xlsx',
+    jammed_spillways = settings.JAMMED_SPILLWAYS,
+    jammed_sluice_gates = settings.JAMMED_SLUICEGATES
 ):
     
     if verbose > 0:
@@ -49,7 +52,9 @@ def run(
                         bed_level=roseires_bed,
                         condition='rating_curve',
                         #condition='fixed_depth',
-                        rating_curve=RoseiresRatingCurve(initial_stage=initial_roseires_level, initial_flow=initial_flow),
+                        rating_curve=RoseiresRatingCurve(initial_stage=initial_roseires_level, initial_flow=initial_flow,
+                                                         jammed_sluice_gates=jammed_sluice_gates,
+                                                         jammed_spillways=jammed_spillways),
                         chainage=roseires_ch)
 
     GERD_Roseires_system = Channel(initial_flow=initial_flow,
@@ -81,11 +86,11 @@ def run(
 
     solver.run(verbose=verbose-1, tolerance=tolerance)
 
-    if save_path is not None:
+    if folder is not None:
         if verbose > 0:
             print("Saving results...")
             
-        solver.save_results(folder_path=save_path)
+        solver.save_results(folder_path=folder, file_name=file)
 
     if verbose > 0:
         print("Done.")
