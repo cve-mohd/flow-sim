@@ -1,0 +1,108 @@
+from src.hydromodel.channel import Channel
+from src.hydromodel.boundary import Boundary
+from src.hydromodel.hydrograph import Hydrograph
+from src.hydromodel.preissmann import PreissmannSolver
+from .custom_functions import import_table, import_hydrograph, load_trapzoid_xs
+from . import settings
+from .roseires_rating_curve import RoseiresRatingCurve
+
+def run(
+    n_main = None,
+    n_fp = None,
+    Q = None,
+    initial_roseires_level = settings.initial_roseires_level,
+    theta = settings.theta,
+    spatial_step = settings.spatial_step,
+    time_step = settings.time_step,
+    sim_duration = settings.sim_duration,
+    tolerance = settings.tolerance,
+    verbose = 1,
+    inflow_hyd_path = "cases\\gerd_roseires\\data\\inflow_hydrograph.csv",
+    inflow_hyd_func = settings.sin_wave,
+    coords_path = "cases\\gerd_roseires\\data\\centerline_coords.csv",
+    cross_sections_path = 'cases\\gerd_roseires\\data\\composite_trapezoids.csv',
+    folder = 'cases\\gerd_roseires\\results\\',
+    file = 'results.xlsx',
+    jammed_spillways = settings.JAMMED_SPILLWAYS,
+    jammed_sluice_gates = settings.JAMMED_SLUICEGATES
+):
+    
+    if verbose > 0:
+        print("Processing input data...")
+
+    if inflow_hyd_func is None:
+        inflow_hyd = Hydrograph(table=import_hydrograph(inflow_hyd_path))
+    else:
+        inflow_hyd = Hydrograph(function=inflow_hyd_func)
+        
+    initial_flow = inflow_hyd.get_at(0)
+
+    xs_chainages, sections = load_trapzoid_xs(file_path=cross_sections_path, n_fp=n_fp, n_main=n_main)
+
+    roseires_ch = xs_chainages[-1]
+    roseires_bed = sections[-1].z_min
+
+    GERD_ch = xs_chainages[0]
+
+    GERD = Boundary(condition='flow_hydrograph',
+                    hydrograph=inflow_hyd,
+                    chainage=GERD_ch)
+
+    Roseires = Boundary(initial_depth=initial_roseires_level-roseires_bed,
+                        bed_level=roseires_bed,
+                        condition='rating_curve',
+                        #condition='fixed_depth',
+                        rating_curve=RoseiresRatingCurve(initial_stage=initial_roseires_level, initial_flow=initial_flow,
+                                                         jammed_sluice_gates=jammed_sluice_gates,
+                                                         jammed_spillways=jammed_spillways),
+                        chainage=roseires_ch)
+
+    GERD_Roseires_system = Channel(initial_flow=initial_flow,
+                                   upstream_boundary=GERD,
+                                   downstream_boundary=Roseires)
+
+    if coords_path is not None:
+        coords = import_table(coords_path, sort_by='chainage')
+        GERD_Roseires_system.set_coords(coords=coords[:, 1:], chainages=coords[:, 0])
+        
+    GERD_Roseires_system.set_cross_sections(chainages=xs_chainages, sections=sections)
+
+    if sim_duration is None:
+        if inflow_hyd.table is None:
+            raise ValueError("Simulation duration must be specified.")
+        else:
+            duration = inflow_hyd.table[-1, 0]
+    else:
+        duration = sim_duration
+
+    solver = PreissmannSolver(channel=GERD_Roseires_system,
+                              theta=theta,
+                              time_step=time_step,
+                              spatial_step=spatial_step,
+                              simulation_time=int(duration))
+
+    if verbose > 0:
+        print("Simulation started.")
+
+    solver.run(verbose=verbose-1, tolerance=tolerance)
+
+    if folder is not None:
+        if verbose > 0:
+            print("Saving results...")
+            
+        solver.save_results(folder_path=folder, file_name=file)
+
+    if verbose > 0:
+        print("Done.")
+
+    ##
+    
+    if Q is not None:
+        from numpy import interp
+        gerd_levels = interp(
+            x = Q,
+            xp = solver.flow[:, 0],
+            fp = solver.depth[:, 0] + sections[0].z_min
+        )
+        
+        return gerd_levels

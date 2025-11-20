@@ -1,4 +1,3 @@
-import os
 import numpy as np
     
 def create_directory_if_not_exists(directory):
@@ -10,7 +9,7 @@ def create_directory_if_not_exists(directory):
     directory : str
         The path to the directory to check.
     """
-    
+    import os
     if not os.path.exists(directory):
         os.makedirs(directory)
         

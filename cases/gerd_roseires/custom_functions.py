@@ -106,12 +106,14 @@ def import_area_curve(path: str) -> np.ndarray:
     
     return area_curve
 
-def import_hydrograph(path: str) -> np.ndarray:  
+def import_hydrograph(path: str, hr_to_s_conversion = True) -> np.ndarray:  
     table = read_csv(path, skiprows=[1])
     table = table.astype(np.float64).sort_values(by="time")
     
     area_curve = table.to_numpy()
-    area_curve[:, 0] *= 3600
+    
+    if hr_to_s_conversion:
+        area_curve[:, 0] *= 3600
     
     return area_curve
 
@@ -123,7 +125,7 @@ def import_table(path: str, header: bool = True, sort_by: str = None) -> np.ndar
     
     return table.to_numpy(dtype=np.float64)
 
-def load_trapzoid_xs(file_path: str):
+def load_trapzoid_xs(file_path: str, n_main = None, n_fp = None):
     table = read_csv(file_path)
     
     chainages = []
@@ -133,7 +135,7 @@ def load_trapzoid_xs(file_path: str):
         row = row.squeeze()
         
         if row['file'] == '53.csv':
-            print(f'Skipped cross-section {row['file'][:2]}.')
+            #print(f'Skipped cross-section {row['file'][:2]}.')
             continue
         
         chainages.append(row['chainage'])
@@ -142,13 +144,13 @@ def load_trapzoid_xs(file_path: str):
                 z_bed = row['z_min'],
                 b_main = row['b_main'],
                 m_main = row['m_main'],
-                n_main = row['n_main'],
+                n_main = row['n_main'] if n_main is None else n_main,
                 z_bank = row['z_min'] + row['h_bankfull'],
                 b_fp_left = row['b_fp_left'],
                 b_fp_right = row['b_fp_right'],
                 m_fp = row['m_fp'],
-                n_left = row['n_left'],
-                n_right = row['n_right']
+                n_left = row['n_left'] if n_fp is None else n_fp,
+                n_right = row['n_right'] if n_fp is None else n_fp
             )
         )
         

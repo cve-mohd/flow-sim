@@ -91,7 +91,7 @@ class Solver(ABC):
             )
             
         self.velocity = self.flow / self.area
-        self.wave_celerity = self.velocity + np.sqrt(g * self.depth)
+        self.wave_celerity = self.velocity + np.sqrt(g * self.area / self.top_width)
         
         ref = self.depth[0, :]
         self.amplitude = self.depth - ref
@@ -126,12 +126,16 @@ class Solver(ABC):
                 
                 self.storage_outflow[k] = avg_outflow * self.flow_at(k=k, i=-1) / avg_inflow
                     
-    def save_results(self, folder_path):
+    def save_results(self, folder_path: str, file_name: str = None) -> None:
         """
         Save all results to a single Excel workbook with multiple sheets.
         """
-        create_directory_if_not_exists(folder_path)
-        filename = folder_path + "\\results.xlsx"
+        
+        import os
+        os.makedirs(folder_path, exist_ok=True)
+
+        file_name = 'results.xlsx' if file_name is None else file_name
+        file_path = os.path.join(folder_path, file_name)
         
         arrays_2d = {
             "Level": self.level,
@@ -149,7 +153,7 @@ class Solver(ABC):
         time = np.arange(nt) * self.time_step
         distance = np.array(object=self.channel.ch_at_node, dtype=np.float64)
 
-        with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
             # 2D arrays
             for name, arr in arrays_2d.items():
                 df = pd.DataFrame(arr, index=time, columns=distance)
@@ -181,7 +185,7 @@ class Solver(ABC):
             df_bed.to_excel(writer, sheet_name="Bed level")
                 
         # Save data summary
-        with open(folder_path + '\\Data.txt', 'w') as output_file:
+        with open(file_path[:-5] + '.txt', 'w') as output_file:
             # Spatial step
             output_file.write(f'Spatial step = {self.spatial_step} m\n')
             

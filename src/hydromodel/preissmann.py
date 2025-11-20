@@ -40,6 +40,7 @@ class PreissmannSolver(Solver):
         
         self.theta = theta
         self.J = None
+        self.R = np.zeros(shape=(self.number_of_nodes*2))
         self.unknowns = None
         self.type = 'preissmann'
         self.initialize_t0()
@@ -57,7 +58,7 @@ class PreissmannSolver(Solver):
         super().initialize_t0()
         self.unknowns = self.channel.initial_conditions.flatten()
 
-    def compute_residual_vector(self) -> np.ndarray:
+    def compute_residual_vector(self) -> None:
         """
         Computes the residual vector R.
 
@@ -72,17 +73,13 @@ class PreissmannSolver(Solver):
             R
             
         """
-        R = np.zeros(shape=(self.number_of_nodes*2))
-        
-        R[0]  = self.upstream_residual()
-        R[-1] = self.downstream_residual()
+        self.R[0]  = self.upstream_residual()
+        self.R[-1] = self.downstream_residual()
         
         for i in range(self.number_of_nodes-1):
-            R[1+2*i] = self.continuity_residual(i)
-            R[2+2*i] = self.momentum_residual(i)
+            self.R[1+2*i] = self.continuity_residual(i)
+            self.R[2+2*i] = self.momentum_residual(i)
             
-        return R
-
     def compute_jacobian(self):
         """
         Constructs the Jacobian matrix J of the system of equations (sparse version).
@@ -130,12 +127,12 @@ class PreissmannSolver(Solver):
                 
                 self.update_guesses()
                 
-                R = self.compute_residual_vector()
+                self.compute_residual_vector()
                 self.compute_jacobian()
                 
                 if diagnos:
                     # --- NaN check ---
-                    if np.isnan(R).any() or np.isnan(self.J.data).any():
+                    if np.isnan(self.R).any() or np.isnan(self.J.data).any():
                         self.check_criticality()
                         raise ValueError("NaN in system assembly")
 
@@ -146,10 +143,10 @@ class PreissmannSolver(Solver):
                         self.check_criticality()
                         raise ValueError("Jacobian is ill-conditioned (rcond too small)")
                                 
-                delta = spla.spsolve(self.J, -R)
+                delta = spla.spsolve(self.J, -self.R)
                 self.unknowns += delta
                 
-                error = euclidean_norm(R)
+                error = euclidean_norm(self.R)
                 
                 if verbose == 3:
                     print(f">> Iteration #{iteration}: Error = {error}")    
