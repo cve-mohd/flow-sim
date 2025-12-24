@@ -18,7 +18,7 @@ CLOSE_TIMING = 3600 * 55
 ###########
 
 base_flow = 1562.5
-peak_flow = 24000.
+peak_flow = 26000.
 
 lag_time = 0.0
 time_to_peak = 3600 * 24

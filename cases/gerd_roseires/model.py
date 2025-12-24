@@ -5,6 +5,7 @@ from src.hydromodel.preissmann import PreissmannSolver
 from .custom_functions import import_table, import_hydrograph, load_trapzoid_xs
 from . import settings
 from .roseires_rating_curve import RoseiresRatingCurve
+from .gerd_discharge import GerdHydrograph
 
 def run(
     n_main = None,
@@ -24,18 +25,29 @@ def run(
     folder = 'cases\\gerd_roseires\\results\\',
     file = 'results.xlsx',
     jammed_spillways = settings.JAMMED_SPILLWAYS,
-    jammed_sluice_gates = settings.JAMMED_SLUICEGATES
+    jammed_sluice_gates = settings.JAMMED_SLUICEGATES,
+    gerd_level = 640
 ):
     
     if verbose > 0:
         print("Processing input data...")
 
     if inflow_hyd_func is None:
-        inflow_hyd = Hydrograph(table=import_hydrograph(inflow_hyd_path))
+        gerd_inflow_hyd = Hydrograph(table=import_hydrograph(inflow_hyd_path))
     else:
-        inflow_hyd = Hydrograph(function=inflow_hyd_func)
+        gerd_inflow_hyd = Hydrograph(function=inflow_hyd_func)
         
-    initial_flow = inflow_hyd.get_at(0)
+    if sim_duration is None:
+        if gerd_inflow_hyd.table is None:
+            raise ValueError("Simulation duration must be specified.")
+        else:
+            duration = int(gerd_inflow_hyd.table[-1, 0])
+    else:
+        duration = int(sim_duration)
+        
+    gerd_discharge_hyd = GerdHydrograph(inflow_hydrograph=gerd_inflow_hyd, time_step=time_step, duration=duration)
+    gerd_discharge_hyd.build(inflow_hydrograph=gerd_inflow_hyd, time_step=time_step, duration=duration, initial_stage=gerd_level)
+    initial_flow = gerd_discharge_hyd.turbine_flow
 
     xs_chainages, sections = load_trapzoid_xs(file_path=cross_sections_path, n_fp=n_fp, n_main=n_main)
 
@@ -45,7 +57,7 @@ def run(
     GERD_ch = xs_chainages[0]
 
     GERD = Boundary(condition='flow_hydrograph',
-                    hydrograph=inflow_hyd,
+                    hydrograph=gerd_discharge_hyd,
                     chainage=GERD_ch)
 
     Roseires = Boundary(initial_depth=initial_roseires_level-roseires_bed,
@@ -67,26 +79,18 @@ def run(
         
     GERD_Roseires_system.set_cross_sections(chainages=xs_chainages, sections=sections)
 
-    if sim_duration is None:
-        if inflow_hyd.table is None:
-            raise ValueError("Simulation duration must be specified.")
-        else:
-            duration = inflow_hyd.table[-1, 0]
-    else:
-        duration = sim_duration
-
     solver = PreissmannSolver(channel=GERD_Roseires_system,
                               theta=theta,
                               time_step=time_step,
                               spatial_step=spatial_step,
-                              simulation_time=int(duration))
+                              simulation_time=duration)
 
     if verbose > 0:
         print("Simulation started.")
 
     solver.run(verbose=verbose-1, tolerance=tolerance)
 
-    if folder is not None:
+    if folder is not None and file is not None:
         if verbose > 0:
             print("Saving results...")
             
