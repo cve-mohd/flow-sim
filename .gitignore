@@ -15,3 +15,5 @@ env/
 # IDE settings
 .vscode/
 .idea/
+cases/gerd_roseires/gerd_q_calc.py
+gerd_upstream_rating_curve.csv
