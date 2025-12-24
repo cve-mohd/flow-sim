@@ -34,6 +34,7 @@ class RoseiresRatingCurve(RatingCurve):
             raise ValueError(f"Roseires water stage must be between {MIN_STAGE} m and {MAX_STAGE} m.")
         
         self.current_stage = initial_stage
+        self.smooth = smooth
         self.open = True
         
         self.jammed_spillways = jammed_spillways
@@ -59,8 +60,11 @@ class RoseiresRatingCurve(RatingCurve):
         else:
             self.close_gates()
  
-    def discharge(self, stage, time = None, update_stage = True, update_gate_state = True, continuous = False) -> float:
-        if not continuous:
+    def discharge(self, stage, time = None, update_stage = True, update_gate_state = True, smooth = None) -> float:
+        if smooth is None:
+            smooth = self.smooth
+            
+        if not smooth:
             if update_gate_state:
                 self.gate_control(time=time)
             
@@ -138,7 +142,7 @@ class RoseiresRatingCurve(RatingCurve):
         self.spillway_openings = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - self.jammed_spillways) # All spillways open except jammed ones
         for i in range(NUM_SLUICE_GATES + 1 - self.jammed_sluice_gates):
             self.open_sluices_num = i
-            if self.discharge(stage=self.initial_stage, update_gate_state=False) > initial_flow:
+            if self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False) > initial_flow:
                 self.open_sluices_num = max(i-1, 0)
                 break
         
@@ -146,13 +150,13 @@ class RoseiresRatingCurve(RatingCurve):
         fully_o = 0
         for i in range(NUM_SPILLWAYS + 1 - self.jammed_spillways):
             self.spillway_openings = [MAX_SPILLWAY_OPENING] * i + [0] * (NUM_SPILLWAYS - i)
-            if self.discharge(stage=self.initial_stage, update_gate_state=False) > initial_flow:
+            if self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False) > initial_flow:
                 fully_o = i - 1
                 break
                 
         def f(partial_opening):
             self.spillway_openings = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
-            return initial_flow - self.discharge(stage=self.initial_stage, update_gate_state=False)
+            return initial_flow - self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False)
         
         partial_opening = round(brentq(f, 0, MAX_SPILLWAY_OPENING), 1)
         partially_o = 1 if partial_opening > 0 else 0
@@ -246,7 +250,9 @@ class RoseiresRatingCurve(RatingCurve):
             ])
             self.sluice_model.fit(X, y)
 
-
+if __name__ == '__main__':
+    rc = RoseiresRatingCurve(initial_stage=486, initial_flow=1562.5, deep_sluices_active=True)
+    print(rc.discharge(stage=487))
 """
 
 Y = [y for y in range(480, 493)]
