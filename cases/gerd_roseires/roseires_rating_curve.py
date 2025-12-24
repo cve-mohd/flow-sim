@@ -24,6 +24,7 @@ class RoseiresRatingCurve(RatingCurve):
         jammed_sluice_gates = 0,
         max_cooldown = 3600 * 5,
         smooth = True,
+        buffer = 0.5,
         deep_sluices_active = True
     ):       
         self.fit_models()
@@ -36,6 +37,7 @@ class RoseiresRatingCurve(RatingCurve):
         self.current_stage = initial_stage
         self.smooth = smooth
         self.open = True
+        self.buffer = buffer
         
         self.jammed_spillways = jammed_spillways
         self.jammed_sluice_gates = jammed_sluice_gates if deep_sluices_active else NUM_SLUICE_GATES
@@ -93,7 +95,10 @@ class RoseiresRatingCurve(RatingCurve):
             
         return (1.0 - alpha) * low_Q + alpha * high_Q
 
-    def alpha_smooth(self, stage, buffer = 0.5):
+    def alpha_smooth(self, stage, buffer = None):
+        if buffer is None:
+            buffer = self.buffer
+            
         if stage >= self.initial_stage + buffer:
             alpha = 1.0
         elif stage <= self.initial_stage:
@@ -251,7 +256,7 @@ class RoseiresRatingCurve(RatingCurve):
             self.sluice_model.fit(X, y)
 
 if __name__ == '__main__':
-    rc = RoseiresRatingCurve(initial_stage=486, initial_flow=1562.5, deep_sluices_active=True)
+    rc = RoseiresRatingCurve(initial_stage=486, initial_flow=1562.5, deep_sluices_active=False)
     print(rc.discharge(stage=487))
 """
 
