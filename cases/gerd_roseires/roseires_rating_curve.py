@@ -22,7 +22,9 @@ class RoseiresRatingCurve(RatingCurve):
         initially_open = False,
         jammed_spillways = 0,
         jammed_sluice_gates = 0,
-        max_cooldown = 3600 * 5
+        max_cooldown = 3600 * 5,
+        smooth = True,
+        deep_sluices_active = True
     ):       
         self.fit_models()
         
@@ -35,7 +37,7 @@ class RoseiresRatingCurve(RatingCurve):
         self.open = True
         
         self.jammed_spillways = jammed_spillways
-        self.jammed_sluice_gates = jammed_sluice_gates
+        self.jammed_sluice_gates = jammed_sluice_gates if deep_sluices_active else NUM_SLUICE_GATES
         
         self.open_state = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - self.jammed_spillways) + [0] * self.jammed_spillways,\
                            NUM_SLUICE_GATES - self.jammed_sluice_gates
@@ -57,19 +59,45 @@ class RoseiresRatingCurve(RatingCurve):
         else:
             self.close_gates()
  
-    def discharge(self, stage, time = None, update_stage = True, update_gate_state = True) -> float:
-        if update_gate_state:
-            self.gate_control(time=time)
-        
-        sluice_releases = self.sluice_Q(stage) * self.open_sluices_num
-        spillway_releases = sum([self.spillway_Q(stage, opening) if opening > 0 else 0 for opening in self.spillway_openings])
-        
-        discharge = spillway_releases + sluice_releases + HYDROPOWER_Q
-        
-        if update_stage:
-            self.current_stage = stage
+    def discharge(self, stage, time = None, update_stage = True, update_gate_state = True, continuous = False) -> float:
+        if not continuous:
+            if update_gate_state:
+                self.gate_control(time=time)
+            
+            discharge = self.total_release(stage)
+            
+            if update_stage:
+                self.current_stage = stage
+            
+        else:
+            alpha = self.alpha_smooth(stage)
+            discharge = self.effective_release(stage, alpha)
             
         return discharge
+
+    def total_release(self, stage):
+        sluice_releases = self.sluice_Q(stage) * self.open_sluices_num
+        spillway_releases = sum([self.spillway_Q(stage, opening) if opening > 0 else 0 for opening in self.spillway_openings])
+        return spillway_releases + sluice_releases + HYDROPOWER_Q
+
+    def effective_release(self, stage, alpha):
+        self.open_gates()
+        high_Q = self.total_release(stage)
+            
+        self.close_gates()
+        low_Q = self.total_release(stage)
+            
+        return (1.0 - alpha) * low_Q + alpha * high_Q
+
+    def alpha_smooth(self, stage, buffer = 0.5):
+        if stage >= self.initial_stage + buffer:
+            alpha = 1.0
+        elif stage <= self.initial_stage:
+            alpha = 0.0
+        else:
+            s = (stage - self.initial_stage) / buffer
+            alpha = 3 * s**2 - 2 * s**3
+        return alpha
 
     def gate_control(self, time):
         if self.prev_time is not None:
@@ -86,17 +114,10 @@ class RoseiresRatingCurve(RatingCurve):
             self.cooldown = self.max_cooldown
             self.close_gates()
             
-    def open_condition(
-        self,
-        time
-    ):
+    def open_condition(self, time):
         return self.current_stage >= self.initial_stage + 0.5
-        return time < OPEN_TIMING or time > CLOSE_TIMING
     
-    def close_condition(
-        self,
-        time
-    ):
+    def close_condition(self, time):
         return self.current_stage <= self.initial_stage - 1
 
     def open_gates(self):
