@@ -7,7 +7,7 @@ class GerdHydrograph(Hydrograph):
     def __init__(self):
         super().__init__(function=None, table=None)
         
-        self.turbine_flow = 1562.5 # Turbine
+        self.turbine_flow = 1562.5
         
     def build(self, inflow_hydrograph, time_step, duration, initial_stage):
         self.table = np.empty(shape=(duration//time_step+1, 2), dtype=np.float64)
@@ -17,7 +17,7 @@ class GerdHydrograph(Hydrograph):
         
         stage_0 = initial_stage
         inflow_0 = inflow_hydrograph.get_at(0)
-        outflow_0 = self.release(inflow=inflow_0, stage=stage_0)
+        outflow_0 = self.release(inflow=inflow_0, stage=stage_0, initial_stage=initial_stage)
         
         self.table[0, 0] = 0
         self.table[0, 1] = outflow_0
@@ -27,23 +27,23 @@ class GerdHydrograph(Hydrograph):
             # Inflow
             inflow_1 = inflow_hydrograph.get_at(t)
             avg_inflow = 0.5 * (inflow_1 + inflow_0)
+            vol_0 = np.interp(x=stage_0, xp=stages, fp=vols)
             
             # Outflow
             Q_req = inflow_1
             
-            def net_vol_change(stage_1):
-                outflow_1 = self.release(Q_req, stage_1)
+            def mass_balance(stage_1):
+                outflow_1 = self.release(Q_req, stage_1, initial_stage)
                 avg_outflow = 0.5 * (outflow_1 + outflow_0)
                 
-                vol_0 = np.interp(x=stage_0, xp=stages, fp=vols)
                 vol_1 = np.interp(x=stage_1, xp=stages, fp=vols)
                 
                 dVol = vol_1 - vol_0
                 
                 return dVol - (avg_inflow - avg_outflow) * time_step * 1e-6
                 
-            stage_1 = brentq(f=net_vol_change, a=624.9, b=645)
-            outflow_1 = self.release(Q_req, stage_1)
+            stage_1 = brentq(f=mass_balance, a=624.9, b=645)
+            outflow_1 = self.release(Q_req, stage_1, initial_stage)
 
             # Store new values
             time_level = t // time_step
@@ -55,9 +55,15 @@ class GerdHydrograph(Hydrograph):
             inflow_0 = inflow_1
             outflow_0 = outflow_1
 
-    def release(self, inflow, stage):
-        discharge = min(inflow, self.effective_capacity(WL=stage))
-        discharge = max(discharge, self.turbine_flow)
+    def release(self, inflow, stage, initial_stage):
+        capacity = self.effective_capacity(WL=stage)
+        
+        if stage > initial_stage:
+            discharge = capacity
+            
+        else:
+            discharge = min(inflow, capacity)
+            discharge = max(discharge, self.turbine_flow)
         
         return discharge
             
@@ -110,9 +116,12 @@ class GerdHydrograph(Hydrograph):
         spillway_crest = 624.9
         max_operating_level = 640
         
-        alpha = (WL - spillway_crest) / (max_operating_level - spillway_crest)
-        
-        return alpha
+        if WL <= spillway_crest:
+            return 0
+        elif WL >= max_operating_level:
+            return 1
+        else:
+            return (WL - spillway_crest) / (max_operating_level - spillway_crest)
 
 if __name__ == '__main__':
     import csv
