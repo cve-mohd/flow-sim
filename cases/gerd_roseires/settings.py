@@ -2,14 +2,15 @@
 
 spatial_step = 1000
 time_step = 3600
-theta = 0.8
+theta = 0.6
 
-sim_duration = 3600 * 120
+sim_duration = 3600 * 384
 tolerance = 1e-6
 
 ############                Hydrologic Parameters               ############
 
 initial_roseires_level = 487.
+initial_gerd_level = 637.
 JAMMED_SPILLWAYS = 0
 JAMMED_SLUICEGATES = 0
 OPEN_TIMING = 3600 * 6
@@ -36,3 +37,14 @@ def sin_wave(time: int):
         return base_flow + sin(0.5 * pi * float(time - lag_time - time_at_peak) / time_to_peak) * (peak_flow - base_flow)
     else:
         return base_flow
+
+###########
+
+inflow_hyd_path = "cases\\gerd_roseires\\data\\inflow_hydrograph.csv"
+inflow_hyd_func = sin_wave
+coords_path = "cases\\gerd_roseires\\data\\centerline_coords.csv"
+cross_sections_path = 'cases\\gerd_roseires\\data\\composite_trapezoids.csv'
+folder = 'cases\\gerd_roseires\\results\\'
+file = 'results.xlsx'
+
+###########

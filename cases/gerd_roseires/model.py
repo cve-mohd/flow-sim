@@ -18,15 +18,16 @@ def run(
     sim_duration = settings.sim_duration,
     tolerance = settings.tolerance,
     verbose = 1,
-    inflow_hyd_path = "cases\\gerd_roseires\\data\\inflow_hydrograph.csv",
-    inflow_hyd_func = settings.sin_wave,
-    coords_path = "cases\\gerd_roseires\\data\\centerline_coords.csv",
-    cross_sections_path = 'cases\\gerd_roseires\\data\\composite_trapezoids.csv',
-    folder = 'cases\\gerd_roseires\\results\\',
-    file = 'results.xlsx',
+    inflow_hyd_path = settings.inflow_hyd_path,
+    inflow_hyd_func = settings.inflow_hyd_func,
+    coords_path = settings.coords_path,
+    cross_sections_path = settings.cross_sections_path,
+    folder = settings.folder,
+    file = settings.file,
     jammed_spillways = settings.JAMMED_SPILLWAYS,
     jammed_sluice_gates = settings.JAMMED_SLUICEGATES,
-    gerd_level = 640
+    gerd_level = settings.initial_gerd_level,
+    with_gerd = True
 ):
     
     if verbose > 0:
@@ -45,20 +46,20 @@ def run(
     else:
         duration = int(sim_duration)
         
-    gerd_discharge_hyd = GerdHydrograph(inflow_hydrograph=gerd_inflow_hyd, time_step=time_step, duration=duration)
+    gerd_discharge_hyd = GerdHydrograph()
     gerd_discharge_hyd.build(inflow_hydrograph=gerd_inflow_hyd, time_step=time_step, duration=duration, initial_stage=gerd_level)
-    initial_flow = gerd_discharge_hyd.turbine_flow
+    initial_flow = gerd_discharge_hyd.get_at(time=0)
 
     xs_chainages, sections = load_trapzoid_xs(file_path=cross_sections_path, n_fp=n_fp, n_main=n_main)
 
     roseires_ch = xs_chainages[-1]
     roseires_bed = sections[-1].z_min
 
-    GERD_ch = xs_chainages[0]
+    upstream_ch = xs_chainages[0] if with_gerd else 17000
 
-    GERD = Boundary(condition='flow_hydrograph',
-                    hydrograph=gerd_discharge_hyd,
-                    chainage=GERD_ch)
+    upstream_bc = Boundary(condition='flow_hydrograph',
+                           hydrograph=gerd_discharge_hyd if with_gerd else gerd_inflow_hyd,
+                           chainage=upstream_ch)
 
     Roseires = Boundary(initial_depth=initial_roseires_level-roseires_bed,
                         bed_level=roseires_bed,
@@ -70,7 +71,7 @@ def run(
                         chainage=roseires_ch)
 
     GERD_Roseires_system = Channel(initial_flow=initial_flow,
-                                   upstream_boundary=GERD,
+                                   upstream_boundary=upstream_bc,
                                    downstream_boundary=Roseires)
 
     if coords_path is not None:
