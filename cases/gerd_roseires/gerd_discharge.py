@@ -92,10 +92,20 @@ class GerdHydrograph(Hydrograph):
         Q5 = self.turbine_flow
 
         return Q1 + Q2 + Q3 + Q4 + Q5
+    
+    def alpha(self, WL):
+        spillway_crest = 624.9
+        max_operating_level = 640
+        
+        if WL <= spillway_crest:
+            return 0
+        elif WL >= max_operating_level:
+            return 1
+        else:
+            return (WL - spillway_crest) / (max_operating_level - spillway_crest)
 
     def bottom_outlets(self, WL, darcey_f = 0.01): # f range: [0.009, 0.013]
         def f(Q):
-            #return max(0, WL - 545) - (83.21 * 1e-6 * Q**2 + (1.00295e-3 + 1.2247e-6 + 1.469e-5) * darcey_f * Q**2)
             return max(0, WL - 545) - (9.9125 * 1e-5 * Q**2 + 1.00295 * 1e-3 * darcey_f * Q**2)
         
         return brentq(f, a=0, b=1060)
@@ -111,17 +121,6 @@ class GerdHydrograph(Hydrograph):
     def gated_spillway(self, WL):
         Q1 = 196.4017 * max(0, WL - 624.9)**(3/2)
         return Q1
-    
-    def alpha(self, WL):
-        spillway_crest = 624.9
-        max_operating_level = 640
-        
-        if WL <= spillway_crest:
-            return 0
-        elif WL >= max_operating_level:
-            return 1
-        else:
-            return (WL - spillway_crest) / (max_operating_level - spillway_crest)
 
 if __name__ == '__main__':
     import csv

@@ -1,7 +1,10 @@
 from .model import run
 
-run(verbose=2, file='gerd.xlsx', inflow_hyd_func=None)
-run(verbose=2, file='no_gerd.xlsx', inflow_hyd_func=None, with_gerd=False)
+print("Start.")
+run(verbose=0, file='gerd.xlsx', inflow_hyd_func=None)
+print("Finished regulated scenario.")
+run(verbose=0, file='no_gerd.xlsx', inflow_hyd_func=None, with_gerd=False)
+print("Finished natural scenario.")
 
 """
 for r in [487, 490]:

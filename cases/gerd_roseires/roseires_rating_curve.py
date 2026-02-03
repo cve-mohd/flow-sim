@@ -145,25 +145,26 @@ class RoseiresRatingCurve(RatingCurve):
         
         # First, determine how many sluices need to be open
         self.spillway_openings = [MAX_SPILLWAY_OPENING] * (NUM_SPILLWAYS - self.jammed_spillways) # All spillways open except jammed ones
-        for i in range(NUM_SLUICE_GATES + 1 - self.jammed_sluice_gates):
+        for i in range(1, NUM_SLUICE_GATES + 1 - self.jammed_sluice_gates):
             self.open_sluices_num = i
             if self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False) > initial_flow:
-                self.open_sluices_num = max(i-1, 0)
+                self.open_sluices_num = i - 1
                 break
         
         # Second, determine how many spillways need to be fully open
         fully_o = 0
-        for i in range(NUM_SPILLWAYS + 1 - self.jammed_spillways):
+        for i in range(1, NUM_SPILLWAYS + 1 - self.jammed_spillways):
             self.spillway_openings = [MAX_SPILLWAY_OPENING] * i + [0] * (NUM_SPILLWAYS - i)
             if self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False) > initial_flow:
                 fully_o = i - 1
                 break
                 
+        # Third, calculate the needed partial opening
         def f(partial_opening):
             self.spillway_openings = [MAX_SPILLWAY_OPENING] * fully_o + [partial_opening] + [0] * (NUM_SPILLWAYS - fully_o - 1)
             return initial_flow - self.discharge(stage=self.initial_stage, update_gate_state=False, smooth=False)
         
-        partial_opening = round(brentq(f, 0, MAX_SPILLWAY_OPENING), 1)
+        partial_opening = round(brentq(f, 0, MAX_SPILLWAY_OPENING), 2)
         partially_o = 1 if partial_opening > 0 else 0
         
         if fully_o + partially_o > NUM_SPILLWAYS - self.jammed_spillways:
@@ -256,35 +257,43 @@ class RoseiresRatingCurve(RatingCurve):
             self.sluice_model.fit(X, y)
 
 if __name__ == '__main__':
-    rc = RoseiresRatingCurve(initial_stage=486, initial_flow=1562.5, deep_sluices_active=False)
-    print(rc.discharge(stage=487))
+    Y = [y for y in range(480, 493)]
+    rc = RoseiresRatingCurve(initial_stage=487, initial_flow=2094.106301, initially_open=False)
+
+    Q = [rc.discharge(stage=y, update_stage=False, update_gate_state=False, smooth=False) for y in Y]
+
+    import csv
+    with open("low_release_rating_curve.csv", mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Y", "Q"])  # header
+        for y_val, q_val in zip(Y, Q):
+            writer.writerow([y_val, q_val])
+            
+    rc = RoseiresRatingCurve(initial_stage=487, initial_flow=2094.106301, initially_open=True)
+
+    Q = [rc.discharge(stage=y, update_stage=False, update_gate_state=False, smooth=False) for y in Y]
+
+    with open("high_release_rating_curve.csv", mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Y", "Q"])  # header
+        for y_val, q_val in zip(Y, Q):
+            writer.writerow([y_val, q_val])
+            
+    """
+    # High release
+    for j1 in [0, 1]:
+        for j2 in [0, 1]:
+            rc = RoseiresRatingCurve(initial_stage=487, initial_flow=1562.5, initially_open=True,
+                                    jammed_spillways=j1, jammed_sluice_gates=j2)
+            
+            Q = [rc.discharge(stage=y, update_stage=False, update_gate_state=False) for y in Y]
+
+            with open(f"high_release_rating_curve_{j1}{j2}.csv", mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["Y", "Q"])  # header
+                for y_val, q_val in zip(Y, Q):
+                    writer.writerow([y_val, q_val])
+
+
+    # py -m cases.gerd_roseires.roseires_rating_curve
 """
-
-Y = [y for y in range(480, 493)]
-rc = RoseiresRatingCurve(initial_stage=487, initial_flow=1562.5, initially_open=False)
-
-Q = [rc.discharge(stage=y, update_stage=False, update_gate_state=False) for y in Y]
-
-import csv
-with open("low_release_rating_curve.csv", mode="w", newline="") as file:
-    writer = csv.writer(file)
-    writer.writerow(["Y", "Q"])  # header
-    for y_val, q_val in zip(Y, Q):
-        writer.writerow([y_val, q_val])
-        
-# High release
-for j1 in [0, 1]:
-    for j2 in [0, 1]:
-        rc = RoseiresRatingCurve(initial_stage=487, initial_flow=1562.5, initially_open=True,
-                                 jammed_spillways=j1, jammed_sluice_gates=j2)
-        
-        Q = [rc.discharge(stage=y, update_stage=False, update_gate_state=False) for y in Y]
-
-        with open(f"high_release_rating_curve_{j1}{j2}.csv", mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Y", "Q"])  # header
-            for y_val, q_val in zip(Y, Q):
-                writer.writerow([y_val, q_val])
-"""
-
-# py -m cases.gerd_roseires.roseires_rating_curve
