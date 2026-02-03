@@ -55,7 +55,7 @@ def run(
     roseires_ch = xs_chainages[-1]
     roseires_bed = sections[-1].z_min
 
-    upstream_ch = xs_chainages[0] if with_gerd else 17000
+    upstream_ch = xs_chainages[0]
 
     upstream_bc = Boundary(condition='flow_hydrograph',
                            hydrograph=gerd_discharge_hyd if with_gerd else gerd_inflow_hyd,
@@ -111,3 +111,15 @@ def run(
         )
         
         return gerd_levels
+    
+    if True:
+        from .custom_functions import draw, export_banks
+        
+        left_x, left_y, right_x, right_y = draw(chainages=GERD_Roseires_system.ch_at_node,
+                                                widths=[GERD_Roseires_system.top_width(i, hw=GERD_Roseires_system.initial_conditions[i, 0] + GERD_Roseires_system.bed_level_at(i)) for i in range(len(GERD_Roseires_system.ch_at_node))],
+                                                curvature=[xs.curvature for xs in GERD_Roseires_system.xs_at_node],
+                                                x0=726833,
+                                                y0=1240801,
+                                                theta0=2*3.14)
+        
+        export_banks(left_x, left_y, right_x, right_y)
