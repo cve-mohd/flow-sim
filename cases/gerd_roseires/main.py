@@ -3,8 +3,8 @@ from .model import run
 print("Start.")
 run(verbose=0, file='gerd.xlsx', inflow_hyd_func=None)
 print("Finished regulated scenario.")
-"""run(verbose=0, file='no_gerd.xlsx', inflow_hyd_func=None, with_gerd=False)
-print("Finished natural scenario.")"""
+run(verbose=0, file='no_gerd.xlsx', inflow_hyd_func=None, with_gerd=False)
+print("Finished natural scenario.")
 
 """
 for r in [487, 490]:
